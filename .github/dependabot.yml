@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      # gradle/actions v6 includes a proprietary caching component. Stay on
+      # the fully open v5 major while accepting its minor and patch updates.
+      - dependency-name: "gradle/actions"
+        update-types: ["version-update:semver-major"]

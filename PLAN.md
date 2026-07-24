@@ -201,7 +201,7 @@ online/offline, and only pinned certificates define identity (§7).
 flowchart LR
     subgraph Phone["Android app (per phone)"]
         NLS["NotificationListenerService<br/>(system-bound)"]
-        OUT[("Room outbox<br/>seq per Mac, WAL")]
+        OUT[("Room outbox<br/>per-device seq,<br/>per-Mac cursors, WAL")]
         CONN["ConnectionService<br/>FGS type connectedDevice<br/>TLS client, reconnect loop"]
         CDM["CDM association<br/>per paired Mac"]
         WD["Watchdog<br/>WorkManager + rebind kick"]
@@ -242,9 +242,9 @@ language-neutral test vectors consumed by both the Kotlin and Swift test suites.
 
 | Component | Type | Responsibility |
 |-----------|------|----------------|
-| `EkoNotificationListener` | `NotificationListenerService` | Capture posted/updated/removed events; write them to the outbox synchronously in the callback; detect redaction; reconcile via `getActiveNotifications()` on (re)connect |
+| `EkoNotificationListener` | `NotificationListenerService` | Capture posted/updated/removed events; write them to the outbox synchronously in the callback (from a dedicated writer thread — `synchronous=FULL` inserts fsync and must not run on the main thread, while staying strictly serialized); detect redaction; reconcile via `getActiveNotifications()` on (re)connect |
 | `ConnectionService` | Foreground service, `foregroundServiceType="connectedDevice"` | Own the TLS client sockets (one per paired Mac), reconnect loop, heartbeats, outbox drain, ack handling |
-| Outbox | Room/SQLite (WAL) | Durable event log; per-Mac sequence numbers; pruning on ack + retention caps |
+| Outbox | Room/SQLite (WAL) | Durable event log; one per-**device** sequence consumed by all pairings against per-pairing cursors (§9); pruning on ack + retention caps |
 | `PairingManager` | Activity flow + CDM | Discovery UI, QR scan, TOFU cert exchange, verification code, CDM `associate()` |
 | Watchdog | WorkManager (15 min) + event triggers | Detect NLS silence and connection staleness; `requestRebind()`; component-toggle kick; FGS restart |
 | Receivers | `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, connectivity callbacks | Restart `ConnectionService`; trigger immediate reconnect on network change |
@@ -278,6 +278,8 @@ usage proves negligible, drop the dependency and raise minSdk to 29 instead.)
   locally; category; `isClearable`; group key + `FLAG_GROUP_SUMMARY`.
 - Skip `FLAG_ONGOING_EVENT`/`FLAG_FOREGROUND_SERVICE` notifications by default (media players,
   navigation, our own FGS notification) — configurable per app.
+- Never capture Eko's own package at all: the ongoing-skip covers the FGS notification, but
+  mirroring our own pairing/repair alerts would be noise (and an OTP false-positive source).
 - `onNotificationRemoved` forwards the `REASON_*` code so the Mac can distinguish user dismissal
   (mirror it) from app-side cancel and from our own `cancelNotification()` round-trips.
 - Mac-initiated dismissal: `cancelNotification(key)`.
@@ -506,6 +508,10 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
   reset this privilege** for testing except VM snapshots/fresh users — plan QA accordingly.
 - App Sandbox on from day one: `com.apple.security.network.server` + `.network.client`.
   (There is no `network.local` entitlement — that's folklore.)
+- Listener hardening (the threat model's DoS scope includes the TCP listener, §7.1): cap
+  concurrent unauthenticated connections, rate-limit connection attempts per source address,
+  and time out the TLS+hello phase (~10 s) so floods of idle half-open sockets can't exhaust
+  the session table.
 - BLE peripheral advertisement via CoreBluetooth (`CBPeripheralManager`) with a fixed Eko
   service UUID — solely so phones can CDM-associate and observe presence (§5.3, §7.2).
   This needs the `com.apple.security.device.bluetooth` sandbox entitlement,
@@ -519,7 +525,10 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
   DER, cursor, last IP, capabilities, gap flag), `event` (device, seq, kind, notification key,
   payload JSON, received_at), `notification` (materialized current state per key — what the UI
   lists), `otp` (extracted codes linked to notifications). `ValueObservation` drives the SwiftUI
-  panel reactively. Unique `(device_id, seq)` enforces idempotent ingest.
+  panel reactively. Unique `(device_id, outbox_gen, seq)` enforces idempotent ingest — the
+  generation must be part of the key, because a sequence-space reset (§8) restarts the phone's
+  seqs at low values that would otherwise collide with stored old-generation rows and be
+  silently dropped as duplicates.
 - Mac identity: P-256 key generated with `SecKeyCreateRandomKey` into the **data-protection
   keychain** (`kSecUseDataProtectionKeychain: true` on every call; the file-based keychain API
   is deprecated and prompts); self-signed cert built with Apple's `swift-certificates`. Peer
@@ -544,6 +553,8 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
   30-popup storm is a documented user-rage generator). Instead: one summary banner — "Pixel 8
   reconnected · 12 missed notifications, 1 code" — and the missed items land in the panel's
   history, visually marked.
+- Mirrored banners are **silent by default** (no sound — the phone already made its noise);
+  sound is a per-app opt-in in settings. Clicking a banner opens the panel focused on that row.
 
 ### 6.5 Distribution
 
@@ -560,7 +571,8 @@ and entitlements are MAS-compatible from day one.
 ### 7.1 Threat model (v1)
 
 In scope: passive/active attackers on the same LAN (coffee-shop Wi-Fi): eavesdropping,
-impersonating a paired device, MITM at pairing time, replay, DoS via discovery floods.
+impersonating a paired device, MITM at pairing time, replay, DoS via discovery floods or
+listener connection floods (mitigations in §7.2 and §6.2 respectively).
 Out of scope in v1: compromised endpoints, malicious paired devices, physical access.
 Notification content is highly sensitive (OTPs!) — everything crosses the wire inside mutual
 TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
@@ -568,7 +580,10 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
 ### 7.2 Identity, discovery, pairing
 
 - **Identity is the certificate.** Each installation (phone and Mac) generates one long-lived
-  self-signed P-256 cert. `deviceId := SHA-256(cert DER)`, displayed truncated. Discovery
+  self-signed P-256 cert. `deviceId := SHA-256(cert DER)`, displayed truncated. Because the
+  pinned cert *is* the identity, expiry would brick a pairing: issue certs with a ~20-year
+  validity window and treat any future rotation as a new identity (guided re-pair); the exact
+  cert profile is settled in spike S3. Discovery
   packets and TXT records are **hints only**; no trust decision ever keys off them
   (CVE-2025-66270 class lesson: five independent KDE Connect implementations — desktop,
   Android, iOS, GSConnect, Valent — trusted the cleartext deviceId and shipped an
@@ -584,6 +599,9 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
   3. Last-known-IP direct dial (primary reconnect path — works when all discovery is blocked).
   4. QR code / manual entry: the Mac shows a QR encoding `{host, port, certFingerprint,
      one-time pairing token}`; the phone scans it — this both discovers and pre-authenticates.
+     The one-time token is single-use and expires after ~5 minutes, pairing-mode token guesses
+     are rate-limited, and pairing mode itself auto-exits after a few minutes so the listener
+     is never left open to walk-by pairing attempts.
 - **Pairing flow** (first connection, both sides in explicit "pairing mode"):
   1. Phone connects; TLS handshake with both sides presenting their self-signed certs
      (verify-block/TrustManager accept-unknown during pairing only).
@@ -593,7 +611,9 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
      live MITM who controls both relayed contributions — the classic ZRTP/Bluetooth-numeric-
      comparison lesson): each side generates a random nonce, first sends
      `SHA-256(nonce ‖ own cert DER)` as a commitment, and reveals the nonce only after
-     receiving the peer's commitment. Both screens then display the same **verification
+     receiving the peer's commitment. Nonces are ≥ 128 bits from a CSPRNG; each side verifies
+     the revealed nonce against the peer's commitment (aborting on mismatch) before displaying
+     anything. Both screens then display the same **verification
      code**: first 8 hex chars (uppercase) of
      `SHA-256(sort(certA DER, certB DER) ‖ nonceA ‖ nonceB)`. With the commitment in place
      the attacker gets a single 2^-32 online guess; no timestamp enters the hash (it would
@@ -627,6 +647,7 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
 ## 8. Wire protocol
 
 Framing: `[u32 length (big-endian)] [u8 frameType] [payload]`.
+`length` counts everything after itself (the frameType byte plus the payload).
 `frameType 0x01` = UTF-8 JSON (all v1 messages). `0x02` = binary (reserved: icons, later media).
 Max frame 1 MB in v1. Receivers must ignore unknown JSON fields and unknown `type`s within a
 negotiated version; breaking changes bump the version; optional features ride on `caps`.
@@ -646,8 +667,11 @@ All examples phone→Mac unless noted.
 enforced, both directions (§7.2). `outbox_gen` is a random UUID created together with the
 outbox DB — it changes exactly when the sequence space restarts (DB recreated, corruption
 recovery, restored backup). `conn_epoch` is a **per-install persistent** monotonic counter
-(stored in the outbox DB, incremented per connection attempt) used for supersession; it must
-not reset on reboot.
+(a single counter shared across all pairings, stored in the outbox DB, incremented once per
+connection attempt) used for supersession; it must not reset on reboot. If the outbox DB is
+recreated the counter restarts with it — safe, because the simultaneous `outbox_gen` rotation
+already forces a protocol reset, and same-install supersession ties can only race within one
+DB's lifetime.
 
 **2. welcome** (Mac→phone) — cursor authority:
 
@@ -662,7 +686,9 @@ cap-drops delete rows, §9; events arrive in ascending order over TCP within a s
 skipped seq carries no information) — the cursor advances past them; there is **no**
 contiguity requirement. The phone replays its outbox strictly `> cursor`. Two safety rails:
 if the Mac's stored generation differs from `outbox_gen`, it resets its cursor to 0 with an
-explicit gap marker (the sequence space restarted); if `welcome.cursor` exceeds the phone's
+explicit gap marker (the sequence space restarted; old-generation history is kept on the Mac
+but namespaced — ingest is keyed `(device_id, outbox_gen, seq)`, §6.3, so replayed low seqs
+from the new space can't collide with stored rows); if `welcome.cursor` exceeds the phone's
 current max seq (clock-free detection of a restored/older DB with a stale generation match),
 the phone treats it as a protocol reset — re-hello with a freshly rotated `outbox_gen`.
 The phone's own per-pairing ack state (§9) is purely a pruning optimization; resume
@@ -687,10 +713,14 @@ laggard pairing can have holes mid-stream, not only at the front. The Mac marks 
 incomplete for exactly those spans (honest UI, Discord invalid-session analogue). The `active`
 snapshot lists currently-visible notification keys plus content hashes so the Mac can
 reconcile dismissals whose `removed` events were pruned, and fetch bodies it lacks via
-`fetch` (below). `h` is defined as the first 8 hex chars of SHA-256 over the canonical
+`fetch` (below). Concretely: any key the Mac holds as active that is absent from `active` is
+synthesized as a `removed` (`reconciled`), and any key whose stored `h` differs from the
+snapshot's is re-fetched. `h` is defined as the first 8 hex chars of SHA-256 over the canonical
 serialization of the `n` object; the phone computes it and includes the same `h` on every
 `event` frame, so the Mac only ever stores and compares phone-computed hashes — no
-re-canonicalization on the Mac side.
+re-canonicalization on the Mac side. The canonical serialization is versioned with the
+protocol; if a phone update ever changes it, the worst case is a one-off round of spurious
+`fetch`es after reconnect, never wrong dedup.
 
 **4. event** — live or replayed:
 
@@ -712,7 +742,9 @@ semantics everywhere). `removed` carries `remove_reason` (the Android `REASON_*`
 `reconciled` marker for synthesized removals). `capture_gap` is emitted by the watchdog when
 it detects the listener was dead (payload: suspected dead interval) so the Mac can render the
 hole (§9). `user` is the Android user/profile id (§5.2). Keys are opaque strings — never
-parsed (they embed uid and mutable auto-group segments).
+parsed (they embed uid and mutable auto-group segments). `seq` is present on every event
+except reconciled `fetch` responses (§6 below); `h` is null on `removed` and `capture_gap`
+events (no `n` object to hash).
 
 **5. ack** (Mac→phone) — cumulative, every 20 events or 1 s, whichever first:
 
@@ -732,7 +764,9 @@ would lose data on a Mac crash.
 `fetch {"keys": […]}` (Mac→phone; answered with synthetic `event` frames carrying
 `flags.reconciled: true` and **no `seq`** — they don't consume sequence numbers or move the
 cursor), `error {"code": "superseded" | "incompatible" | "unpaired" | …}`, plus the pairing
-frames (§7.2).
+frames (§7.2). A phone that gets `error{unpaired}` in response to its hello treats it as a
+Mac-initiated unpair: it deletes that pairing's row and CDM association, releasing the outbox
+rows it was pinning (§5.6, §9) — this is the "applied on next contact" path.
 
 **Liveness:** phone pings every 25 s (first ping jittered ±10 s); one missed pong (10 s)
 → hard-close and reconnect. Mac closes sessions silent > 90 s. Kernel TCP keepalive
@@ -785,7 +819,9 @@ events, applied *per pairing* against its `floor_seq` (both configurable, and ca
 between Macs). When a lagging pairing exceeds its cap, its `floor_seq` advances and its `gap`
 is set — **no row is physically deleted for that.** A row is physically removed only when it
 is below **every** current pairing's `floor_seq` (i.e. every Mac has either acked or floored
-past it) **or** past the global 48 h age bound. This makes the multi-Mac case correct: a
+past it) **or** older than the *largest* age cap configured across current pairings — physical
+expiry must honor the most generous pairing's retention, so with differing caps the effective
+global bound is the max, not the 48 h default. This makes the multi-Mac case correct: a
 slow Mac's overflow can never drop rows a faster Mac still needs, and the fast Mac's history
 stays complete. On unpair (either side, applied on next contact) the pairing row is deleted,
 which also releases rows it was pinning.
@@ -793,7 +829,8 @@ which also releases rows it was pinning.
 **Coalescing is content-based, never event-kind-based.** Android has no "update" callback —
 a re-post of an existing key arrives as `onNotificationPosted`, so a posted/updated
 distinction is *synthesized* and cannot be trusted to protect OTPs (a "resend code" into an
-active conversation looks like an `updated`). Rule: two consecutive same-key events may be
+active conversation looks like an `updated`). Rule: two consecutive same-key events
+(consecutive *for that key* — other keys may interleave) may be
 coalesced (keep latest) **only if their `content_hash` values are equal** — i.e. the visible
 text/messages are identical and they differ only in progress/chronometer/ranking noise.
 Events whose extracted content differs are **never** coalesced, so both codes in a
@@ -926,7 +963,8 @@ the M1 soak asserts against every captured event, not just the end state.
 ```
 ┌──────────────────────────────────────────────┐
 │ ● Pixel 8        ● Galaxy S24    [+ Add]  ⚙  │  ← device chips: green/amber/gray,
-│                                              │    tooltip = last seen, queue depth
+│                                              │    tooltip = last seen + state (queue depth
+│                                              │    is phone-side knowledge, §11.3)
 │ 🔍 Search notifications…          [Focus ▾]  │
 ├──────────────────────────────────────────────┤
 │ ▸ 448 291   Messages · Pixel 8        11:42  │  ← OTP row: big monospace code,

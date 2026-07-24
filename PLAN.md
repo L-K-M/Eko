@@ -63,14 +63,23 @@ July 2026) treats a listener as trusted if **any** of these hold:
 - it is platform-signed, or
 - the `RECEIVE_SENSITIVE_NOTIFICATIONS` app-op was granted (adb workaround), or
 - **the package has any non-revoked `CompanionDeviceManager` (CDM) association for the user —
-  any profile, including a plain profile-less association, which third-party Play-distributed
-  apps can create freely.**
+  any profile, including a plain profile-less association, which any third-party app can
+  create freely.**
 
 **Design consequence:** the Android onboarding *must* establish a CDM association per paired
-Mac before the OTP feature is advertised as working. This is the only Play-compatible,
-sideload-free path, and it also buys background-execution exemptions (§5.3). Do **not** design
-around `DEVICE_PROFILE_COMPUTER` or self-managed associations — the required permissions are
-`signature|privileged` and unavailable to normal apps.
+Mac before the OTP feature is advertised as working. Eko is distributed by **sideloading only**
+(no Play Store — §5.5), so store policy never constrains us, but CDM is still the primary path:
+it is the only route that needs neither adb nor a settings change, and it also buys
+background-execution exemptions (§5.3). Sideloading widens the fallback menu, in order of
+preference: (a) profile-less CDM association (default — zero friction beyond one system
+dialog), (b) watch-profile association (`DEVICE_PROFILE_WATCH` via
+`REQUEST_COMPANION_PROFILE_WATCH`, a normal permission), which grants the
+`COMPANION_DEVICE_WATCH` role and with it `RECEIVE_SENSITIVE_NOTIFICATIONS` outright —
+evaluate in spike S1, (c) a documented one-time adb app-op grant
+(`appops set <pkg> RECEIVE_SENSITIVE_NOTIFICATIONS allow`), (d) disabling "Enhanced
+notifications" (turns off OTP classification system-wide). Do **not** design around
+`DEVICE_PROFILE_COMPUTER` or self-managed associations — the required permissions are
+`signature|privileged` and unavailable even to sideloaded apps.
 
 ### 1.2 Nobody does store-and-forward — recovery must be event-sourced on the phone
 
@@ -139,8 +148,12 @@ online/offline, and only pinned certificates define identity (§7).
 - Internet/remote connectivity (v2 — but the protocol is transport-agnostic from day one).
 - Screen sharing/mirroring (v3 — MediaProjection + WebRTC; seams reserved in the protocol).
 - Notification *actions* beyond dismiss (inline reply etc. — protocol reserves fields).
-- SMS-specific features (sending SMS, call log). These require Play-restricted permissions.
+- SMS-specific features (sending SMS, call log). Sideloading would permit the permissions, but
+  NLS already covers SMS notifications; direct `READ_SMS` capture stays a possible v1.x opt-in
+  module (§5.5), not v1 scope.
 - iOS, Windows, Linux.
+- **Google Play distribution** — Eko is sideload-only by design (§5.5). Play policy
+  considerations in this document are historical context, not constraints.
 - Mac App Store distribution (Developer ID first; sandbox on from day one so MAS stays open).
 
 ---
@@ -153,12 +166,12 @@ online/offline, and only pinned certificates define identity (§7).
 | D2 | Transport: TCP + **TLS 1.3, mutual auth**, 4-byte length-prefixed frames, 1-byte frame type (JSON control/events now; binary type reserved) | Simplest robust option; QUIC/gRPC add complexity with no v1 payoff; binary frame type future-proofs icons/media |
 | D3 | Identity = per-device long-lived **self-signed P-256 cert**; deviceId = SHA-256 fingerprint; TOFU pinning at pairing; short verification code | KDE Connect model, hardened with the CVE-2025-66270 lesson: identity claims only count post-TLS |
 | D4 | **Phone-side durable outbox** (Room/SQLite, WAL); `AUTOINCREMENT` rowid = per-pairing sequence number; Mac is cursor authority; cumulative acks | The self-healing core; survives process death, unlike every in-memory scheme (§9) |
-| D5 | **CDM association per paired Mac** (profile-less; associate via Mac's BLE advertisement, fallback Wi-Fi-AP association) | Unlocks unredacted OTPs on Android 15/16 + background exemptions (§1.1, §5.3) |
+| D5 | **CDM association per paired Mac** (profile-less or watch-profile; associate via Mac's BLE advertisement, fallback Wi-Fi-AP association) | Unlocks unredacted OTPs on Android 15/16 + background exemptions with zero adb/settings friction (§1.1, §5.3); adb app-op grant and "Enhanced notifications" opt-out are documented fallbacks |
 | D6 | Android foreground service type **`connectedDevice`** (never `dataSync`) | No timeout; legal to start from `BOOT_COMPLETED`; `dataSync` has a 6 h/24 h hard limit on Android 15 |
-| D7 | OTP extraction runs **on the Mac**, two-tier (deterministic standards first, keyword-gated heuristics second) | Rules iterate without Play review; backlog can be re-scanned retroactively; single Swift test corpus |
+| D7 | OTP extraction runs **on the Mac**, two-tier (deterministic standards first, keyword-gated heuristics second) | Rules iterate with a Mac-app update alone (no phone-side APK rollout); backlog can be re-scanned retroactively; single Swift test corpus |
 | D8 | macOS UI: **AppKit `NSStatusItem` + custom panel hosting SwiftUI** (`NSHostingView`); min target macOS 14 | SwiftUI `MenuBarExtra` still lacks presentation-state/window APIs as of Xcode 26; `.menu` style can't host a live feed |
 | D9 | Mac persistence: **GRDB 7** (SQLite, WAL, `ValueObservation`); identity key in data-protection Keychain; peer certs in DB | ~20× SwiftData insert performance, reactive UI queries, FTS5 for search later |
-| D10 | Distribution: **Developer ID + notarization**, sandbox enabled from day one; Play Store for Android (all chosen APIs are Play-compatible) | macOS 15 removed the Gatekeeper ctrl-click bypass; sandboxing later is a rearchitecture |
+| D10 | Distribution: **Developer ID + notarization** on macOS, sandbox enabled from day one; **sideloaded APK** on Android (GitHub Releases + in-app update check / Obtainium) | macOS 15 removed the Gatekeeper ctrl-click bypass; sideload-only Android distribution frees the design from Play policy (§5.5) |
 | D11 | Discovery: mDNS/Bonjour (`_eko._tcp`) + UDP announce (port 48809) + last-known-IP dial + QR/manual — hints only | Every single mechanism fails on some real network (§1.5) |
 | D12 | App-level heartbeat (phone ping every 25 s, hard-close on one missed pong; Mac timeout 90 s) + full-jitter backoff capped at 60 s | TCP keepalive alone leaves half-open zombies for minutes-to-hours; KDE Connect and Phone Link both show stale "connected" states |
 
@@ -272,8 +285,8 @@ depends on it (the constants don't exist below API 33).
    `CHANGE_WIFI_MULTICAST_STATE`, both normal). **No timeout**, unlike `dataSync` (hard
    6 h/24 h limit on Android 15+ and banned from `BOOT_COMPLETED` starts). Restarted from
    `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` receivers, catching
-   `ForegroundServiceStartNotAllowedException` (KDE Connect pattern). Play Console requires an
-   FGS-type declaration with demo video for targetSdk 34+ — budget for it in release prep.
+   `ForegroundServiceStartNotAllowedException` (KDE Connect pattern). (Sideload-only: the Play
+   Console FGS-type declaration/demo-video requirement does not apply to us.)
 4. **CDM association** (also required for OTPs, §1.1): with manifest-declared
    `REQUEST_COMPANION_RUN_IN_BACKGROUND` + `REQUEST_COMPANION_USE_DATA_IN_BACKGROUND` (both
    `normal`), an active association puts the app on the **permanent Doze power allowlist on
@@ -286,9 +299,9 @@ depends on it (the constants don't exist below API 33).
    (TRANSPORT_WIFI/ETHERNET/VPN only — never cellular in v1) → cached last-known Mac IP:port
    dial → short mDNS scan windows holding `MulticastLock` only while scanning → WorkManager
    15-min periodic reconcile (runs in Doze maintenance windows) →
-   `AlarmManager.setAndAllowWhileIdle` watchdog (throttled to ~1/9 min in Doze; exact alarms are
-   not viable — `SCHEDULE_EXACT_ALARM` is denied by default and `USE_EXACT_ALarm` is
-   Play-restricted to alarm/calendar apps).
+   `AlarmManager.setAndAllowWhileIdle` watchdog (throttled to ~1/9 min in Doze; exact alarms
+   add little — `SCHEDULE_EXACT_ALARM` is denied by default for targetSdk 34+ and still
+   subject to Doze batching; not worth the extra user prompt).
 6. **NLS watchdog.** The classic failure: listener alive but silently receiving nothing until
    reboot. Detection: no `onNotificationPosted` for an implausible interval *while the phone is
    in use* (screen-on heuristics), or `isNotificationListenerAccessGranted` true but
@@ -296,11 +309,13 @@ depends on it (the constants don't exist below API 33).
    `requestRebind(cn)` → component toggle
    (`setComponentEnabledSetting(DISABLED, DONT_KILL_APP)` → `ENABLED` → `requestRebind`) →
    user-facing card asking to toggle notification access off/on.
-7. **Battery-optimization exemption:** rely on CDM first. Expose a settings deep-link to
-   `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` (no permission, no Play risk). Do **not**
-   request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` in v1 — Play has rejected apps over it
-   (Syncthing-Android #1039) even though companion apps are on the acceptable-use list; keep the
-   written justification ready if telemetry later shows CDM is insufficient.
+7. **Battery-optimization exemption:** rely on CDM first (it grants the real Doze allowlist on
+   Android 12–15 silently). Additionally — since sideload-only distribution removes the Play
+   policy risk that burned Syncthing-Android (#1039) — the onboarding checklist directly
+   requests the exemption via `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
+   (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission) as an optional "maximum reliability"
+   step, with the `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` deep-link as manual fallback.
+   State is checked via `PowerManager.isIgnoringBatteryOptimizations()`.
 8. **OEM reliability guide** keyed on `Build.MANUFACTURER` (Samsung: never-sleeping apps +
    disable 3-day auto-sleep; Xiaomi/HyperOS: Autostart + battery "No restrictions" + lock in
    recents; Huawei: manual app-launch, PowerGenie caveat; OnePlus: disable optimization), with
@@ -311,23 +326,54 @@ depends on it (the constants don't exist below API 33).
    app from Task Manager. Treat that as a signal (show "forwarding paused" state on the Mac),
    not an error to fight.
 
-### 5.4 Android permissions inventory (all Play-compatible)
+### 5.4 Android permissions inventory
+
+Sideload-only distribution means no store policy gates any of these — the constraint on each
+choice is purely OS behavior and user trust (ask for the minimum, explain every prompt).
 
 | Permission / access | Kind | Purpose |
 |---|---|---|
-| Notification access (NLS) | Special access, user toggle | Capture notifications (prominent disclosure + privacy policy required by Play) |
+| Notification access (NLS) | Special access, user toggle | Capture notifications (prominent in-app disclosure stays — good practice, not policy) |
 | `POST_NOTIFICATIONS` | Runtime | FGS notification, alerts |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE` | Normal | Connection service |
 | `RECEIVE_BOOT_COMPLETED` | Normal | Restart after reboot |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `CHANGE_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE` | Normal | Sockets, network callbacks, mDNS multicast lock, FGS prerequisite |
 | `REQUEST_COMPANION_RUN_IN_BACKGROUND`, `REQUEST_COMPANION_USE_DATA_IN_BACKGROUND`, `REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE` | Normal | CDM exemptions + presence |
-| `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` | Runtime (Android 12+) | CDM association against the Mac's BLE advertisement |
+| `REQUEST_COMPANION_PROFILE_WATCH` | Normal | Watch-profile CDM association, if S1 lands on it |
+| `BLUETOOTH_SCAN` (`neverForLocation`), `BLUETOOTH_CONNECT` | Runtime (Android 12+) | CDM association against the Mac's BLE advertisement |
+| `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Normal (dialog on request) | Optional "maximum reliability" onboarding step (§5.3.7) |
 | `ACCESS_LOCAL_NETWORK` | Runtime (Android 17 targets) | Declared now; requested in onboarding once targeting API 37 |
+| `REQUEST_INSTALL_PACKAGES` | Special access | In-app self-update (§5.5); optional — omitted when the user updates via Obtainium |
 | `CAMERA` | Runtime, optional | QR pairing only |
 
-Explicitly **not** used: `READ_SMS`/`RECEIVE_SMS` (Play-restricted; NLS covers SMS via the
-default SMS app's notifications), `QUERY_ALL_PACKAGES` (app labels come from the notifying
-package only), `SYSTEM_ALERT_WINDOW`, exact-alarm permissions, Accessibility.
+Deliberately **not** used in v1: `READ_SMS`/`RECEIVE_SMS` — sideloading would allow them, but
+NLS already covers SMS via the default SMS app's notifications; a direct-SMS capture module
+(immune to notification redaction and NLS flakiness) is a possible v1.x opt-in (§5.5).
+Also not used: `QUERY_ALL_PACKAGES` (app labels come from the notifying package only),
+`SYSTEM_ALERT_WINDOW`, exact-alarm permissions, Accessibility.
+
+### 5.5 Distribution and updates (sideload-only)
+
+- **Channel:** signed APK on GitHub Releases (universal APK; split ABIs only if size ever
+  matters). No Play Store, no Play App Signing — **we hold the one signing key**, and it must
+  never rotate casually: a key change forces uninstall/reinstall, which wipes the outbox,
+  notification-access grant, CDM associations, and changes the app's uid (invalidating stored
+  notification keys). Back the keystore up like a production secret.
+- **Updates:** two supported paths — (a) recommend **Obtainium** (points at the GitHub repo,
+  handles update checks and installs; zero code on our side), and (b) a built-in lightweight
+  update check against the GitHub Releases API with in-app download + install prompt
+  (`REQUEST_INSTALL_PACKAGES`). The in-app updater is a v1.x nicety; v1.0 ships with a "new
+  version available" notice + link.
+- **Install friction is an onboarding concern:** first-time sideloading requires the user to
+  allow "Install unknown apps" for their browser/file manager — the Mac-side pairing wizard
+  shows a QR link to a short install guide covering this, per Android version.
+- **targetSdk policy:** without Play's annual targetSdk ratchet, we control the pace of
+  adopting behavior changes. Still track current targetSdk closely (Android 15's redaction
+  applies regardless of targetSdk, so lagging buys little there) — but disruptive gates like
+  Android 17's `ACCESS_LOCAL_NETWORK` runtime permission can be adopted deliberately, with the
+  UX ready, instead of on a store deadline.
+- **Crash/diagnostics telemetry stays opt-in and local-first** (export-a-file diagnostics
+  before any network telemetry); sideload users self-select for privacy sensitivity.
 
 ---
 
@@ -456,13 +502,15 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
      compares the scanned token instead (already second-factor-authenticated) and shows the
      code for confirmation only.
   4. User confirms on **both** devices → certs pinned on both sides → normal session starts.
-  5. Phone then runs CDM `associate()` for this Mac (§1.1): profile-less `AssociationRequest`
-     with a `BluetoothLeDeviceFilter` matching the Mac's Eko BLE service UUID; the system
-     consent dialog names the Mac. Fallback if BLE association proves unreliable (spike S1):
-     associate with the current Wi-Fi AP (`WifiDeviceFilter`) — still satisfies the redaction
-     trust check (any non-revoked association counts), sacrificing only Android 16 presence
-     benefits. Last-resort documented workarounds for power users: disable "Enhanced
-     notifications", or `adb ... appops set ... RECEIVE_SENSITIVE_NOTIFICATIONS allow`.
+  5. Phone then runs CDM `associate()` for this Mac (§1.1): profile-less (or watch-profile,
+     per spike S1/S5) `AssociationRequest` with a `BluetoothLeDeviceFilter` matching the Mac's
+     Eko BLE service UUID; the system consent dialog names the Mac. Fallback if BLE
+     association proves unreliable (spike S1): associate with the current Wi-Fi AP
+     (`WifiDeviceFilter`) — still satisfies the redaction trust check (any non-revoked
+     association counts), sacrificing only Android 16 presence benefits. Further documented
+     fallbacks (sideload-only, so freely offered in the in-app guide): one-time
+     `adb shell appops set <pkg> RECEIVE_SENSITIVE_NOTIFICATIONS allow`, or disabling
+     "Enhanced notifications".
 - **Unpair/re-pair:** pinned-cert mismatch after a reinstall is detected explicitly ("This
   phone's identity changed — re-pair required", with guided flow) instead of KDE Connect's
   silent permanent failure. Unpairing revokes the pin on both sides and disassociates CDM.
@@ -739,14 +787,17 @@ Single-activity Compose app; the phone UI is mostly setup + health, not daily us
 
 - **Home:** status card per paired Mac (Connected / Reconnecting (backoff shown) / Paused),
   outbox depth ("12 queued for MacBook"), last sync; global toggle "Forwarding on/off".
-- **Onboarding checklist** (re-entrant; each step shows live status and deep-links):
+- **Onboarding checklist** (re-entrant; each step shows live status and deep-links; the
+  sideload install itself is covered by the Mac wizard's QR-linked guide, §5.5):
   1. Pair with your Mac (scan QR / pick discovered Mac → verification code).
   2. System pairing dialog (CDM associate; explains why: "unlocks 2FA codes + reliability").
   3. Allow notification access (deep-link to the app's row).
   4. Allow notifications (POST_NOTIFICATIONS, for the persistent status notification).
-  5. *Conditional:* manufacturer reliability steps (Samsung/Xiaomi/Huawei/OnePlus…), only the
+  5. *Optional "maximum reliability":* battery-optimization exemption dialog
+     (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, §5.3.7).
+  6. *Conditional:* manufacturer reliability steps (Samsung/Xiaomi/Huawei/OnePlus…), only the
      detected brand's steps, with screenshots.
-  6. Send test notification → confirmation from the Mac (round-trip proof).
+  7. Send test notification → confirmation from the Mac (round-trip proof).
 - **Apps:** per-app forwarding rules (default: all except ongoing/media; system apps curated),
   per-app "contains OTPs" hint toggle.
 - **Health/Diagnostics:** NLS bound? last posted vs last forwarded timestamps (stall
@@ -818,9 +869,10 @@ v1 ships none of this but reserves the seams — all cheap now, expensive to ret
   single-use, `Callback` registered before `createVirtualDisplay`, `mediaProjection` FGS
   running first; Android 15: auto-stop on lock + kill chip — session death is routine UX) →
   MediaCodec H.264/HEVC (no B-frames, CBR, intra-refresh) → **WebRTC** video track, reusing
-  v2's ICE/TURN plumbing. View-only first; remote input via AccessibilityService is a separate,
-  Play-declaration-heavy milestone. Device audio via AudioPlaybackCapture is partial by design
-  (apps can opt out) — never promised as "full audio".
+  v2's ICE/TURN plumbing. View-only first; remote input via AccessibilityService is a separate
+  milestone (sideloading removes the store-policy hurdle, but injection into secure
+  surfaces/password fields stays OS-limited). Device audio via AudioPlaybackCapture is partial
+  by design (apps can opt out) — never promised as "full audio".
 - Power-user tier (optional, later): scrcpy-style wireless-debugging mode (shell-uid capture,
   true input injection, no consent dialog) — explicitly not the consumer flow.
 - Android 15 hides OTP/credential screens during screen share; CDM-trusted status (already
@@ -839,9 +891,9 @@ feature work.
 | S2 | **Redaction trust in practice** on Android 15/16 retail builds (incl. OEM skins) | Does any non-revoked association really lift OTP redaction, per the AOSP check? Is the redacted SBN delivered-with-placeholder (assumed) or withheld? | Onboarding adds the "disable Enhanced notifications" / adb appops path prominently; feature marked degraded on affected devices |
 | S3 | **TLS interop** Conscrypt (Android 8–16) ↔ Network.framework (macOS 14–26), self-signed P-256, both directions | Handshake quirks (2025-era reports of self-signed peer failures on OS 26)? | Adjust cert profile (validity, EKU); worst case pin raw public keys and terminate TLS with BoringSSL on Android |
 | S4 | **UNUserNotificationCenter from an `LSUIElement` app** (signed, /Applications) | Prompts and banners delivered? Copy-action fires without activation? | Fall back to custom notification windows (own NSPanel toasts) — more work, fully controlled |
-| S5 | CDM + watch-profile Play review risk (only if profile-less association proves insufficient) | Would Play reject `DEVICE_PROFILE_WATCH` for a Mac companion? | Stay profile-less (S1/S2 make this moot if they pass) |
+| S5 | **Watch-profile CDM as the stronger alternative** (part of S1's device matrix) | Does `DEVICE_PROFILE_WATCH` association grant `RECEIVE_SENSITIVE_NOTIFICATIONS` via the `COMPANION_DEVICE_WATCH` role on retail builds, and is its consent dialog acceptable UX for "a Mac"? (No store-review concern — sideload-only.) | Stay profile-less (sufficient per the AOSP trust check if S2 passes) |
 | S6 | Keychain access groups for Developer ID + sandbox | Does the data-protection keychain identity flow work without a provisioning-profile dance? | Store identity in an encrypted file inside the sandbox container |
-| S7 | Play FGS declaration (`connectedDevice` + demo video) and notification-access disclosure review | Approval friction | Written justification prepared; feature-flag to soften first release if needed |
+| S7 | Sideload onboarding friction | Do target users complete install-unknown-apps + notification access + CDM without dropping off? Test the guide with 2–3 non-technical users | Simplify: Obtainium-first instructions, more screenshots, Mac wizard hand-holding per step |
 | S8 | OEM killers vs. stall detector | Does the post-vs-forward gap heuristic yield actionable prompts without false alarms? | Tune thresholds in beta telemetry (opt-in diagnostics only) |
 | R1 | Google tightens NLS or CDM trust further (they've moved yearly: 13 filters → 15 redaction → 16 presence-gating) | — | The outbox/protocol layer is unaffected; worst case the OTP feature degrades to explicitly-user-enabled paths. Track each Android beta. |
 | R2 | macOS pasteboard-privacy expansion breaks clipboard flows | — | We only *write*; ConcealedType + no-read design already conforms |
@@ -860,7 +912,8 @@ feature work.
 - **M2 — Product (≈4 weeks):** menubar panel + banners + copy actions; OTP extractor + corpus;
   Android onboarding checklist + OEM guide + QR pairing; dismissal sync; multi-device polish.
 - **M3 — Hardening/beta (≈3 weeks):** watchdogs, stall detection, diagnostics, notarized
-  builds, Play internal testing, dogfood across Pixel/Samsung/Xiaomi + macOS 14/15/26.
+  builds, signed-APK beta channel (GitHub pre-releases via Obtainium), dogfood across
+  Pixel/Samsung/Xiaomi + macOS 14/15/26.
 - **v1.0 release**, then: v1.x (Bonjour sleep-proxy wake, FTS search, inline reply via
   `RemoteInput`), v2 (Internet transport), v3 (screen sharing) per §13.
 

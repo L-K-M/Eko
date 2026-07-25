@@ -123,6 +123,7 @@ final class AppModel: ObservableObject {
     private var preferencesTask: Task<Void, Never>?
     private var relativeTimeTask: Task<Void, Never>?
     private var pairingExpiryTask: Task<Void, Never>?
+    private var panelVisible = true
 
     private enum Keys {
         static let clipboardAutoClear = "clipboardAutoClear"
@@ -191,12 +192,23 @@ final class AppModel: ObservableObject {
         fatalError = error.localizedDescription
     }
 
-    func focus(deviceID: String, key: String) {
+    /// Called from the OTP banner's default action, so it sits directly in front of the
+    /// app's most latency-sensitive interaction: click the banner, panel appears.
+    ///
+    /// It used to run the 500-row feed query — correlated OTP subquery and all —
+    /// *synchronously on the main thread*, then linearly search the result for one key,
+    /// before the panel could open. The query now runs off the main actor and only the
+    /// result assignment hops back.
+    func focus(deviceID: String, key: String) async {
         route = .feed
         selectedDeviceID = deviceID
-        if let notification = try? store.notifications(query: FeedQuery(deviceID: deviceID, limit: 500))
-            .first(where: { $0.key == key }) {
-            focusedNotificationID = notification.id
+        let store = self.store
+        let match = await Task.detached(priority: .userInitiated) {
+            try? store.notifications(query: FeedQuery(deviceID: deviceID, limit: 500))
+                .first(where: { $0.key == key })
+        }.value
+        if let match {
+            focusedNotificationID = match.id
         }
     }
 
@@ -247,9 +259,17 @@ final class AppModel: ObservableObject {
         route = .feed
     }
 
+    // EkoStore sets busyMode = .timeout(5), so a pool.write from the main actor can
+    // block the UI for up to five seconds behind an in-flight ingest write — which is
+    // most likely exactly when the user is reaching for a code. These three writes now
+    // run off the main actor; none of them feeds back into the view except through the
+    // store's own observations.
     func copyCode(_ code: String, deviceID: String) {
         clipboard.copy(code, clearAfter: clipboardAutoClear ? 120 : nil)
-        try? store.markOTPCopied(deviceID: deviceID, code: code)
+        let store = self.store
+        Task.detached(priority: .utility) {
+            try? store.markOTPCopied(deviceID: deviceID, code: code)
+        }
     }
 
     func copyText(_ text: String) {
@@ -268,29 +288,35 @@ final class AppModel: ObservableObject {
     }
 
     func toggleStar(_ notification: CurrentNotification) {
-        do {
-            try store.setStarred(
-                deviceID: notification.deviceID,
-                generation: notification.generation,
-                key: notification.key,
-                starred: !notification.isStarred
-            )
-        } catch {
-            setFatalError(error)
+        let store = self.store
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try store.setStarred(
+                    deviceID: notification.deviceID,
+                    generation: notification.generation,
+                    key: notification.key,
+                    starred: !notification.isStarred
+                )
+            } catch {
+                await self?.setFatalError(error)
+            }
         }
     }
 
     func updatePreference(_ preference: AppPreference) {
-        do {
-            try store.setAppPreference(
-                deviceID: preference.deviceID,
-                appPackage: preference.appPackage,
-                bannerMode: preference.bannerMode,
-                autoCopyOTP: preference.autoCopyOTP,
-                soundEnabled: preference.soundEnabled
-            )
-        } catch {
-            setFatalError(error)
+        let store = self.store
+        Task.detached(priority: .userInitiated) { [weak self] in
+            do {
+                try store.setAppPreference(
+                    deviceID: preference.deviceID,
+                    appPackage: preference.appPackage,
+                    bannerMode: preference.bannerMode,
+                    autoCopyOTP: preference.autoCopyOTP,
+                    soundEnabled: preference.soundEnabled
+                )
+            } catch {
+                await self?.setFatalError(error)
+            }
         }
     }
 
@@ -345,6 +371,10 @@ final class AppModel: ObservableObject {
             } catch {
                 await MainActor.run { self.setFatalError(error) }
             }
+            // docs/security-model.md: "Enabling content applies to one export, not future
+            // exports." Nothing reset it, so it stayed on for the rest of the session and
+            // silently applied to the next export too.
+            await MainActor.run { self.includeContentInDiagnostics = false }
         }
     }
 
@@ -355,14 +385,30 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshGaps() {
-        gaps = (try? store.gaps()) ?? []
+    /// A `pool.read` that used to run synchronously on the main thread, once per
+    /// committed event.
+    func refreshGaps() async {
+        let store = self.store
+        let value = await Task.detached(priority: .utility) { (try? store.gaps()) ?? [] }.value
+        gaps = value
     }
 
     func panelVisibilityChanged(_ visible: Bool) {
         relativeTimeTask?.cancel()
         relativeTimeTask = nil
-        guard visible else { return }
+        panelVisible = visible
+        // The feed observation is a full `notification` scan plus a temp sort plus a
+        // correlated per-row OTP subquery, re-executed by GRDB on every ingest
+        // transaction. Leaving it running while the panel is hidden meant a backlog
+        // replay burned that cost thousands of times over with nothing on screen to show
+        // for it, each result assigning a fresh 400-element array to @Published and
+        // re-triggering the status item.
+        guard visible else {
+            feedTask?.cancel()
+            feedTask = nil
+            return
+        }
+        restartFeedObservation()
         relativeTimeTask = Task { [weak self] in
             while !Task.isCancelled {
                 self?.now = Date()
@@ -393,7 +439,7 @@ final class AppModel: ObservableObject {
             }
         }
         restartFeedObservation()
-        refreshGaps()
+        Task { await refreshGaps() }
     }
 
     private func scheduleFeedObservation() {
@@ -407,6 +453,13 @@ final class AppModel: ObservableObject {
 
     private func restartFeedObservation() {
         feedTask?.cancel()
+        // Nothing to observe for while the panel is hidden; panelVisibilityChanged(true)
+        // restarts it. The initial value is `true` so the model behaves exactly as before
+        // until the panel controller reports its first transition.
+        guard panelVisible else {
+            feedTask = nil
+            return
+        }
         let query = FeedQuery(
             search: searchText,
             deviceID: selectedDeviceID,

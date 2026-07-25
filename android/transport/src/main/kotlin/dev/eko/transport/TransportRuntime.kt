@@ -1,8 +1,8 @@
 package dev.eko.transport
 
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 sealed interface PeerTransportState {
     data object Offline : PeerTransportState
@@ -44,7 +44,11 @@ object TransportRuntime {
         it.copy(recentLog = (it.recentLog + line).takeLast(100))
     }
 
+    // Peer jobs, the reconnect loop and log() all mutate this concurrently from
+    // Dispatchers.IO. A read-modify-write on `.value` loses updates under that
+    // contention — two peers transitioning at once drop one of the two states,
+    // and log lines vanish. MutableStateFlow.update retries on conflict.
     private inline fun update(transform: (TransportSnapshot) -> TransportSnapshot) {
-        mutable.value = transform(mutable.value)
+        mutable.update(transform)
     }
 }

@@ -52,13 +52,33 @@ class ConnectionService : Service() {
         identityStore = IdentityStore.get(this)
         networkMonitor = EligibleNetworkMonitor(this)
         createNotificationChannel()
-        showForeground(buildNotification(TransportRuntime.state.value))
+        showForeground(buildNotification(NotificationModel.of(TransportRuntime.state.value)))
         TransportRuntime.running(true)
         scope.launch {
             identityStore.state.collect(::reconcileJobs)
         }
         scope.launch {
-            TransportRuntime.state.collect { showForeground(buildNotification(it)) }
+            // TransportRuntime.state changes on essentially every mirrored event —
+            // forwarded() stamps a fresh wall clock and every inbound ack republishes
+            // Connected(..., seq). The rendered notification depends only on the two
+            // fields NotificationModel carries, so collapse to those before re-posting:
+            // otherwise each notification costs a getLaunchIntentForPackage binder call,
+            // two PendingIntent round-trips and a startForeground into
+            // NotificationManagerService, whose per-package enqueue rate limiter then
+            // starts dropping the updates anyway.
+            TransportRuntime.state
+                .map(NotificationModel::of)
+                .distinctUntilChanged()
+                .collect { showForeground(buildNotification(it)) }
+        }
+    }
+
+    private data class NotificationModel(val paused: Boolean, val connected: Int) {
+        companion object {
+            fun of(snapshot: TransportSnapshot) = NotificationModel(
+                paused = snapshot.peers.values.any { it is PeerTransportState.Paused },
+                connected = snapshot.peers.values.count { it is PeerTransportState.Connected },
+            )
         }
     }
 
@@ -142,7 +162,7 @@ class ConnectionService : Service() {
                 TransportRuntime.peer(deviceId, PeerTransportState.Failed(error.message ?: error.javaClass.simpleName))
             }
             backoff.recordStableConnection(SystemClock.elapsedRealtime() - started)
-            if (refreshEndpointFromDiscovery(deviceId)) {
+            if (refreshEndpointFromDiscovery(deviceId, peer.endpoint)) {
                 backoff.reset()
                 continue
             }
@@ -167,7 +187,18 @@ class ConnectionService : Service() {
         reconcileJobs(identityStore.read())
     }
 
-    private suspend fun refreshEndpointFromDiscovery(deviceId: String): Boolean {
+    /**
+     * Returns true only when discovery actually *changed* the endpoint.
+     *
+     * Seeing the Mac is not progress. If this returned true for any sighting, then a
+     * Mac that is discoverable but unreachable — listener not yet bound, port
+     * firewalled, admission revoked, welcome rejected — would reset the backoff on
+     * every pass and spin: multicast lock acquired and released, NsdManager discovery
+     * started and stopped (it caps concurrent requests per app), and a DataStore write
+     * that re-emits identity state and re-runs reconcileJobs. That is a
+     * continuous-radio, continuous-disk loop with no delay in it.
+     */
+    private suspend fun refreshEndpointFromDiscovery(deviceId: String, current: PeerEndpoint): Boolean {
         val discovery = MacDiscovery(this)
         return try {
             discovery.start()
@@ -176,7 +207,9 @@ class ConnectionService : Service() {
                     devices.firstOrNull { it.fingerprint?.lowercase() == deviceId }
                 }.first()
             } ?: return false
-            identityStore.updateEndpoint(deviceId, PeerEndpoint(match.host, match.port))
+            val discovered = PeerEndpoint(match.host, match.port)
+            if (discovered == current) return false
+            identityStore.updateEndpoint(deviceId, discovered)
             TransportRuntime.log("$deviceId endpoint refreshed from a matching-fingerprint mDNS hint; TLS still decides trust")
             true
         } finally {
@@ -203,26 +236,33 @@ class ConnectionService : Service() {
         TransportRuntime.log("Restricted unpair for $deviceId reached its bounded retry limit")
     }
 
-    private fun buildNotification(snapshot: TransportSnapshot): Notification {
-        val paused = snapshot.peers.values.any { it is PeerTransportState.Paused }
-        val connected = snapshot.peers.values.count { it is PeerTransportState.Connected }
-        val text = when {
-            paused -> getString(R.string.eko_connection_paused)
-            connected > 0 -> getString(R.string.eko_connection_connected, connected)
-            else -> getString(R.string.eko_connection_reconnecting)
-        }
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        val contentIntent = launchIntent?.let {
+    // Built once per process rather than per post: each getActivity/getBroadcast is
+    // an AMS binder round-trip, and neither intent varies with transport state.
+    private val contentIntent: PendingIntent? by lazy {
+        packageManager.getLaunchIntentForPackage(packageName)?.let {
             PendingIntent.getActivity(this, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         }
-        val action = if (paused) ACTION_RESUME else ACTION_PAUSE
+    }
+    private val pauseIntent: PendingIntent by lazy { actionIntent(ACTION_PAUSE) }
+    private val resumeIntent: PendingIntent by lazy { actionIntent(ACTION_RESUME) }
+
+    private fun actionIntent(action: String): PendingIntent = PendingIntent.getBroadcast(
+        this,
+        action.hashCode(),
+        Intent(this, TransportActionReceiver::class.java).setAction(action),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    private fun buildNotification(model: NotificationModel): Notification {
+        val paused = model.paused
+        val connected = model.connected
+        val text = when {
+            paused -> getString(R.string.eko_connection_paused)
+            connected > 0 -> resources.getQuantityString(R.plurals.eko_connection_connected, connected, connected)
+            else -> getString(R.string.eko_connection_reconnecting)
+        }
         val actionLabel = if (paused) R.string.eko_resume else R.string.eko_pause
-        val actionIntent = PendingIntent.getBroadcast(
-            this,
-            action.hashCode(),
-            Intent(this, TransportActionReceiver::class.java).setAction(action),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val actionIntent = if (paused) resumeIntent else pauseIntent
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_eko_status)
             .setContentTitle(getString(R.string.eko_connection_title))
@@ -236,13 +276,23 @@ class ConnectionService : Service() {
             .build()
     }
 
+    // requestStart already guards the caller-side half of the FGS-start check.
+    // The deferred half surfaces here, and an exception from onCreate or from the
+    // state collector's SupervisorJob reaches the default uncaught handler and kills
+    // the process. Degrade instead: a service that cannot hold the foreground has no
+    // business running, but it should stop, not crash.
     private fun showForeground(notification: Notification) {
         val type = if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
+        runCatching { ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type) }
+            .onFailure { error ->
+                TransportRuntime.log(
+                    "Foreground promotion refused: ${error.message ?: error.javaClass.simpleName}",
+                )
+                stopSelf()
+            }
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < 26) return
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.eko_connection_channel_name),

@@ -22,6 +22,11 @@ xcuserdata/
 # Android captures
 captures/
 
+# Python bytecode. tools/ has its own copy of this; scripts/ arrived later and
+# had none, so running scripts/check-protocol.py left .pyc files untracked.
+__pycache__/
+*.py[cod]
+
 # Signing material and local credentials
 *.jks
 *.keystore

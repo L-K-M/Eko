@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installMainMenu()
         do {
             let runtime = try AppRuntime()
             self.runtime = runtime
@@ -66,6 +67,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         runtime?.stop()
+    }
+
+    @objc private func openSettingsFromMenu(_ sender: Any?) {
+        statusController?.showSettings()
+    }
+
+    /// Build `NSApp.mainMenu`.
+    ///
+    /// There was none: `EkoMain.main()` assigned a delegate and called `run()`, and no
+    /// MainMenu nib ships in the target. Two consequences, both severe for an
+    /// `LSUIElement` app with no Dock icon.
+    ///
+    /// First, there was no user-reachable way to quit Eko — not from the panel, not from
+    /// Settings, not from a menu. Activity Monitor or `killall`.
+    ///
+    /// Second, a nil `mainMenu` leaves `NSApplication` with nothing to dispatch key
+    /// equivalents to, so ⌘Q, ⌘, and the whole editing set were inert. That is fatal for
+    /// the two places this app deliberately invites text interaction: the feed's search
+    /// field, and the four `.textSelection(.enabled)` sites — a user could select an OTP
+    /// or a certificate fingerprint and then had no keyboard way to copy it. The Edit
+    /// menu below is what makes ⌘C work in an accessory app; the items carry no target
+    /// so they travel the responder chain to whatever field is first responder.
+    ///
+    /// Selectors are built by name rather than with `#selector` because these are
+    /// responder-chain actions with no single owning type to reference.
+    private func installMainMenu() {
+        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "Eko"
+        let mainMenu = NSMenu()
+
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let about = NSMenuItem(
+            title: String.localizedStringWithFormat(
+                String(localized: "menu.about", defaultValue: "About %@"), appName
+            ),
+            action: Selector(("orderFrontStandardAboutPanel:")),
+            keyEquivalent: ""
+        )
+        appMenu.addItem(about)
+        appMenu.addItem(.separator())
+        let settings = NSMenuItem(
+            title: String(localized: "menu.settings", defaultValue: "Settings…"),
+            action: #selector(openSettingsFromMenu(_:)),
+            keyEquivalent: ","
+        )
+        settings.target = self
+        appMenu.addItem(settings)
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(
+            title: String.localizedStringWithFormat(
+                String(localized: "menu.hide", defaultValue: "Hide %@"), appName
+            ),
+            action: Selector(("hide:")),
+            keyEquivalent: "h"
+        ))
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(
+            title: String.localizedStringWithFormat(
+                String(localized: "menu.quit", defaultValue: "Quit %@"), appName
+            ),
+            action: Selector(("terminate:")),
+            keyEquivalent: "q"
+        ))
+        appItem.submenu = appMenu
+        mainMenu.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: String(localized: "menu.edit", defaultValue: "Edit"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.undo", defaultValue: "Undo"), action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: String(localized: "menu.redo", defaultValue: "Redo"), action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redo)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.cut", defaultValue: "Cut"), action: Selector(("cut:")), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.copy", defaultValue: "Copy"), action: Selector(("copy:")), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.paste", defaultValue: "Paste"), action: Selector(("paste:")), keyEquivalent: "v"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.select_all", defaultValue: "Select All"), action: Selector(("selectAll:")), keyEquivalent: "a"))
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
+        NSApp.mainMenu = mainMenu
     }
 }
 

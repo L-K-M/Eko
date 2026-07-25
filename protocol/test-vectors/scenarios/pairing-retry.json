@@ -1,0 +1,236 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "pending-pair-resumes-with-stable-transcript",
+  "initial": {
+    "attempt_id": "00112233445566778899aabbccddeeff",
+    "phone_conn_epoch_before_attempt": 0,
+    "phone_outbox_generation": "11111111-2222-4333-8444-555555555555",
+    "phone_last_assigned_seq": 42,
+    "mac_pairing_mode": true,
+    "phone_pairing_mode": true
+  },
+  "steps": [
+    {
+      "step": 1,
+      "connection": "pair-c1",
+      "from": "phone",
+      "frame": {
+        "type": "hello",
+        "mode": "pair",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 1,
+        "phone_time": 1753351700000,
+        "attempt_id": "00112233445566778899aabbccddeeff"
+      }
+    },
+    {
+      "step": 2,
+      "connection": "pair-c1",
+      "from": "phone",
+      "frame": {
+        "type": "pair_request",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "role": "phone",
+        "method": "compare",
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "cert_der": "MIIBeTCCAR+gAwIBAgICA+kwCgYIKoZIzj0EAwIwGzEZMBcGA1UEAwwQRWtvIFZlY3RvciBQaG9uZTAeFw0yNjA3MjQxNjExNDNaFw00NjA3MjQxNjExNDNaMBsxGTAXBgNVBAMMEEVrbyBWZWN0b3IgUGhvbmUwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAQSSKNk+Fo6X+4kr11kuwUda3uBpua2JNQyNtoT6vTlMgKFTXjLHWsYywgVxyx1rtew68B2fWfl9TUrFgUNAP6Po1MwUTAdBgNVHQ4EFgQU7CCA2rFBqmaTgnseGyOA3w/CcSUwHwYDVR0jBBgwFoAU7CCA2rFBqmaTgnseGyOA3w/CcSUwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiEAqOnVgyZ6KL78ndw9k/x6taHGCnW9bM5V2gIWWuNKM8kCIFSCAYiNZUAy0qYj2igk+8KAfepBsr9gRGCFEK+Z3M6C"
+      },
+      "expect": { "cert_matches_tls_leaf": true, "device_id_matches_der_hash": true }
+    },
+    {
+      "step": 3,
+      "connection": "pair-c1",
+      "from": "mac",
+      "frame": {
+        "type": "pair_request",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "role": "mac",
+        "method": "compare",
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "device_name": "Vector Mac",
+        "cert_der": "MIIBdTCCARugAwIBAgICA+owCgYIKoZIzj0EAwIwGTEXMBUGA1UEAwwORWtvIFZlY3RvciBNYWMwHhcNMjYwNzI0MTYxMTQ0WhcNNDYwNzI0MTYxMTQ0WjAZMRcwFQYDVQQDDA5Fa28gVmVjdG9yIE1hYzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABESc22omNwfh/SNvmQQ+Lu1DSn0SbqXGA0Ij9X12ffQtYcSUsT4QZJxFW/gtL3d+n0g+wO+xVPi6ho3jI/3s1OyjUzBRMB0GA1UdDgQWBBTETTuQj53FSSdke4iHCvUsAH2cEjAfBgNVHSMEGDAWgBTETTuQj53FSSdke4iHCvUsAH2cEjAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIQDovun6Ezy3SojRlmjT/6nfxC2mjEf6UgEqErMS52AOOgIgJUbUWhUS13XtELZ+VS2Ix/KZsXlfeuniGr4BW0fQVNk="
+      },
+      "expect": { "cert_matches_tls_leaf": true, "device_id_matches_der_hash": true }
+    },
+    {
+      "step": 4,
+      "connection": "pair-c1",
+      "from": "phone",
+      "frame": {
+        "type": "pair_commit",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "commitment": "7aa25c9c026da439ca2ab130e4104594546c3b056f5605e663b2532d8c7335fc"
+      }
+    },
+    {
+      "step": 5,
+      "connection": "pair-c1",
+      "from": "mac",
+      "frame": {
+        "type": "pair_commit",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "commitment": "02ca60827e846bfc19378c1bb35615ce7daf74f4e64aa907d40ca1119af96132"
+      }
+    },
+    {
+      "step": 6,
+      "connection": "pair-c1",
+      "from": "phone",
+      "frame": {
+        "type": "pair_reveal",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "nonce": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+      },
+      "expect": { "peer_had_committed_before_reveal": true }
+    },
+    {
+      "step": 7,
+      "connection": "pair-c1",
+      "from": "mac",
+      "frame": {
+        "type": "pair_reveal",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "nonce": "1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100"
+      },
+      "expect": {
+        "peer_had_committed_before_reveal": true,
+        "transcript_hash": "1a4f02f8d79628d279887e6319bcddb741488303013716443c162f03b20663ae",
+        "verification_code": "1A4F02F8"
+      }
+    },
+    {
+      "step": 8,
+      "connection": "pair-c1",
+      "from": "phone",
+      "frame": {
+        "type": "pair_result",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "transcript_hash": "1a4f02f8d79628d279887e6319bcddb741488303013716443c162f03b20663ae",
+        "result": "accept"
+      }
+    },
+    {
+      "step": 9,
+      "connection": "pair-c1",
+      "from": "mac",
+      "frame": {
+        "type": "pair_result",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "transcript_hash": "1a4f02f8d79628d279887e6319bcddb741488303013716443c162f03b20663ae",
+        "result": "accept"
+      },
+      "transport": "disconnect_after_receive_before_phone_ready",
+      "expect": {
+        "phone_pending_state_durable": true,
+        "mac_pending_state_durable": true,
+        "normal_pairing_confirmed": false
+      }
+    },
+    {
+      "step": 10,
+      "connection": "pair-c2",
+      "from": "phone",
+      "frame": {
+        "type": "hello",
+        "mode": "pair",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 2,
+        "phone_time": 1753351701000,
+        "attempt_id": "00112233445566778899aabbccddeeff"
+      },
+      "expect": { "resume_existing_attempt": true, "new_attempt_created": false }
+    },
+    {
+      "step": 11,
+      "action": "idempotently_reexchange_stored_pair_frames",
+      "exact_frame_references": [2, 3, 4, 5, 6, 7, 8, 9],
+      "expect": {
+        "same_certificates": true,
+        "same_nonces": true,
+        "same_commitments": true,
+        "same_transcript_hash": true,
+        "conflicting_retry_payload_is_fatal": true
+      }
+    },
+    {
+      "step": 12,
+      "connection": "pair-c2",
+      "from": "phone",
+      "frame": {
+        "type": "pair_result",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "transcript_hash": "1a4f02f8d79628d279887e6319bcddb741488303013716443c162f03b20663ae",
+        "result": "ready",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "initial_cursor": 42
+      },
+      "expect": {
+        "phone_pairing_acked_seq": 42,
+        "phone_pairing_serve_from_seq": 43,
+        "pre_pair_history_disclosed": false
+      }
+    },
+    {
+      "step": 13,
+      "connection": "pair-c2",
+      "from": "mac",
+      "frame": {
+        "type": "pair_result",
+        "attempt_id": "00112233445566778899aabbccddeeff",
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "transcript_hash": "1a4f02f8d79628d279887e6319bcddb741488303013716443c162f03b20663ae",
+        "result": "confirmed",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "initial_cursor": 42
+      },
+      "expect": {
+        "mac_pin_committed": true,
+        "mac_processed_through_seq": 42
+      }
+    },
+    {
+      "step": 14,
+      "connection": "pair-c2",
+      "from": "mac",
+      "frame": {
+        "type": "welcome",
+        "proto": 1,
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "mac_name": "Vector Mac",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "cursor": 42,
+        "caps": ["notif", "dismiss", "otp_context"]
+      },
+      "expect": { "normal_sync_may_start": true }
+    }
+  ],
+  "final_assertions": {
+    "pairing_state_on_both_endpoints": "confirmed",
+    "initial_cursor": 42,
+    "first_servable_sequence": 43,
+    "verification_code_stable_across_retry": true,
+    "normal_data_before_confirmation": false
+  }
+}

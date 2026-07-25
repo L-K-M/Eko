@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/dismiss.schema.json",
+  "title": "Eko v1 dismiss",
+  "type": "object",
+  "required": ["type", "key"],
+  "properties": {
+    "type": { "const": "dismiss" },
+    "key": { "$ref": "common.schema.json#/$defs/key" }
+  }
+}

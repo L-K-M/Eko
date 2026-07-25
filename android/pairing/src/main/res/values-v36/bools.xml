@@ -1,0 +1,5 @@
+<resources>
+    <bool name="eko_cds_legacy_enabled">false</bool>
+    <bool name="eko_cds_api33_enabled">false</bool>
+    <bool name="eko_cds_api36_enabled">true</bool>
+</resources>

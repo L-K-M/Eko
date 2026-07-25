@@ -1,0 +1,254 @@
+format: eko-otp-corpus-v1
+license: CC0-1.0
+provenance: Clean-room synthetic adversarial negatives written for Eko without consulting third-party extractor source code.
+defaults:
+  omitted_text_field: null
+  omitted_array_field: []
+  is_group_summary: false
+cases:
+  - id: fp-001-bare-six-digits
+    locale: en
+    source: chat
+    events:
+      - text: "I counted 482913 records today."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-002-three-digit-error-code
+    locale: en
+    source: other
+    events:
+      - text: "The server returned error code 503."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-003-four-digit-year
+    locale: en
+    source: other
+    events:
+      - text: "The building code changes in 2026."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-004-us-phone-number
+    locale: en-US
+    source: other
+    events:
+      - text: "Call the code desk at (415) 555-0198."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-005-international-phone-number
+    locale: en-GB
+    source: other
+    events:
+      - text: "Support code team: +44 20 7946 0958"
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-006-swiss-franc-amount
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Card verification completed for CHF 1'234.50."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-007-eur-amount
+    locale: de-DE
+    source: banking
+    events:
+      - text: "Buchungscode gespeichert, Betrag EUR 4.812,00."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-008-usd-amount
+    locale: en-US
+    source: banking
+    events:
+      - text: "Authorization code pending for USD 7,450.00."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-009-dollar-symbol-amount
+    locale: en-US
+    source: retail
+    events:
+      - text: "Discount code applied; total is $4829.13."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-010-euro-symbol-amount
+    locale: fr-FR
+    source: retail
+    events:
+      - text: "Code promotionnel appliqué, total 7318,04 €."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-011-card-ending
+    locale: en
+    source: banking
+    events:
+      - text: "Card ending 4821 was used for your purchase."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-012-german-endziffer
+    locale: de-DE
+    source: banking
+    events:
+      - text: "Karte mit Endziffer-7318 wurde hinterlegt."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-013-order-number
+    locale: en
+    source: retail
+    events:
+      - text: "Order code 48291374 is ready to ship."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-014-tracking-number
+    locale: en
+    source: retail
+    events:
+      - text: "Tracking code 1Z84X920731804 is in transit."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-015-barcode
+    locale: en
+    source: retail
+    events:
+      - text: "Barcode 4012345678901 scanned successfully."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-016-unicode-word
+    locale: en
+    source: other
+    events:
+      - text: "Unicode 1F642 names a smiling face."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-017-encode
+    locale: en
+    source: other
+    events:
+      - text: "Encode 482913 as base ten."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-018-decode
+    locale: en
+    source: other
+    events:
+      - text: "Decode value AB12CD before continuing."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-019-version-code
+    locale: en
+    source: other
+    events:
+      - text: "versionCode 731804 was installed."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-020-discount-code
+    locale: en
+    source: retail
+    events:
+      - text: "Discount code SAVE2026 gives 15 percent off."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-021-promo-code
+    locale: en
+    source: retail
+    events:
+      - text: "Promo code SPRING42 is active all week."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-022-domain-and-port
+    locale: en
+    source: other
+    events:
+      - text: "Use code.example.test:4829 for the staging endpoint."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-023-quoted-token
+    locale: en
+    source: chat
+    events:
+      - text: "The article calls this field \"code 731804\" as an example."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-024-time
+    locale: en
+    source: calendar
+    events:
+      - text: "Code review starts at 14:30."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-025-date
+    locale: en
+    source: calendar
+    events:
+      - text: "The code freeze begins 24-07-2026."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-026-postal-code
+    locale: en-GB
+    source: retail
+    events:
+      - text: "Delivery postcode is SW1A 2AA."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-027-invoice-number
+    locale: en
+    source: retail
+    events:
+      - text: "Invoice code INV-482913 has been paid."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-028-group-summary
+    locale: en
+    source: email
+    events:
+      - text_lines: ["Your code is 482913", "Two new messages"]
+        is_group_summary: true
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-029-title-only-sender-number
+    locale: en
+    source: sms
+    events:
+      - title: "Code Service 731804"
+        text: "Tap to open the conversation."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-030-sms-retriever-hash-only
+    locale: en
+    source: sms
+    events:
+      - text: "Notification delivery status\nQx7Ab9Lm2Pz"
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-031-code-review-number
+    locale: en
+    source: chat
+    events:
+      - text: "Code review 482913 is assigned to Maya."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-032-source-code-commit
+    locale: en
+    source: other
+    events:
+      - text: "Source code commit a4b7c2 landed on main."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-033-product-sku
+    locale: en
+    source: retail
+    events:
+      - text: "Product code AB12-CD is back in stock."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-034-currency-crossing
+    locale: en-CH
+    source: banking
+    events:
+      - text: "Verification fee CHF 4829 was charged; no action is needed."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-035-bank-account-fragment
+    locale: en
+    source: banking
+    events:
+      - text: "Account ending 7318 received a transfer."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}

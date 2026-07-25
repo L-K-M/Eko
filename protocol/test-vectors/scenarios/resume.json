@@ -1,0 +1,287 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "resume-after-lost-ack",
+  "actors": {
+    "phone_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+    "mac_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523"
+  },
+  "initial": {
+    "generation": "11111111-2222-4333-8444-555555555555",
+    "phone_last_assigned_seq": 12,
+    "phone_acked_seq": 10,
+    "phone_serve_from_seq": 1,
+    "mac_processed_through_seq": 10,
+    "mac_highest_epoch": 43
+  },
+  "steps": [
+    {
+      "step": 1,
+      "connection": "c1",
+      "from": "phone",
+      "frame": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 44,
+        "phone_time": 1753351200000
+      },
+      "expect": {
+        "mac_highest_epoch": 44,
+        "connection_authoritative": true
+      }
+    },
+    {
+      "step": 2,
+      "connection": "c1",
+      "from": "mac",
+      "frame": {
+        "type": "welcome",
+        "proto": 1,
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "mac_name": "Vector Mac",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "cursor": 10,
+        "caps": ["notif", "dismiss", "otp_context"]
+      },
+      "expect": {
+        "requested_from": 11,
+        "effective_floor": 11,
+        "replay_from": 11
+      }
+    },
+    {
+      "step": 3,
+      "connection": "c1",
+      "from": "phone",
+      "frame": {
+        "type": "backlog_start",
+        "sync_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "from_seq": 11,
+        "replay_to_seq": 12,
+        "event_count": 2
+      },
+      "expect": { "fixed_high_water": 12 }
+    },
+    {
+      "step": 4,
+      "connection": "c1",
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "sync_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "seq": 11,
+        "ev": "posted",
+        "key": "0|com.example.sms|42|null|10001",
+        "posted_at": 1753351199000,
+        "user": 0,
+        "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+        "app": { "pkg": "com.example.sms", "label": "Messages", "category": "msg" },
+        "n": {
+          "title": null,
+          "text": "Your login code is 482913",
+          "big_text": null,
+          "sub_text": null,
+          "info_text": null,
+          "summary_text": null,
+          "text_lines": null,
+          "messages": null,
+          "is_clearable": true,
+          "is_group_summary": false,
+          "group_key": null
+        },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": true, "reconciled": false },
+        "truncated_fields": []
+      },
+      "expect": { "mac_processed_through_seq": 11 }
+    },
+    {
+      "step": 5,
+      "connection": "c1",
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "sync_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "seq": 12,
+        "ev": "removed",
+        "key": "0|com.example.sms|42|null|10001",
+        "posted_at": 1753351199000,
+        "user": 0,
+        "h": null,
+        "app": { "pkg": "com.example.sms", "label": "Messages", "category": "msg" },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": true, "reconciled": false },
+        "truncated_fields": [],
+        "remove_reason": { "code": 2, "reconciled": false }
+      },
+      "expect": { "mac_processed_through_seq": 12 }
+    },
+    {
+      "step": 6,
+      "connection": "c1",
+      "from": "phone",
+      "frame": {
+        "type": "active_chunk",
+        "sync_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "index": 0,
+        "final": true,
+        "active": []
+      },
+      "expect": { "snapshot_buffered_not_applied": true }
+    },
+    {
+      "step": 7,
+      "connection": "c1",
+      "from": "phone",
+      "frame": {
+        "type": "backlog_end",
+        "sync_id": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+        "state_seq": 12
+      },
+      "expect": { "snapshot_applied": true, "sync_complete": true }
+    },
+    {
+      "step": 8,
+      "connection": "c1",
+      "from": "mac",
+      "frame": { "type": "ack", "seq": 12 },
+      "transport": "drop_after_mac_send_before_phone_receive",
+      "expect": {
+        "mac_processed_through_seq": 12,
+        "phone_acked_seq": 10
+      }
+    },
+    {
+      "step": 9,
+      "connection": "c2",
+      "from": "phone",
+      "frame": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 45,
+        "phone_time": 1753351201000
+      },
+      "expect": { "mac_highest_epoch": 45 }
+    },
+    {
+      "step": 10,
+      "connection": "c2",
+      "from": "mac",
+      "frame": {
+        "type": "welcome",
+        "proto": 1,
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "mac_name": "Vector Mac",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "cursor": 12,
+        "caps": ["notif", "dismiss", "otp_context"]
+      },
+      "expect": {
+        "requested_from": 13,
+        "effective_floor": 11,
+        "replay_from": 13
+      }
+    },
+    {
+      "step": 11,
+      "connection": "c2",
+      "from": "phone",
+      "frame": {
+        "type": "backlog_start",
+        "sync_id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "from_seq": 13,
+        "replay_to_seq": 12,
+        "event_count": 0
+      },
+      "expect": { "no_duplicate_event_frames": true }
+    },
+    {
+      "step": 12,
+      "connection": "c2",
+      "from": "phone",
+      "frame": {
+        "type": "active_chunk",
+        "sync_id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "index": 0,
+        "final": true,
+        "active": []
+      }
+    },
+    {
+      "step": 13,
+      "connection": "c2",
+      "from": "phone",
+      "frame": {
+        "type": "backlog_end",
+        "sync_id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        "state_seq": 12
+      }
+    },
+    {
+      "step": 14,
+      "connection": "c2",
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "seq": 13,
+        "ev": "posted",
+        "key": "0|com.example.support|7|null|10002",
+        "posted_at": 1753351202000,
+        "user": 0,
+        "h": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289",
+        "app": { "pkg": "com.example.support", "label": "Support", "category": "msg" },
+        "n": {
+          "title": "Support",
+          "text": "Code: AB12-CD",
+          "big_text": "Use code AB12-CD for sign-in. Quote: \"single use\".",
+          "sub_text": "Account",
+          "info_text": null,
+          "summary_text": null,
+          "text_lines": ["First line", "Second / line"],
+          "messages": [
+            { "sender": "Eko Bot", "text": "Code: AB12-CD", "ts": 1753351198500 }
+          ],
+          "is_clearable": true,
+          "is_group_summary": false,
+          "group_key": "group/support"
+        },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": false, "reconciled": false },
+        "truncated_fields": []
+      },
+      "expect": { "mac_processed_through_seq": 13 }
+    },
+    {
+      "step": 15,
+      "connection": "c2",
+      "from": "mac",
+      "frame": { "type": "ack", "seq": 13 },
+      "expect": { "phone_acked_seq": 13 }
+    }
+  ],
+  "final_assertions": {
+    "mac_event_primary_keys": [
+      ["11111111-2222-4333-8444-555555555555", 11],
+      ["11111111-2222-4333-8444-555555555555", 12],
+      ["11111111-2222-4333-8444-555555555555", 13]
+    ],
+    "duplicate_rows": 0,
+    "mac_processed_through_seq": 13,
+    "phone_acked_seq": 13
+  }
+}

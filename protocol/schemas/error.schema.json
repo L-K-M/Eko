@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/error.schema.json",
+  "title": "Eko v1 error",
+  "type": "object",
+  "required": ["type", "code", "fatal"],
+  "properties": {
+    "type": { "const": "error" },
+    "code": {
+      "enum": [
+        "protocol_error",
+        "incompatible",
+        "superseded",
+        "unpaired",
+        "stale_generation",
+        "pairing_expired",
+        "pairing_rejected",
+        "unauthorized",
+        "invalid_ack",
+        "invalid_state",
+        "sequence_conflict",
+        "frame_too_large",
+        "store_reset"
+      ]
+    },
+    "fatal": { "type": "boolean" },
+    "message": { "type": "string", "maxLength": 2048 }
+  }
+}

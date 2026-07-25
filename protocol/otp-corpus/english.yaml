@@ -1,0 +1,208 @@
+format: eko-otp-corpus-v1
+license: CC0-1.0
+provenance: Clean-room synthetic cases written for Eko without consulting third-party extractor source code.
+defaults:
+  omitted_text_field: null
+  omitted_array_field: []
+  is_group_summary: false
+  source: sms
+cases:
+  - id: en-001-login-code
+    locale: en
+    source: sms
+    events:
+      - text: "Your login code is 482913."
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-002-verification-code
+    locale: en
+    source: sms
+    events:
+      - text: "Verification code: 731804"
+        expected: {code: "731804", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-003-otp-before-token
+    locale: en
+    source: sms
+    events:
+      - text: "OTP 9051 expires in five minutes."
+        expected: {code: "9051", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-004-token-before-passcode
+    locale: en
+    source: sms
+    events:
+      - text: "774220 is your passcode."
+        expected: {code: "774220", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-005-pin
+    locale: en
+    source: sms
+    events:
+      - text: "Use PIN 6408 to finish signing in."
+        expected: {code: "6408", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-006-two-factor
+    locale: en
+    source: email
+    events:
+      - text: "Your 2FA token is 18K7Q2."
+        expected: {code: "18K7Q2", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-007-security-code
+    locale: en
+    source: sms
+    events:
+      - text: "Security code 554411. Do not share it."
+        expected: {code: "554411", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-008-code-before-keyword
+    locale: en
+    source: sms
+    events:
+      - text: "293744 is the code for this device."
+        expected: {code: "293744", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-009-spaced-digits
+    locale: en
+    source: sms
+    events:
+      - text: "Your confirmation code is 448 291."
+        expected: {code: "448291", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-010-hyphenated-digits
+    locale: en
+    source: sms
+    events:
+      - text: "Enter code 123-456 now."
+        expected: {code: "123456", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-011-six-letter-code
+    locale: en
+    source: other
+    events:
+      - text: "Your support access code is QGFDAE."
+        expected: {code: "QGFDAE", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-012-short-alphanumeric
+    locale: en
+    source: sms
+    events:
+      - text: "Use code ABC4 to verify."
+        expected: {code: "ABC4", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-013-internal-hyphen-alphanumeric
+    locale: en
+    source: email
+    events:
+      - text: "Sign-in code: AB12-CD"
+        expected: {code: "AB12-CD", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-014-eight-digit-upper-bound
+    locale: en
+    source: sms
+    events:
+      - text: "One-time code 87654321"
+        expected: {code: "87654321", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-015-ten-character-alphanumeric
+    locale: en
+    source: email
+    events:
+      - text: "Verification code Z9Y8X7W6V5"
+        expected: {code: "Z9Y8X7W6V5", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-016-big-text-field
+    locale: en
+    source: email
+    events:
+      - text: "New sign-in request"
+        big_text: "A new sign-in was requested. Your verification code is 311907."
+        expected: {code: "311907", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-017-text-lines-field
+    locale: en
+    source: email
+    events:
+      - text_lines: ["Account activity", "Your code is 7625", "Expires soon"]
+        expected: {code: "7625", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-018-messaging-style-field
+    locale: en
+    source: sms
+    events:
+      - messages:
+          - {sender: "Example", text: "Your OTP is 419208", ts: 1753351198500}
+        expected: {code: "419208", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-019-sub-text-field
+    locale: en
+    source: other
+    events:
+      - text: "Account check"
+        sub_text: "Passcode: 8104"
+        expected: {code: "8104", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-020-info-text-field
+    locale: en
+    source: other
+    events:
+      - text: "Verification required"
+        info_text: "Code 610029"
+        expected: {code: "610029", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-021-summary-text-field
+    locale: en
+    source: other
+    events:
+      - text: "Sign-in"
+        summary_text: "OTP 772811"
+        expected: {code: "772811", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-022-title-is-never-input
+    locale: en
+    source: sms
+    events:
+      - title: "Verification code 441902"
+        text: "Open the app to continue."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: en-023-group-summary-excluded
+    locale: en
+    source: email
+    events:
+      - text: "Your code is 302991"
+        is_group_summary: true
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: en-024-cross-key-dedupe-window
+    locale: en
+    source: sms
+    device_id: device-a
+    events:
+      - at_ms: 1000000
+        notification_key: child-key
+        text: "Your code is 551208"
+        expected: {code: "551208", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+      - at_ms: 1120000
+        notification_key: different-child-key
+        text: "Use verification code 551208"
+        expected: {code: "551208", tier: heuristic, banner: false, panel: true, auto_copy_allowed: true}
+
+  - id: en-025-resend-and-intermediate-updates
+    locale: en
+    source: sms
+    device_id: device-a
+    events:
+      - at_ms: 2000000
+        notification_key: conversation-key
+        text: "Your code is 100482"
+        expected: {code: "100482", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+      - at_ms: 2660000
+        notification_key: conversation-key
+        text: "Your new code is 771905"
+        expected: {code: "771905", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+      - at_ms: 3320000
+        notification_key: conversation-key
+        text: "You requested another code: 771905"
+        expected: {code: "771905", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}

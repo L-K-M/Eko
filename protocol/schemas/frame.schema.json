@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/frame.schema.json",
+  "title": "Any core Eko protocol v1 JSON frame",
+  "oneOf": [
+    { "$ref": "hello.schema.json" },
+    { "$ref": "welcome.schema.json" },
+    { "$ref": "pair-request.schema.json" },
+    { "$ref": "pair-commit.schema.json" },
+    { "$ref": "pair-reveal.schema.json" },
+    { "$ref": "pair-result.schema.json" },
+    { "$ref": "backlog-start.schema.json" },
+    { "$ref": "backlog-gap.schema.json" },
+    { "$ref": "active-chunk.schema.json" },
+    { "$ref": "backlog-end.schema.json" },
+    { "$ref": "event.schema.json" },
+    { "$ref": "ack.schema.json" },
+    { "$ref": "fetch.schema.json" },
+    { "$ref": "fetch-missing.schema.json" },
+    { "$ref": "dismiss.schema.json" },
+    { "$ref": "ping.schema.json" },
+    { "$ref": "pong.schema.json" },
+    { "$ref": "unpair.schema.json" },
+    { "$ref": "unpair-ack.schema.json" },
+    { "$ref": "error.schema.json" }
+  ]
+}

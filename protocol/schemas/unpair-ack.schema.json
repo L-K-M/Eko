@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/unpair-ack.schema.json",
+  "title": "Eko v1 unpair_ack",
+  "type": "object",
+  "required": ["type", "unpair_id", "initiator_id", "peer_id", "status"],
+  "properties": {
+    "type": { "const": "unpair_ack" },
+    "unpair_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "initiator_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "peer_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "status": { "enum": ["applied", "already_applied"] }
+  }
+}

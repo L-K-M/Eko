@@ -1,0 +1,384 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "a344ab20d572172984ba795773beb6fc",
+    "entities": [
+      {
+        "tableName": "metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `outbox_gen` TEXT NOT NULL, `last_assigned_seq` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outboxGeneration",
+            "columnName": "outbox_gen",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAssignedSeq",
+            "columnName": "last_assigned_seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "outbox",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`seq` INTEGER NOT NULL, `notification_key` TEXT NOT NULL, `event_type` TEXT NOT NULL, `payload_json` TEXT NOT NULL, `content_hash` TEXT, `created_wall` INTEGER NOT NULL, `created_elapsed` INTEGER NOT NULL, `created_boot` TEXT NOT NULL, PRIMARY KEY(`seq`))",
+        "fields": [
+          {
+            "fieldPath": "seq",
+            "columnName": "seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notificationKey",
+            "columnName": "notification_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventType",
+            "columnName": "event_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentHash",
+            "columnName": "content_hash",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdWall",
+            "columnName": "created_wall",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdElapsed",
+            "columnName": "created_elapsed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdBoot",
+            "columnName": "created_boot",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "seq"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_outbox_notification_key",
+            "unique": false,
+            "columnNames": [
+              "notification_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_notification_key` ON `${TABLE_NAME}` (`notification_key`)"
+          },
+          {
+            "name": "index_outbox_created_wall",
+            "unique": false,
+            "columnNames": [
+              "created_wall"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_created_wall` ON `${TABLE_NAME}` (`created_wall`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pairing_cursor",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`pairing_id` TEXT NOT NULL, `acked_seq` INTEGER NOT NULL, `serve_from_seq` INTEGER NOT NULL, `retention_age_ms` INTEGER NOT NULL, `retention_count` INTEGER NOT NULL, PRIMARY KEY(`pairing_id`))",
+        "fields": [
+          {
+            "fieldPath": "pairingId",
+            "columnName": "pairing_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ackedSeq",
+            "columnName": "acked_seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serveFromSeq",
+            "columnName": "serve_from_seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retentionAgeMs",
+            "columnName": "retention_age_ms",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retentionCount",
+            "columnName": "retention_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "pairing_id"
+          ]
+        }
+      },
+      {
+        "tableName": "gap_span",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`pairing_id` TEXT NOT NULL, `outbox_gen` TEXT NOT NULL, `from_seq` INTEGER NOT NULL, `to_seq` INTEGER NOT NULL, `reason` TEXT NOT NULL, `start_wall` INTEGER, `end_wall` INTEGER, `confidence` TEXT NOT NULL, PRIMARY KEY(`pairing_id`, `outbox_gen`, `from_seq`, `to_seq`))",
+        "fields": [
+          {
+            "fieldPath": "pairingId",
+            "columnName": "pairing_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outboxGeneration",
+            "columnName": "outbox_gen",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromSeq",
+            "columnName": "from_seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toSeq",
+            "columnName": "to_seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reason",
+            "columnName": "reason",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startWall",
+            "columnName": "start_wall",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "endWall",
+            "columnName": "end_wall",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "pairing_id",
+            "outbox_gen",
+            "from_seq",
+            "to_seq"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_gap_span_pairing_id_outbox_gen_from_seq",
+            "unique": false,
+            "columnNames": [
+              "pairing_id",
+              "outbox_gen",
+              "from_seq"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_gap_span_pairing_id_outbox_gen_from_seq` ON `${TABLE_NAME}` (`pairing_id`, `outbox_gen`, `from_seq`)"
+          }
+        ]
+      },
+      {
+        "tableName": "active_notification",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `user_id` INTEGER NOT NULL, `package_name` TEXT NOT NULL, `payload_json` TEXT NOT NULL, `content_hash` TEXT NOT NULL, `last_seq` INTEGER NOT NULL, `ongoing` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "user_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentHash",
+            "columnName": "content_hash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeq",
+            "columnName": "last_seq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ongoing",
+            "columnName": "ongoing",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_active_notification_package_name_user_id",
+            "unique": false,
+            "columnNames": [
+              "package_name",
+              "user_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_active_notification_package_name_user_id` ON `${TABLE_NAME}` (`package_name`, `user_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "app_rule",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `user_id` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, `include_ongoing` INTEGER NOT NULL, `otp_hint` INTEGER NOT NULL, PRIMARY KEY(`package_name`, `user_id`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "user_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "enabled",
+            "columnName": "enabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "includeOngoing",
+            "columnName": "include_ongoing",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "otpHint",
+            "columnName": "otp_hint",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name",
+            "user_id"
+          ]
+        }
+      },
+      {
+        "tableName": "seen_app",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `user_id` INTEGER NOT NULL, `label` TEXT NOT NULL, `last_seen_wall` INTEGER NOT NULL, PRIMARY KEY(`package_name`, `user_id`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "user_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenWall",
+            "columnName": "last_seen_wall",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name",
+            "user_id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a344ab20d572172984ba795773beb6fc')"
+    ]
+  }
+}

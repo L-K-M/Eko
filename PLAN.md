@@ -9,7 +9,9 @@ shown live, can be copied, and — for 2FA/OTP messages — offer a one-click "c
 The two hard product requirements that drive every design decision below:
 
 1. **Stable and self-healing.** When a phone drops off the network (Wi-Fi loss, Doze, process
-   death, Mac asleep) and later reconnects, the Mac must recover every notification it missed.
+   death, Mac asleep) and later reconnects, the Mac must recover every event committed to the
+   phone's durable outbox. Retention loss is explicit, and evidence-backed periods in which the
+   listener may have been unavailable are surfaced as suspected capture gaps.
 2. **Multiple phones per Mac**, each independently paired, connected, and recoverable.
 
 Later versions add Internet connectivity (outside the LAN) and screen sharing. v1 is LAN-only,
@@ -73,15 +75,21 @@ reads a **cached trust set** populated only at listener-bind time (`onServiceAdd
 the NLS access toggle; NMS deliberately does not listen for CDM changes). So a CDM association
 created *while the listener is already bound* does not lift redaction until the listener
 rebinds — which is exactly our second-Mac case and any onboarding where notification access is
-granted before pairing. Eko therefore performs the §5.3.6 rebind kick (component-toggle +
-`requestRebind`) after **every** `associate()`/`disassociate()`, and spike S2 tests both
-orderings (associate-then-bind and bind-then-associate).
+granted before pairing. Eko therefore performs the supported §5.3.6 rebind sequence after every
+association-state change: if connected, call instance `requestUnbind()`, wait for
+`onListenerDisconnected()`, then call static `requestRebind(ComponentName)`; if already
+disconnected, call `requestRebind()` directly. It never toggles the component. Spike S2 tests
+both orderings (associate-then-bind and bind-then-associate).
 
-**Design consequence:** the Android onboarding *must* establish a CDM association per paired
-Mac before the OTP feature is advertised as working. Eko is distributed by **sideloading only**
-(no Play Store — §5.5), so store policy never constrains us, but CDM is still the primary path:
-it is the only route that needs neither adb nor a settings change, and it also buys
-background-execution exemptions (§5.3). Sideloading widens the fallback menu, in order of
+**Design consequence:** the Android app must establish at least one CDM association for its
+user before the OTP feature is advertised as working. Trust is package/user-wide, not scoped to
+a Mac pairing: any non-revoked association trusts the listener, so association records are
+modeled independently and at least one is retained while any Mac remains paired. Eko may create
+additional BLE associations for per-device presence, but never treats an association id as a
+pairing id. Eko is distributed by **sideloading only** (no Play Store — §5.5), so store policy
+never constrains us, but CDM is still the primary path: it is the only route that needs neither
+adb nor a settings change, and it also buys background-execution exemptions (§5.3). Sideloading
+widens the fallback menu, in order of
 preference: (a) profile-less CDM association (default — zero friction beyond one system
 dialog), (b) watch-profile association (`DEVICE_PROFILE_WATCH` via
 `REQUEST_COMPANION_PROFILE_WATCH`, a normal permission), which grants the
@@ -101,11 +109,13 @@ still sitting in the status bar. Anything posted *and dismissed* while the deskt
 explicitly not stored; Join rides on FCM, which caps offline queues at 100 non-collapsible
 messages and drops all of them on overflow.
 
-**Design consequence:** the phone persists every notification event to a local SQLite outbox
-*at post time, before any send attempt*, with a per-Mac monotonic sequence number, and replays
-from the Mac's last-acknowledged cursor on reconnect. `getActiveNotifications()` is only a
-reconciliation snapshot, never the recovery mechanism. This is genuinely novel in this product
-space and architecturally cheap (§9).
+**Design consequence:** the phone serializes every delivered notification callback through one
+writer and transactionally updates a local SQLite outbox plus its durable active-notification
+state. An event becomes *captured* only when that transaction commits and is never eligible to
+send before then. The shared log has a per-device monotonic sequence; each Mac resumes from its
+own durable cursor. `getActiveNotifications()` is only a reconciliation input, never the
+recovery mechanism. This is genuinely novel in this product space and architecturally cheap
+(§9).
 
 ### 1.3 Android will kill the app; correctness must not depend on the process surviving
 
@@ -147,11 +157,12 @@ online/offline, and only pinned certificates define identity (§7).
 - Menubar UI: browse, search, copy notification text; per-app filters; per-device grouping.
 - Native macOS notification banners with a "Copy code" action for detected OTPs.
 - One-click (opt-in: automatic) extraction of 2FA codes, robust across languages and formats.
-- Store-and-forward: **zero loss of captured events** across Wi-Fi drops, Doze, process death,
-  Mac sleep, reboots — bounded by an explicit retention window (48 h / 2'000 events per Mac),
-  with an honest "gap" indicator when the window is exceeded. Capture gaps (windows where the
-  listener itself was dead and the OS never delivered events — nothing can recover those) are
-  bounded, detected, and surfaced with the same gap UI, never papered over.
+- Store-and-forward: **zero loss of committed outbox events** across Wi-Fi drops, Doze, process
+  death, Mac sleep, and reboots, bounded by an explicit retention window (48 h / 2'000 events
+  per Mac), with an honest gap indicator when retention is exceeded. Callback inputs queued but
+  not yet committed can be lost with the process. Listener-dead intervals are unrecoverable and
+  cannot always be detected; Eko surfaces evidence-backed intervals as *suspected* capture gaps
+  rather than claiming silence proves loss.
 - v1 renders notification text plus app label only; app icons and images ride the reserved
   binary frame type in v1.x.
 - UI strings externalized from day one; v1 ships English + German (Swiss formatting per the
@@ -183,15 +194,15 @@ online/offline, and only pinned certificates define identity (§7).
 | D1 | Phone = TCP/TLS **client**, Mac = **server** (`NWListener`, fixed port, default 48808) | Android can't hold a listening socket in background; macOS 15 doesn't gate incoming TCP (§1.4) |
 | D2 | Transport: TCP + **TLS 1.3, mutual auth**, 4-byte length-prefixed frames, 1-byte frame type (JSON control/events now; binary type reserved) | Simplest robust option; QUIC/gRPC add complexity with no v1 payoff; binary frame type future-proofs icons/media |
 | D3 | Identity = per-device long-lived **self-signed P-256 cert**; deviceId = SHA-256 fingerprint; TOFU pinning at pairing; commit-then-reveal verification code | KDE Connect model, hardened with the CVE-2025-66270 lesson (identity claims only count post-TLS) and a ZRTP-style commitment so the short code isn't grindable (§7.2) |
-| D4 | **Phone-side durable outbox** (Room/SQLite, WAL, `synchronous=FULL`); `AUTOINCREMENT` rowid = per-**device** sequence, consumed by all pairings against per-pairing cursors | The self-healing core; survives process death, unlike every in-memory scheme (§9) |
-| D5 | **CDM association per paired Mac** (profile-less or watch-profile; associate via Mac's BLE advertisement, fallback Wi-Fi-AP association) | Unlocks unredacted OTPs on Android 15/16 + background exemptions with zero adb/settings friction (§1.1, §5.3); adb app-op grant and "Enhanced notifications" opt-out are documented fallbacks |
+| D4 | **Phone-side durable event store** (Room/SQLite, WAL, runtime-verified `synchronous=FULL`); a transactional metadata high-water allocates the per-**device** sequence, consumed by all pairings against per-pairing cursors | The self-healing core; makes sequence allocation, active state, and retention gaps explicit (§9) |
+| D5 | **App/user-scoped CDM trust associations**, independent of Mac pairing rows (profile-less or watch-profile; BLE Mac preferred, Wi-Fi AP fallback) | Any non-revoked association trusts the package; BLE presence can improve Android 16 latency, while one retained association keeps OTP trust for all pairings (§1.1, §5.3) |
 | D6 | Android foreground service type **`connectedDevice`** (never `dataSync`) | No timeout; legal to start from `BOOT_COMPLETED`; `dataSync` has a 6 h/24 h hard limit on Android 15 |
 | D7 | OTP extraction runs **on the Mac**, two-tier (deterministic standards first, keyword-gated heuristics second) | Rules iterate with a Mac-app update alone (no phone-side APK rollout); backlog can be re-scanned retroactively; single Swift test corpus |
 | D8 | macOS UI: **AppKit `NSStatusItem` + custom panel hosting SwiftUI** (`NSHostingView`); min target macOS 14 | SwiftUI `MenuBarExtra` still lacks presentation-state/window APIs as of Xcode 26; `.menu` style can't host a live feed |
-| D9 | Mac persistence: **GRDB 7** (SQLite, WAL, `ValueObservation`); identity key in data-protection Keychain; peer certs in DB | Substantially faster than SwiftData on bulk inserts, reactive UI queries, FTS5 for search later |
+| D9 | Mac persistence: **GRDB 7** (SQLite, WAL, `ValueObservation`); identity key in data-protection Keychain; peer certs in DB | Substantially faster than SwiftData on bulk inserts and reactive UI queries; bounded indexed `LIKE` search ships in v1, with FTS5 as an optimization later |
 | D10 | Distribution: **Developer ID + notarization** on macOS, sandbox enabled from day one; **sideloaded APK** on Android (GitHub Releases + in-app update check / Obtainium) | macOS 15 removed the Gatekeeper ctrl-click bypass; sideload-only Android distribution frees the design from Play policy (§5.5) |
 | D11 | Discovery: mDNS/Bonjour (`_eko._tcp`) + UDP announce (port 48809) + last-known-IP dial + QR/manual — hints only | Every single mechanism fails on some real network (§1.5) |
-| D12 | App-level heartbeat (phone ping every 25 s, hard-close on one missed pong; Mac timeout 90 s) + full-jitter backoff capped at 60 s | TCP keepalive alone leaves half-open zombies for minutes-to-hours; KDE Connect and Phone Link both show stale "connected" states |
+| D12 | App-level heartbeat while CPU/network are available (phone target 25 s, hard-close after a 10 s pong deadline; Mac target 90 s) + full-jitter backoff capped at 60 s | Detects half-open sockets promptly while awake; Doze may suspend both timing and network, so these are latency targets, never recovery bounds |
 
 ---
 
@@ -201,14 +212,16 @@ online/offline, and only pinned certificates define identity (§7).
 flowchart LR
     subgraph Phone["Android app (per phone)"]
         NLS["NotificationListenerService<br/>(system-bound)"]
-        OUT[("Room outbox<br/>per-device seq,<br/>per-Mac cursors, WAL")]
+        OUT[("Room event store<br/>outbox + active state,<br/>per-Mac cursors")]
         CONN["ConnectionService<br/>FGS type connectedDevice<br/>TLS client, reconnect loop"]
-        CDM["CDM association<br/>per paired Mac"]
-        WD["Watchdog<br/>WorkManager + rebind kick"]
+        CDM["CDM trust association(s)<br/>app/user scoped"]
+        CDS["CompanionDeviceService<br/>presence callbacks"]
+        WD["Health checks<br/>WorkManager + supported rebind"]
         NLS -- "insert event (posted/updated/removed)" --> OUT
         OUT -- "replay > cursor, then live" --> CONN
         WD -.-> NLS
         WD -.-> CONN
+        CDM -.-> CDS
     end
 
     subgraph Mac["macOS menubar app"]
@@ -242,21 +255,24 @@ language-neutral test vectors consumed by both the Kotlin and Swift test suites.
 
 | Component | Type | Responsibility |
 |-----------|------|----------------|
-| `EkoNotificationListener` | `NotificationListenerService` | Capture posted/updated/removed events; write them to the outbox synchronously in the callback (from a dedicated writer thread — `synchronous=FULL` inserts fsync and must not run on the main thread, while staying strictly serialized); detect redaction; reconcile via `getActiveNotifications()` on (re)connect |
+| `EkoNotificationListener` | `NotificationListenerService` | Receive callbacks on the service main thread; hand them off in order to one bounded writer actor; transactionally update outbox + durable active state; detect redaction; reconcile via `getActiveNotifications()` on (re)connect. Callback return is not a durability boundary; only a committed transaction is "captured" |
 | `ConnectionService` | Foreground service, `foregroundServiceType="connectedDevice"` | Own the TLS client sockets (one per paired Mac), reconnect loop, heartbeats, outbox drain, ack handling |
-| Outbox | Room/SQLite (WAL) | Durable event log; one per-**device** sequence consumed by all pairings against per-pairing cursors (§9); pruning on ack + retention caps |
+| Event store | Room/SQLite (WAL) | Durable event log, sequence/generation metadata, active-notification state, pairing cursors/floors, and explicit gap spans (§9) |
 | `PairingManager` | Activity flow + CDM | Discovery UI, QR scan, TOFU cert exchange, verification code, CDM `associate()` |
-| Watchdog | WorkManager (15 min) + event triggers | Detect NLS silence and connection staleness; `requestRebind()`; component-toggle kick; FGS restart |
+| `EkoCompanionDeviceService` | Exported `CompanionDeviceService`, guarded by `BIND_COMPANION_DEVICE_SERVICE` | Receive CDM presence callbacks used for optional Android 16 reliability mode |
+| Health coordinator | WorkManager (15 min, best effort) + lifecycle/network triggers | Check listener/access state, inspect process-exit evidence, run supported unbind/rebind recovery, and request connection restart when Android permits |
 | Receivers | `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, connectivity callbacks | Restart `ConnectionService`; trigger immediate reconnect on network change |
 | Settings/Onboarding UI | Jetpack Compose | Permission checklist, per-app forwarding rules, OEM reliability guide, diagnostics |
 
-Stack: Kotlin, coroutines/Flow, Room, Jetpack Compose, `minSdk 26` (Android 8.0), `targetSdk`
-current (35+). No Firebase dependency in v1 (LAN-only; FCM arrives with v2). TLS via the
+Stack: Kotlin, coroutines/Flow, Room, Jetpack Compose, **`minSdk 26`, `compileSdk 36`, and
+`targetSdk 36`** for v1. No Firebase dependency in v1 (LAN-only; FCM arrives with v2). TLS via the
 platform `SSLSocket` with a custom pin-checking `X509TrustManager` — no OkHttp needed for a
 raw socket protocol, no Netty. **Platform TLS 1.3 exists only on API 29+**; since the Mac
 enforces TLS 1.3 with no downgrade path, the app bundles the standalone Conscrypt provider
 (`org.conscrypt:conscrypt-android`) on API 26–28 to get TLS 1.3 everywhere. (If Android 8/9
-usage proves negligible, drop the dependency and raise minSdk to 29 instead.)
+usage proves negligible, drop the dependency and raise minSdk to 29 instead.) The trust manager
+compares the peer's exact DER/fingerprint against a confirmed pin (or restricted revocation
+tombstone) and does not perform DNS endpoint identification for raw IP connections.
 
 ### 5.2 Notification capture details
 
@@ -270,6 +286,10 @@ usage proves negligible, drop the dependency and raise minSdk to 29 instead.)
   `NotificationManager.isNotificationListenerAccessGranted(ComponentName)` (API 27+; on
   API 26 parse `Settings.Secure` `enabled_notification_listeners` /
   `NotificationManagerCompat.getEnabledListenerPackages()`).
+- On Android 13+, sideloaded installs can have notification-listener access blocked until the
+  user opens App info, chooses the overflow menu, and enables **Allow restricted settings**.
+  There is no reliable public preflight API, so the install guide shows this conditional step
+  before notification access and troubleshooting infers it when access remains unavailable.
 - Extract per event: `getKey()` (opaque identity — never parsed), package, post time,
   `EXTRA_TITLE`, `EXTRA_TEXT`, `EXTRA_BIG_TEXT`, `EXTRA_SUB_TEXT`, `EXTRA_INFO_TEXT`,
   `EXTRA_SUMMARY_TEXT`, `EXTRA_TEXT_LINES`, MessagingStyle messages
@@ -283,16 +303,20 @@ usage proves negligible, drop the dependency and raise minSdk to 29 instead.)
 - `onNotificationRemoved` forwards the `REASON_*` code so the Mac can distinguish user dismissal
   (mirror it) from app-side cancel and from our own `cancelNotification()` round-trips.
 - Mac-initiated dismissal: `cancelNotification(key)`.
-- On `onListenerConnected`: run reconciliation — diff `getActiveNotifications()` against the
-  last known active set, synthesizing `removed` events for anything that vanished while the
-  listener was dead (these carry `reason = RECONCILED`) **and `posted` events for anything
-  that appeared while it was dead** (still-active notifications are recoverable; posted-and-
-  dismissed ones are not — that bounded window is reported as a capture-gap event, §9).
-- **Work profiles / multiple users:** capture `sbn.getUser()` and carry the user handle in the
-  event payload; per-app rules, labels, and dedupe key on `(package, user)` — muting personal
-  Slack must not mute work Slack. Whether the listener receives work-profile notifications at
-  all can be restricted by device policy; when it doesn't, the Apps screen says so instead of
-  looking broken. A work-profile device is part of the §15 test matrix.
+- On `onListenerConnected`: obtain `getActiveNotifications()` and enqueue one reconciliation
+  command behind prior callbacks on the writer actor. Its transaction diffs the snapshot against
+  `active_notification`, synthesizes `removed` rows for vanished keys (`reason = RECONCILED`) and
+  `posted` rows for newly visible keys, and updates active state. Connection replay starts only
+  after that transaction commits. Still-active notifications are recoverable; posted-and-
+  dismissed ones are not, and only lifecycle/process evidence can justify a suspected
+  `capture_gap` (§9).
+- **Work profiles / multiple users:** Android ignores an NLS installed inside a managed work
+  profile, so onboarding refuses that configuration and directs the user to install Eko in the
+  personal profile. A personal-profile listener receives work notifications only when the DPC
+  permits cross-profile notification listeners; absence of callbacks cannot prove an admin
+  block. For events Android does deliver, carry `sbn.getUser()` and key rules on
+  `(package, user)`. Resolve work labels/icons best effort and fall back to package name when
+  cross-profile lookup is denied. Test this with TestDPC plus physical managed devices (§15).
 - **Do Not Disturb parity:** forward the phone's interruption filter
   (`getCurrentInterruptionFilter` / `onInterruptionFilterChanged`) and per-notification DND
   suppression as metadata. Default Mac behavior while phone DND is active: mirror silently to
@@ -304,56 +328,64 @@ usage proves negligible, drop the dependency and raise minSdk to 29 instead.)
   and a warning on the Mac instead of silently forwarding "Sensitive notification content
   hidden".
 
-Android 13+ listener filtering metadata (`default_filter_types`) is set to
+Android 12/API 31+ listener filtering metadata (`default_filter_types`) is set to
 conversations|alerting|silent (ongoing excluded) — an optimization only; correctness never
-depends on it (the constants don't exist below API 33).
+depends on it (the metadata originated in API 31).
 
 ### 5.3 Background survival strategy (layered, in order of importance)
 
-1. **The outbox, not the process, guarantees delivery of captured events** (§9). Everything
-   below improves *latency* and shrinks the *capture gap* (the window where the listener is
-   dead and events are never captured at all — the one loss the outbox cannot prevent, so it
-   is instead bounded, detected, and surfaced). What survives capture is never lost.
+1. **The event store, not the process, guarantees delivery of committed events** (§9).
+   Everything below improves latency and the probability that Android delivers and Eko commits
+   each callback. No watchdog can prove or bound every listener-dead interval; evidence-backed
+   suspected gaps are surfaced honestly and committed rows are never lost silently.
 2. **NLS binding itself.** The system binds enabled listeners with
    `BIND_AUTO_CREATE | BIND_FOREGROUND_SERVICE` (verified in AOSP `ManagedServices`, with a
-   ~10 s rebind-on-death), putting the process at bound-foreground-service state:
-   auto-restarted after kills and inside the Doze/battery-saver network allowlist on stock
-   Android. This is why capture keeps working even when the connection service is throttled —
-   but a user/OEM **force-stop** leaves the app stopped (no rebind, no receivers) until the
-   user relaunches, which is the capture gap the watchdog and stall detector exist to shrink
-   and report.
+   ~10 s rebind-on-death), which raises process importance and normally recreates the listener
+   after an ordinary kill. `BIND_FOREGROUND_SERVICE` does **not** place the UID on the Doze
+   power allowlist and does not preserve LAN sockets in deep idle. A Settings force-stop leaves
+   the package stopped (no rebind or receivers) until explicit user interaction; OEM kills can
+   also create uncertain capture intervals.
 3. **Foreground service** `connectedDevice` (requires `FOREGROUND_SERVICE` +
    `FOREGROUND_SERVICE_CONNECTED_DEVICE`; prerequisite satisfied via `CHANGE_WIFI_STATE` /
    `CHANGE_WIFI_MULTICAST_STATE`, both normal). **No timeout**, unlike `dataSync` (hard
-   6 h/24 h limit on Android 15+ and banned from `BOOT_COMPLETED` starts). Restarted from
-   `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` receivers, catching
+   6 h/24 h limit on Android 15+ and banned from `BOOT_COMPLETED` starts). Return
+   `START_STICKY`; request starts from `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED` receivers and
+   lifecycle/network triggers, catching
    `ForegroundServiceStartNotAllowedException` (KDE Connect pattern). (Sideload-only: the Play
-   Console FGS-type declaration/demo-video requirement does not apply to us.)
-4. **CDM association** (also required for OTPs, §1.1 — including the post-associate rebind
-   kick, since listener trust is cached at bind time): with manifest-declared
+   Console FGS-type declaration/demo-video requirement does not apply to us.) An FGS improves
+   process priority but does not bypass Doze network suspension; `POST_NOTIFICATIONS` denial
+   does not prevent the service from starting.
+4. **CDM trust/presence associations** (also required for OTPs, §1.1 — including the
+   post-mutation rebind, since listener trust is cached at bind time): with manifest-declared
    `REQUEST_COMPANION_RUN_IN_BACKGROUND` + `REQUEST_COMPANION_USE_DATA_IN_BACKGROUND` +
    `REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND` (all `normal`; the last is
-   the documented preferred exemption for the watchdog's background FGS restarts on
+   the documented preferred exemption for eligible background FGS starts on
    Android 12+), an active association puts the app on the **permanent Doze power allowlist on
    Android 12–15** and exempts it from the restricted standby bucket and permission auto-revoke.
    On **Android 16 the power-allowlist exemption became presence-gated** (BLE/BT appear events
-   only; Wi-Fi devices explicitly unsupported for presence) — hence the Mac advertises a BLE
-   peripheral (§7.2) so `startObservingDevicePresence` works. Note the *redaction-trust* benefit
-   is not presence-gated — any non-revoked association suffices.
+   only; Wi-Fi devices explicitly unsupported for presence). Hence the Mac advertises a BLE
+   peripheral (§7.2), the app calls the API-appropriate `startObservingDevicePresence` overload
+   for that association, and the
+   manifest includes the exported, permission-guarded `CompanionDeviceService` from §5.1. The
+   *redaction-trust* benefit is app/user-wide and not presence-gated. If presence observation is
+   off on Android 16, idle connectivity is best effort unless the user grants the separate
+   battery-optimization exemption.
 5. **Reconnect triggers**, in priority order: `ConnectivityManager.registerNetworkCallback`
    (TRANSPORT_WIFI/ETHERNET/VPN only — never cellular in v1) → cached last-known Mac IP:port
    dial → short mDNS scan windows holding `MulticastLock` only while scanning → WorkManager
-   15-min periodic reconcile (runs in Doze maintenance windows) →
-   `AlarmManager.setAndAllowWhileIdle` watchdog (throttled to ~1/9 min in Doze; exact alarms
-   add little — `SCHEDULE_EXACT_ALARM` is denied by default for targetSdk 34+ and still
-   subject to Doze batching; not worth the extra user prompt).
-6. **NLS watchdog.** The classic failure: listener alive but silently receiving nothing until
-   reboot. Detection: no `onNotificationPosted` for an implausible interval *while the phone is
-   in use* (screen-on heuristics), or `isNotificationListenerAccessGranted` true but
-   `onListenerConnected` never fired since process start. Recovery ladder:
-   `requestRebind(cn)` → component toggle
-   (`setComponentEnabledSetting(DISABLED, DONT_KILL_APP)` → `ENABLED` → `requestRebind`) →
-   user-facing card asking to toggle notification access off/on.
+   15-min periodic reconcile (eligible in maintenance windows) → an optional
+   `AlarmManager.setAndAllowWhileIdle` health tick (throttled to roughly one per nine minutes in
+   Doze). Network callbacks, WorkManager, alarms, an FGS, and wake locks do not provide a bounded
+   reconnect deadline in deep idle; replay after wake is the correctness mechanism.
+6. **NLS health and supported rebind.** Track access state, `onListenerConnected`/
+   `onListenerDisconnected`, writer-queue overflow, and `ApplicationExitInfo` on the next start.
+   `ApplicationExitInfo` is API 30+; older releases have no equivalent process-exit evidence.
+   Notification silence, even while screen-on, is diagnostic context only and never proof of a
+   stall. If access is granted but this process has not connected after a grace period, call
+   static `requestRebind(ComponentName)`. For an explicit repair while connected, call instance
+   `requestUnbind()`, wait for disconnect, then call static `requestRebind()`. If it still does
+   not reconnect, show a card asking the user to toggle notification access off/on. Never
+   disable/enable the component as a kick.
 7. **Battery-optimization exemption:** rely on CDM first (it grants the real Doze allowlist on
    Android 12–15 silently). Additionally — since sideload-only distribution removes the Play
    policy risk that burned Syncthing-Android (#1039) — the onboarding checklist directly
@@ -364,20 +396,23 @@ depends on it (the constants don't exist below API 33).
 8. **OEM reliability guide** keyed on `Build.MANUFACTURER` (Samsung: never-sleeping apps +
    disable 3-day auto-sleep; Xiaomi/HyperOS: Autostart + battery "No restrictions" + lock in
    recents; Huawei: manual app-launch, PowerGenie caveat; OnePlus: disable optimization), with
-   links to dontkillmyapp.com. Shown during onboarding, re-surfaced by **stall detection**: the
-   app compares NLS post-timestamps against forward-timestamps and prompts only when the gap
-   proves the OS actually killed forwarding — no cry-wolf prompts.
-9. **User-visible honesty:** Android 13+ users can swipe away the FGS notification or stop the
-   app from Task Manager. Treat that as a signal (show "forwarding paused" state on the Mac),
-   not an error to fight.
+   links to dontkillmyapp.com. Shown during onboarding and re-surfaced only from concrete health
+   evidence (disconnect callbacks, process-exit reason, repeated FGS-start denial, or committed-
+   but-unsent backlog growth). Post/forward timestamp silence alone does not prove an OEM kill.
+9. **User-visible honesty:** on supported Android releases the user can dismiss the FGS
+   notification without stopping the service. Task Manager Stop terminates the app but delivers
+   no callback, so the Mac can show only "disconnected", not a definitive paused state. On the
+   next start inspect `ApplicationExitInfo.REASON_USER_REQUESTED`; if present, persist a paused
+   forwarding state and require an explicit in-app Resume before restarting the FGS. Explain what
+   happened instead of fighting the user's action with a background restart loop.
 10. **Eko's own battery cost is a budgeted, measured quantity** — survival isn't the only
    battery concern; excess drain is the #1 uninstall driver for companion apps. Budget:
    **< 2 %/day attributed drain** on a Pixel-class device. Measurement: a 24 h Battery
    Historian / `BatteryStats` soak on Pixel + one OEM device is an M3 gate (§15). The 25 s
    heartbeat (§8) is a tunable; the planned mitigation if the budget is missed is screen-off/
-   Doze-aware relaxation of ping cadence (the Mac's 90 s timeout leaves headroom to ~60 s),
-   plus keeping BLE presence observation off unless the user enables Android 16 reliability
-   mode.
+   Doze-aware relaxation of ping cadence. Both endpoints' deadlines pause in deep idle. BLE
+   presence stays opt-in as Android 16 reliability mode, with UI explaining that disabling it
+   also gives up the CDM presence-gated Doze exemption.
 
 ### 5.4 Android permissions inventory
 
@@ -387,14 +422,13 @@ choice is purely OS behavior and user trust (ask for the minimum, explain every 
 | Permission / access | Kind | Purpose |
 |---|---|---|
 | Notification access (NLS) | Special access, user toggle | Capture notifications (prominent in-app disclosure stays — good practice, not policy) |
-| `POST_NOTIFICATIONS` | Runtime | FGS notification, alerts |
+| `POST_NOTIFICATIONS` | Runtime | Makes FGS status and alerts visible in the notification drawer; denial does not prevent FGS start |
 | `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_CONNECTED_DEVICE` | Normal | Connection service |
 | `RECEIVE_BOOT_COMPLETED` | Normal | Restart after reboot |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `CHANGE_WIFI_STATE`, `CHANGE_WIFI_MULTICAST_STATE` | Normal | Sockets, network callbacks, mDNS multicast lock, FGS prerequisite |
 | `REQUEST_COMPANION_RUN_IN_BACKGROUND`, `REQUEST_COMPANION_USE_DATA_IN_BACKGROUND`, `REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND`, `REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE` | Normal | CDM exemptions, background FGS restarts, presence |
 | `REQUEST_COMPANION_PROFILE_WATCH` | Normal | Watch-profile CDM association, if S1 lands on it |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Normal (dialog on request) | Optional "maximum reliability" onboarding step (§5.3.7) |
-| `ACCESS_LOCAL_NETWORK` | Runtime (Android 17 targets) | Declared now; requested in onboarding once targeting API 37 |
 | `REQUEST_INSTALL_PACKAGES` | Special access | In-app self-update (§5.5); optional — omitted when the user updates via Obtainium |
 | `CAMERA` | Runtime, optional | QR pairing only |
 
@@ -406,7 +440,14 @@ behalf (no scan permission, no location dependency); they'd only be needed if S1
 `createBond()` for resolvable-address tracking, in which case declare `BLUETOOTH_SCAN` with
 `android:usesPermissionFlags="neverForLocation"`. Also not used: `QUERY_ALL_PACKAGES` (app
 labels come from the notifying package only), `SYSTEM_ALERT_WINDOW`, exact-alarm permissions,
-Accessibility.
+Accessibility. Because v1 targets API 36, it also does **not** declare
+`ACCESS_LOCAL_NETWORK`; Android 17 guidance says targets 36 and lower should omit it. A future
+target-37 migration must declare/request it before discovery or any LAN socket and fully support
+denial.
+
+`BIND_COMPANION_DEVICE_SERVICE` is not requested by Eko. It is a system-only binding permission
+placed on the exported `EkoCompanionDeviceService` manifest declaration so only Android can bind
+the presence service.
 
 Device-state prerequisite worth its own onboarding check: **CDM discovery requires device
 Location Services to be enabled** (system-level, distinct from app location permissions) —
@@ -426,13 +467,18 @@ with it off, the CDM picker finds nothing for both BLE and Wi-Fi filters. Preche
   (`REQUEST_INSTALL_PACKAGES`). The in-app updater is a v1.x nicety; v1.0 ships with a "new
   version available" notice + link.
 - **Install friction is an onboarding concern:** first-time sideloading requires the user to
-  allow "Install unknown apps" for their browser/file manager — the Mac-side pairing wizard
-  shows a QR link to a short install guide covering this, per Android version.
-- **targetSdk policy:** without Play's annual targetSdk ratchet, we control the pace of
-  adopting behavior changes. Still track current targetSdk closely (Android 15's redaction
-  applies regardless of targetSdk, so lagging buys little there) — but disruptive gates like
-  Android 17's `ACCESS_LOCAL_NETWORK` runtime permission can be adopted deliberately, with the
-  UX ready, instead of on a store deadline.
+  allow "Install unknown apps" for their browser/file manager. On Android 13+, notification
+  access can additionally require App info → overflow → **Allow restricted settings**. The
+  Mac-side wizard's QR-linked guide covers both, with screenshots per Android version and
+  installer.
+- **Developer verification:** per the July 2026 FAQ, direct GitHub/Obtainium sideloading is
+  outside the initial September 30, 2026 enforcement phase, but broader rollout begins in 2027.
+  Before that rollout, register the package name and release signing certificate in Android
+  Developer Console (full distribution if installs are offered broadly). This is a release-
+  operations gate and another reason the signing key cannot rotate casually.
+- **targetSdk policy:** v1 is pinned to API 36. Track Android 17/API 37 in CI, but adopt target 37
+  only together with the complete `ACCESS_LOCAL_NETWORK` permission/denial flow; never leave the
+  manifest in a half-migrated state.
 - **Crash/diagnostics telemetry stays opt-in and local-first** (export-a-file diagnostics
   before any network telemetry); sideload users self-select for privacy sensitivity.
 
@@ -442,6 +488,11 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
 
 - **Android identity key** lives in the **Android Keystore** (non-exportable), fed to the
   socket via a custom `KeyManager`; the self-signed cert is stored alongside as app data.
+  Peer pins, endpoints, pending/revoked pairing state, and the per-install `conn_epoch` live in a
+  small identity store outside the replaceable event DB. If the event DB must be recreated, its
+  pairing cursor rows are rehydrated from this store under a fresh generation, so known peers can
+  authenticate and receive an explicit generation transition. Cross-store pairing completion is
+  an idempotent pending-state workflow, not an assumed atomic transaction.
 - **Backup exclusion is mandatory:** with default Auto Backup, Google's cloud backup would
   upload app data — a restore onto another device would clone the identity and leak the
   outbox (full text of OTP messages). Ship `android:dataExtractionRules`/
@@ -452,9 +503,15 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
 - **Mac at-rest posture (v1):** the GRDB store lives in the app-sandbox container; rely on
   FileVault and document that plainly. Encrypting OTP payload columns at rest is a v1.x
   hardening option, not v1 scope.
-- **Deletion on unpair** (either side, propagated on next contact): the Mac deletes the
-  device's history, cursor, and pinned cert; the phone deletes the pairing's cursor/floor row,
-  CDM association, and any outbox rows no remaining pairing needs.
+- **Deletion on unpair:** while connected, send `unpair`, wait for an idempotent acknowledgement,
+  then delete. An offline local unpair immediately deletes history/cursors and blocks normal
+  traffic, but retains the peer fingerprint as a minimal `revoked_pending` tombstone. A
+  phone-side tombstone also retains the last Mac endpoint and makes bounded unpair-only dials;
+  a Mac-side tombstone waits for the phone's next connection. Exact-cert TLS is admitted only to
+  exchange `unpair`/ack and is then closed; no notification data is accepted or disclosed. The
+  phone removes only a CDM association that no remaining Mac pairing relies on. Delete the
+  tombstone after acknowledgement (or an explicit "forget without notifying" user action).
+  This is the only way "propagated on next contact" can work after local revocation.
 - **Data-handling statement (user-facing, shipped in /docs and both apps):** v1 is
   device-to-device only — zero third-party traffic, no accounts, no telemetry by default;
   retention is 48 h/2'000 events on the phone, 7 d/5'000 per device on the Mac (configurable);
@@ -476,17 +533,19 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
   `MenuBarExtra` is not usable: `.menu` style blocks the run loop and can't host live views;
   `.window` style still has no API for presentation state, the status item, or the panel window
   as of Xcode 26 (would force the MenuBarExtraAccess introspection hack), plus known
-  `SettingsLink`/`openSettings` breakage. Settings opens as a regular window (temporarily
-  flipping activation policy to `.regular` — a known, budgeted AppKit workaround).
+  `SettingsLink`/`openSettings` breakage. The panel subclass can become key for keyboard access;
+  settings uses a retained `NSWindowController` and activates the accessory app without changing
+  activation policy (avoiding a transient Dock icon and menu-bar flicker).
 - Minimum target **macOS 14 Sonoma** (13 is EOL; 14/15/26 receive security updates; macOS 27 is
   Apple-Silicon-only and ships fall 2026).
 - Launch at login via `SMAppService.mainApp.register()`, handling `.requiresApproval` with
   `SMAppService.openSystemSettingsLoginItems()`. Registration fails with error 78 outside
   /Applications — onboarding checks the app's location.
 - Fully event-driven for energy: Network.framework state/viability/path handlers +
-  `NWPathMonitor`; kernel TCP keepalive; **no polling timers**. App Nap is acceptable — incoming
-  socket data wakes the process. `NSBackgroundActivityScheduler` for DB pruning. Relative
-  timestamps render on panel-open, not on a ticking timer.
+  `NWPathMonitor`; kernel TCP keepalive; **no periodic network/UI-state polling**. Protocol
+  deadlines, one-shot clipboard/badge expiry tasks, and a visibility-scoped relative-time update
+  while the panel is open are allowed. App Nap is acceptable — incoming socket data wakes the
+  process. `NSBackgroundActivityScheduler` handles DB pruning.
 
 ### 6.2 Networking
 
@@ -495,11 +554,17 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
   this), bound to the wildcard address so DHCP/interface changes don't invalidate it.
 - TLS 1.3 minimum, mutual authentication:
   `sec_protocol_options_set_local_identity` (identity from the data-protection Keychain),
-  `set_peer_authentication_required(true)`, and a `sec_protocol_options_set_verify_block` that
-  anchors **exactly** the paired phones' pinned DER certs (`SecTrustSetAnchorCertificates` +
-  `AnchorCertificatesOnly`) — plus a pairing mode that accepts unknown certs into the TOFU flow.
-- Bonjour advertisement `_eko._tcp` with a TXT record carrying the cert fingerprint and
-  protocol version hint. Info.plist ships `NSLocalNetworkUsageDescription` and
+  `set_peer_authentication_required(true)`, and a verify block that copies the presented leaf DER
+  and compares it byte-for-byte with the peer pin. `SecTrustSetAnchorCertificates` may be used for
+  additional certificate-profile/date evaluation but **never** defines pin equality (an anchor
+  can otherwise validate descendants). Pairing mode accepts one unknown leaf only into the
+  bounded TOFU state machine. After TLS becomes ready, `hello.device_id` must equal the lowercase
+  64-hex SHA-256 of that same leaf. Endpoint/hostname validation is disabled because connections
+  normally use IP addresses and self-signed certs.
+- The raw TCP `NWListener` is started without an attached Bonjour service. A separate
+  `NetService`/DNS-SD publisher advertises `_eko._tcp` and the listener's actual bound port with a
+  TXT record carrying the cert fingerprint and protocol version hint. This keeps Bonjour policy
+  denial from changing listener readiness. Info.plist ships `NSLocalNetworkUsageDescription` and
   `NSBonjourServices` (macOS 15 requirement). Denial is a **first-class degraded state**, not an
   error: Bonjour ops stick in `.waiting` with `kDNSServiceErr_PolicyDenied` (-65570) /
   `unsatisfiedReason == .localNetworkDenied` — the UI shows "Local Network access is off —
@@ -522,17 +587,25 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
 ### 6.3 Storage and secrets
 
 - **GRDB 7** (`DatabasePool`, WAL). Tables: `device` (id = cert fingerprint, name, pinned cert
-  DER, cursor, last IP, capabilities, gap flag), `event` (device, seq, kind, notification key,
-  payload JSON, received_at), `notification` (materialized current state per key — what the UI
-  lists), `otp` (extracted codes linked to notifications). `ValueObservation` drives the SwiftUI
+  DER, current generation + `processed_through_seq`, last IP, capabilities), `event` (device,
+  generation, seq, kind, notification key,
+  payload JSON, received_at), `gap_span` (device, generation, seq/time bounds, reason,
+  confidence), `notification` (materialized current state per generation/key with
+  `last_state_seq` — what
+  the UI lists), and
+  `otp` (extracted codes linked to notifications). The materialized row includes normalized,
+  indexed `search_text` for bounded v1 search. `ValueObservation` drives the SwiftUI
   panel reactively. Unique `(device_id, outbox_gen, seq)` enforces idempotent ingest — the
   generation must be part of the key, because a sequence-space reset (§8) restarts the phone's
   seqs at low values that would otherwise collide with stored old-generation rows and be
   silently dropped as duplicates.
-- Mac identity: P-256 key generated with `SecKeyCreateRandomKey` into the **data-protection
-  keychain** (`kSecUseDataProtectionKeychain: true` on every call; the file-based keychain API
-  is deprecated and prompts); self-signed cert built with Apple's `swift-certificates`. Peer
-  (phone) certificates are public data → stored as DER in GRDB, not Keychain.
+- Mac identity: generate the P-256 key once with `SecKeyCreateRandomKey`, permanent,
+  non-synchronizable, non-exportable, and `ThisDeviceOnly` in the **data-protection keychain**
+  (`kSecUseDataProtectionKeychain: true` on every call). Build the self-signed certificate once
+  with Apple's `swift-certificates`, add it beside the matching private key, query the resulting
+  `SecIdentity`, and bridge that identity with `sec_identity_create` for Network.framework.
+  Restarts retrieve the same `SecIdentity`; regenerating only the certificate is forbidden because
+  changed DER changes `deviceId`. Peer certificates are public data and live in GRDB, not Keychain.
 - History retention: default 7 days / 5'000 notifications per device on the Mac (independent of
   the phone-side 48 h outbox), user-configurable; OTP clipboard handling in §10.
 
@@ -543,12 +616,16 @@ Notification bodies (including OTPs) are the payload — treat both stores as se
   prompt and to post (and break local-network TCC tracking); dev builds are Developer
   ID-signed too. Verify accessory-app delivery in the first spike (one forum thread claims
   `LSUIElement` suppresses notifications; evidence points to AppleScript applets, but confirm).
-- OTP notifications use a `UNNotificationCategory` with a **non-`.foreground`** "Copy code"
-  action: the delegate writes to `NSPasteboard` without activating the app. Note macOS shows
+- OTP notifications use a `UNNotificationCategory` with a **non-`.foreground`,
+  `.authenticationRequired`** "Copy code" action: the delegate resolves a stable device/key
+  lookup from `userInfo` and writes the current code to `NSPasteboard` without activating the app;
+  notification metadata never contains a second copy of the OTP. Note macOS shows
   banner action buttons on hover/Options; offer alert-style guidance in settings.
-- Notification identity = `(deviceId, notificationKey)`: re-posting with the same identifier
-  updates the banner in place (notification updates don't spam);
-  `removeDeliveredNotifications(withIdentifiers:)` retracts banners when the phone dismisses.
+- Notification identity = `(deviceId, notificationKey)`. A live `posted` event creates a native
+  notification. `updated` events update GRDB and the panel without assuming an already-delivered
+  banner can be mutated; an update that newly exposes an OTP may create one deduplicated OTP
+  notification. `removeDeliveredNotifications(withIdentifiers:)` retracts delivered banners when
+  the phone dismisses.
 - **Backlog is silent**: replayed events never post banners (KDE Connect's post-reconnect
   30-popup storm is a documented user-rage generator). Instead: one summary banner — "Pixel 8
   reconnected · 12 missed notifications, 1 code" — and the missed items land in the panel's
@@ -580,7 +657,8 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
 ### 7.2 Identity, discovery, pairing
 
 - **Identity is the certificate.** Each installation (phone and Mac) generates one long-lived
-  self-signed P-256 cert. `deviceId := SHA-256(cert DER)`, displayed truncated. Because the
+  self-signed P-256 cert. `deviceId := lowercaseHex(SHA-256(cert DER))` (exactly 64 ASCII hex
+  characters), displayed truncated. Because the
   pinned cert *is* the identity, expiry would brick a pairing: issue certs with a ~20-year
   validity window and treat any future rotation as a new identity (guided re-pair); the exact
   cert profile is settled in spike S3. Discovery
@@ -605,37 +683,54 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
 - **Pairing flow** (first connection, both sides in explicit "pairing mode"):
   1. Phone connects; TLS handshake with both sides presenting their self-signed certs
      (verify-block/TrustManager accept-unknown during pairing only).
-  2. Both sides re-exchange their full identity **inside** TLS and verify that any cleartext
+  2. The first application frame is always `hello`, with `mode="pair"`, the attempt id, and the
+     optional QR token proof; normal sessions use `mode="normal"`, and a tombstoned peer uses
+     `mode="unpair"`. The latter enters a restricted state that accepts only idempotent
+     `unpair`/`unpair_ack` before closing, with no welcome or sync frames. Both sides bind all later
+     pairing frames to that attempt, re-exchange their full identity **inside** TLS, and verify
+     that any cleartext
      claims (QR fingerprint, mDNS TXT) match the actual peer cert — mismatch aborts.
   3. **Commit-then-reveal short code** (a 32-bit SAS without a commitment is grindable by a
      live MITM who controls both relayed contributions — the classic ZRTP/Bluetooth-numeric-
-     comparison lesson): each side generates a random nonce, first sends
-     `SHA-256(nonce ‖ own cert DER)` as a commitment, and reveals the nonce only after
+     comparison lesson): the phone first generates a 128-bit `pair_attempt_id`, the Mac echoes
+     it, and each side generates a random nonce. Each first sends
+     `SHA-256("eko-pair-commit-v1" ‖ len(attemptId) ‖ attemptId ‖ len(cert) ‖ cert DER ‖ nonce)`
+     as a commitment, and reveals the nonce only after
      receiving the peer's commitment. Nonces are ≥ 128 bits from a CSPRNG; each side verifies
      the revealed nonce against the peer's commitment (aborting on mismatch) before displaying
      anything. Both screens then display the same **verification
-     code**: first 8 hex chars (uppercase) of
-     `SHA-256(sort(certA DER, certB DER) ‖ nonceA ‖ nonceB)`. With the commitment in place
+     code**: first 8 hex chars (uppercase) of SHA-256 over the domain string
+     `eko-pair-sas-v1`, the length-prefixed attempt id, and the length-prefixed encoding of
+     `sortByCert([(certA DER, nonceA), (certB DER, nonceB)])`. Sorting certificate+nonce tuples
+     keeps each nonce bound to its owner. With the commitment in place
      the attacker gets a single 2^-32 online guess; no timestamp enters the hash (it would
      add grinding surface, not entropy). QR flow compares the scanned one-time token instead
      (already second-factor-authenticated) and shows the code for reassurance only.
-  4. User confirms on **both** devices → certs pinned on both sides → normal session starts.
-  5. Phone then runs CDM `associate()` for this Mac (§1.1): profile-less (or watch-profile,
-     per spike S1/S5) `AssociationRequest` with a `BluetoothLeDeviceFilter` matching the Mac's
-     Eko BLE service UUID; the system consent dialog names the Mac. Prechecks: device
-     **Location Services enabled** (CDM discovery scans require it —
-     `LocationManager.isLocationEnabled()`, deep link if off). After the association
-     completes, run the **listener rebind kick** (§1.1 — trust is cached at bind time).
-     Fallback if BLE association proves unreliable (spike S1): associate with the current
-     Wi-Fi AP (`WifiDeviceFilter`) — still satisfies the redaction trust check (any
-     non-revoked association counts), sacrificing only Android 16 presence benefits. Further
-     documented fallbacks (sideload-only, so freely offered in the in-app guide): one-time
-     `adb shell appops set <pkg> RECEIVE_SENSITIVE_NOTIFICATIONS allow`, or disabling
+  4. Each endpoint durably records the negotiated `pair_attempt_id`, peer cert, transcript hash,
+     and `pending` state before showing confirmation. Confirm/result frames are idempotent and bound
+     to that attempt. Normal traffic starts only after both confirmations have been exchanged;
+     a disconnect resumes the pending attempt until its short expiry instead of leaving an
+     unrecoverable half-pair. In the phone's final transaction it creates the pairing row at the
+     current high-water and returns that `initial_cursor`; the Mac commits it with the confirmed
+     pairing so pre-pair history is neither requested nor disclosed. The final state is
+     `confirmed` on both endpoints.
+  5. After pairing, the phone ensures that at least one independent CDM trust association exists
+     (§1.1). If none exists, prefer a profile-less (or watch-profile, per S1/S5)
+     `AssociationRequest` with a `BluetoothLeDeviceFilter` matching this Mac's Eko BLE service;
+     precheck device Location Services. An existing trust association already unlocks OTPs for
+     every Mac, while an additional Mac-specific BLE association is optional for Android 16
+     presence/reliability. The fallback `WifiDeviceFilter` associates the current router/AP,
+     **not the Mac**, and cannot provide BLE presence. Persist association ids and pairing
+     dependencies separately, retain one while any Mac remains paired, and run the supported
+     listener rebind after every actual association mutation. Further documented fallbacks are
+     a one-time `adb shell appops set <pkg> RECEIVE_SENSITIVE_NOTIFICATIONS allow`, or disabling
      "Enhanced notifications".
 - **Unpair/re-pair:** pinned-cert mismatch after a reinstall is detected explicitly ("This
   phone's identity changed — re-pair required", with guided flow) instead of KDE Connect's
-  silent permanent failure. Unpairing revokes the pin on both sides, disassociates CDM
-  (followed by the rebind kick), and deletes the pairing's stored data per §5.6.
+  silent permanent failure. Connected unpair is acknowledged before deleting the pin; offline
+  unpair uses the restricted `revoked_pending` tombstone from §5.6. The phone deletes that
+  pairing's data immediately, but disassociates CDM only when the association has no remaining
+  pairing dependency (followed by the supported rebind sequence).
 - **Pairing/unpair frames** (`pair_request`, `pair_commit`, `pair_reveal`, `pair_result`,
   `unpair`) are part of the wire protocol; exact shapes are specified normatively in
   `/protocol/protocol.md` (M1 deliverable) with the fields implied by the flow above.
@@ -649,15 +744,21 @@ TLS 1.3 with pinned certs; there is no cleartext mode and no downgrade path.
 Framing: `[u32 length (big-endian)] [u8 frameType] [payload]`.
 `length` counts everything after itself (the frameType byte plus the payload).
 `frameType 0x01` = UTF-8 JSON (all v1 messages). `0x02` = binary (reserved: icons, later media).
-Max frame 1 MB in v1. Receivers must ignore unknown JSON fields and unknown `type`s within a
-negotiated version; breaking changes bump the version; optional features ride on `caps`.
+The exact maximum is 1,048,576 bytes including frame type. A receiver reads the four-byte prefix
+before allocating, rejects length 0 or an oversized length, then performs exact partial-stream
+reads. Invalid UTF-8, invalid JSON, duplicate required keys, out-of-range integers, or a message
+that fails its negotiated schema closes the session with a protocol error. Unknown JSON fields
+are ignored; unknown message types are ignored only when enabled by a mutually negotiated
+capability. Unknown frame types are skipped by length. Event extraction applies deterministic,
+UTF-8-safe field limits and records `truncated_fields`, so one notification can never block the
+ordered stream. Breaking changes bump the version; optional features ride on `caps`.
 
 All examples phone→Mac unless noted.
 
 **1. hello** — first frame after TLS:
 
 ```json
-{"type":"hello","proto_min":1,"proto_max":1,
+{"type":"hello","mode":"normal","proto_min":1,"proto_max":1,
  "device_id":"<sha256 cert fp>","device_name":"Pixel 8","os":"android","os_version":35,
  "caps":["notif","dismiss","otp_context"],
  "outbox_gen":"3f9c…","conn_epoch":17,"phone_time":1753351200000}
@@ -665,69 +766,101 @@ All examples phone→Mac unless noted.
 
 `device_id` **must** equal the fingerprint of the cert that authenticated this TLS session —
 enforced, both directions (§7.2). `outbox_gen` is a random UUID created together with the
-outbox DB — it changes exactly when the sequence space restarts (DB recreated, corruption
-recovery, restored backup). `conn_epoch` is a **per-install persistent** monotonic counter
-(a single counter shared across all pairings, stored in the outbox DB, incremented once per
-connection attempt) used for supersession; it must not reset on reboot. If the outbox DB is
-recreated the counter restarts with it — safe, because the simultaneous `outbox_gen` rotation
-already forces a protocol reset, and same-install supersession ties can only race within one
-DB's lifetime.
+event-store metadata — it changes exactly when the sequence space restarts (DB recreated,
+corruption recovery, restored backup). `conn_epoch` is a **per-install persistent** monotonic
+counter (a single counter shared across all pairings, stored in the identity store outside the
+event DB, incremented once per connection attempt) used for supersession; it must not reset on
+reboot or event-store recreation and is excluded from backup with the identity. Every message in
+a connection is scoped to the generation from its accepted hello. The Mac remembers retired
+generations for a paired identity and rejects a late hello from one of them.
 
 **2. welcome** (Mac→phone) — cursor authority:
 
 ```json
 {"type":"welcome","proto":1,"mac_name":"Lukas' MacBook Pro",
- "cursor":41022,"caps":["notif","dismiss","otp_context"]}
+ "outbox_gen":"3f9c…","cursor":39999,"caps":["notif","dismiss","otp_context"]}
 ```
 
-The Mac returns the highest sequence it has durably stored **in session order** for this
-device's current `outbox_gen`. Sequence holes are legal and semantically empty (coalescing and
-cap-drops delete rows, §9; events arrive in ascending order over TCP within a session, so a
-skipped seq carries no information) — the cursor advances past them; there is **no**
-contiguity requirement. The phone replays its outbox strictly `> cursor`. Two safety rails:
-if the Mac's stored generation differs from `outbox_gen`, it resets its cursor to 0 with an
-explicit gap marker (the sequence space restarted; old-generation history is kept on the Mac
-but namespaced — ingest is keyed `(device_id, outbox_gen, seq)`, §6.3, so replayed low seqs
-from the new space can't collide with stored rows); if `welcome.cursor` exceeds the phone's
-current max seq (clock-free detection of a restored/older DB with a stale generation match),
-the phone treats it as a protocol reset — re-hello with a freshly rotated `outbox_gen`.
-The phone's own per-pairing ack state (§9) is purely a pruning optimization; resume
-correctness derives solely from `welcome.cursor`.
+The Mac returns its durable `processed_through_seq` for this device's current `outbox_gen`: every
+position through that value is represented by either a committed event row or a committed gap
+marker. Sequence holes can exist because retention floors authorize deletion; they are meaningful
+only when accompanied by an explicit gap. Events arrive in ascending order over TCP within a
+session. Define
+`effective_floor := max(pairing.serve_from_seq, pairing.acked_seq + 1)`; the phone replays rows
+`seq >= max(welcome.cursor + 1, effective_floor)`. Three safety rails:
+if the Mac's stored generation differs from `outbox_gen`, it stores a local generation-transition
+marker and resets the new generation's cursor to 0 (generations are separate spaces, so this is
+not represented as a fabricated sequence gap; old-generation history is kept namespaced — ingest
+is keyed `(device_id, outbox_gen, seq)`, §6.3); if `welcome.cursor` exceeds the phone's
+durable `meta.last_assigned_seq` (never `MAX(outbox.seq)`, which regresses after pruning), the
+phone treats it as store rollback/corruption and executes the generation-reset journal defined in
+§9 before re-hello. A cursor ahead of the high-water is never silently clamped. If the
+Mac cursor is below `effective_floor - 1` (for example after restoring an older Mac DB), the
+phone reports the unavailable interval with reason `peer_cursor_regressed` or the retained
+`gap_span` reason, then resumes at the floor. `welcome.cursor` is the request authority; the
+phone's durable ACK/floor state is the availability authority.
 
 **3. backlog** — replay of missed events:
 
 ```json
-{"type":"backlog_start","from_seq":41023,"count":37,
- "gaps":[{"from_seq":39000,"to_seq":40100,"reason":"overflow"}]}
+{"type":"backlog_start","sync_id":"b871…","from_seq":41023,
+ "replay_to_seq":41059,"event_count":37}
 ```
 
-…`event` frames (identical shape to live)…
+…zero or more `backlog_gap` frames, then `event` frames (identical shape to live), then one or
+more bounded `active_chunk` frames…
 
 ```json
-{"type":"backlog_end","active":[{"key":"0|com.whatsapp|1|null|10123","h":"a1f09c22"}]}
+{"type":"backlog_gap","sync_id":"b871…","from_seq":40000,"to_seq":41022,
+ "reason":"retention_count"}
 ```
 
-`gaps` lists every span the phone knows it cannot replay (outbox overflow/expiry **or a
-capture stall**, §9) that overlaps the resume range — expressed explicitly per span, since a
-laggard pairing can have holes mid-stream, not only at the front. The Mac marks history
-incomplete for exactly those spans (honest UI, Discord invalid-session analogue). The `active`
+```json
+{"type":"active_chunk","sync_id":"b871…","index":0,"final":true,
+ "active":[{"key":"0|com.whatsapp|1|null|10123",
+            "h":"a1f09c22a1f09c22a1f09c22a1f09c22a1f09c22a1f09c22a1f09c22a1f09c22",
+            "state_seq":40987}]}
+```
+
+```json
+{"type":"backlog_end","sync_id":"b871…","state_seq":41059}
+```
+
+The phone reads `meta.last_assigned_seq`, matching backlog rows/gaps, and active state in one
+SQLite read transaction. That value is both `replay_to_seq` and `state_seq`. One outbound actor
+sends the bounded backlog, gap frames, and chunked snapshot before live rows `> state_seq`; no
+independent live sender may race it. Every sync frame carries `sync_id`. Gap frames list every
+unavailable span between the requested cursor and replay start, derived from persisted retention
+gaps or a regressed peer cursor. Adjacent spans with the same reason are compacted and frames are
+bounded, so neither a large active set nor long gap history can exceed the frame limit. The Mac
+transactionally stores each span and advances `processed_through_seq` across that authorized hole before
+ACKing; suspected listener gaps arrive as ordinary sequenced `capture_gap` events instead. The
+Mac marks history incomplete for exactly those spans (honest UI, Discord invalid-session
+analogue). The `active`
 snapshot lists currently-visible notification keys plus content hashes so the Mac can
 reconcile dismissals whose `removed` events were pruned, and fetch bodies it lacks via
 `fetch` (below). Concretely: any key the Mac holds as active that is absent from `active` is
-synthesized as a `removed` (`reconciled`), and any key whose stored `h` differs from the
-snapshot's is re-fetched. `h` is defined as the first 8 hex chars of SHA-256 over the canonical
+synthesized as a `removed` (`reconciled`) at the snapshot's global `state_seq`, and any key whose
+stored `h` differs from the snapshot's is re-fetched. Each active entry's `state_seq` is its
+`active_notification.last_seq`, so per-key stale-response checks do not confuse another key's
+newer global sequence with this key's state. `h` is the full 64-hex SHA-256 over the canonical
 serialization of the `n` object; the phone computes it and includes the same `h` on every
 `event` frame, so the Mac only ever stores and compares phone-computed hashes — no
 re-canonicalization on the Mac side. The canonical serialization is versioned with the
 protocol; if a phone update ever changes it, the worst case is a one-off round of spurious
 `fetch`es after reconnect, never wrong dedup.
 
+`flags.replayed` is per-session transport metadata, never part of the durable shared outbox
+payload: it is derived from being inside a backlog transaction (or overlaid while serializing for
+that peer). The same committed row can therefore be live for one Mac and replayed for another.
+
 **4. event** — live or replayed:
 
 ```json
 {"type":"event","seq":41060,"ev":"posted",
  "key":"0|com.google.android.apps.messaging|1|null|10123",
- "posted_at":1753351199000,"user":0,"h":"9c41d7e0",
+ "posted_at":1753351199000,"user":0,
+ "h":"9c41d7e09c41d7e09c41d7e09c41d7e09c41d7e09c41d7e09c41d7e09c41d7e0",
  "app":{"pkg":"com.google.android.apps.messaging","label":"Messages","category":"msg"},
  "n":{"title":"+41 79 xxx xx xx","text":"Ihr Bestätigungscode lautet 448 291","big_text":null,
       "sub_text":null,"info_text":null,"summary_text":null,"text_lines":null,
@@ -739,9 +872,11 @@ protocol; if a phone update ever changes it, the worst case is a one-off round o
 
 `ev` ∈ `posted | updated | removed | capture_gap`. Updates reuse the same `key` (upsert
 semantics everywhere). `removed` carries `remove_reason` (the Android `REASON_*` int + a
-`reconciled` marker for synthesized removals). `capture_gap` is emitted by the watchdog when
-it detects the listener was dead (payload: suspected dead interval) so the Mac can render the
-hole (§9). `user` is the Android user/profile id (§5.2). Keys are opaque strings — never
+`reconciled` marker for synthesized removals). `capture_gap` is emitted only with evidence and
+carries `confidence: suspected`, an approximate interval, and an evidence code such as
+`listener_disconnected`, `process_exit`, or `writer_overflow`; ordinary notification silence is
+not evidence. The Mac renders it as an uncertain interval, not a proven list of missing events
+(§9). `user` is the Android user/profile id (§5.2). Keys are opaque strings — never
 parsed (they embed uid and mutable auto-group segments). `seq` is present on every event
 except reconciled `fetch` responses (§6 below); `h` is null on `removed` and `capture_gap`
 events (no `n` object to hash).
@@ -752,37 +887,50 @@ events (no `n` object to hash).
 {"type":"ack","seq":41060}
 ```
 
-Phone deletes outbox rows `≤ seq` for this pairing (subject to other pairings' needs, §9).
-The Mac persists event + cursor **in one SQLite transaction** (at-least-once + idempotent drop
-of `seq ≤ cursor` = exactly-once effect). **Normative ordering rule: an ack for seq N may be
-sent only after the transaction persisting all events ≤ N (and the cursor) has committed** —
+The phone accepts an ack only when it is monotonic for this pairing and `seq` is no greater than
+the highest sequence this session has authorized with a sent event or gap span; otherwise it
+closes with a protocol error. After validation it advances `pairing.acked_seq`, then deletes
+rows no pairing needs (§9).
+The Mac persists each event or gap marker and advances `processed_through_seq` **in one SQLite
+transaction** (at-least-once + idempotent drop of already-processed positions = exactly-once
+effect). **Normative ordering rule: an ack for seq N may be sent only after every position ≤ N is
+covered by a committed event or explicit gap marker and that processed-through value has
+committed** —
 acks authorize irreversible deletion on the phone, so acking received-but-uncommitted events
 would lose data on a Mac crash.
 
 **6. control:** `ping`/`pong` (carry `phone_time` for skew display), `dismiss {"key": …}`
 (Mac→phone; confirmed by the resulting `removed` event, not by a synchronous reply),
-`fetch {"keys": […]}` (Mac→phone; answered with synthetic `event` frames carrying
-`flags.reconciled: true` and **no `seq`** — they don't consume sequence numbers or move the
-cursor), `error {"code": "superseded" | "incompatible" | "unpaired" | …}`, plus the pairing
-frames (§7.2). A phone that gets `error{unpaired}` in response to its hello treats it as a
-Mac-initiated unpair: it deletes that pairing's row and CDM association, releasing the outbox
-rows it was pinning (§5.6, §9) — this is the "applied on next contact" path.
+`fetch {"keys": […]}` (Mac→phone; answered from durable `active_notification` state with
+synthetic `event` or `fetch_missing` frames carrying `state_seq` and **no `seq`** — they don't
+consume sequence numbers or move the cursor). An existing result uses that row's `last_seq`; a
+missing result uses the `meta.last_assigned_seq` read atomically with the absence. The Mac
+ignores a fetch result whose `state_seq` is older than the latest sequenced state it has applied
+for that key. Controls also include
+`error {"code": "superseded" | "incompatible" | "unpaired" | …}` and the pairing/unpair frames
+(§7.2). A `revoked_pending` endpoint accepts only the authenticated `unpair` exchange, deletes
+its pairing row, removes only now-unused CDM associations, acknowledges, and closes. A
+phone-side tombstone may initiate this restricted exchange using its retained endpoint (§5.6,
+§9).
 
-**Liveness:** phone pings every 25 s (first ping jittered ±10 s); one missed pong (10 s)
-→ hard-close and reconnect. Mac closes sessions silent > 90 s. Kernel TCP keepalive
-(`enableKeepalive`, idle 30 s / interval 10 s / count 3) as belt-and-braces on the Mac.
+**Liveness:** while CPU and network scheduling are available, the phone targets a ping every
+25 s (first ping jittered ±10 s) and hard-closes after a 10 s pong deadline; the Mac targets a
+90 s silence timeout. Deep Doze can suspend all three timers and the socket, so these are
+awake-state targets, not wall-clock guarantees. On resumed execution each side immediately
+re-evaluates stale deadlines. Kernel TCP keepalive (`enableKeepalive`, idle 30 s / interval 10 s
+/ count 3) is belt-and-braces on the Mac.
 Reconnect backoff: full jitter, `delay = random(0, min(60 s, 1 s·2^attempt))`, attempt counter
 reset only after 60 s of stable connection; network-change callbacks and fresh discovery hits
-short-circuit the schedule immediately.
+short-circuit the schedule when Android delivers them.
 
-**Supersession:** the Mac keys live sessions by `device_id`; a new authenticated hello always
-supersedes — the old socket is closed with `error{superseded}` and everything still buffered
-from it is discarded. Frame filtering is **by connection** (frames other than hello carry no
-epoch); `conn_epoch` exists to break ties when two live authenticated hellos race — higher
-epoch wins, and since the counter is per-install persistent (never resets on reboot), a
-post-reboot reconnect always outranks the pre-reboot zombie.
+**Supersession:** the Mac keys live sessions by `device_id`; a new authenticated hello supersedes
+an existing session only when its persistent `conn_epoch` is strictly higher. Lower or equal
+epochs receive `error{superseded}` and close; the winning connection closes the old socket and
+discards its buffered frames. Frame filtering is by connection (later frames carry no epoch).
+Because the counter survives reboot and event-store recreation, a genuine reconnect outranks a
+pre-reboot zombie without relying on wall time.
 
-**Clocks:** ordering is strictly `(device_id, seq)`. `posted_at` is phone wall time,
+**Clocks:** ordering is strictly `(device_id, outbox_gen, seq)`. `posted_at` is phone wall time,
 display-only. Each side prunes by its **own** clock. Phone/Mac wall clocks are never compared
 for correctness (skew of minutes is normal); skew is surfaced in diagnostics only.
 
@@ -790,89 +938,142 @@ for correctness (skew of minutes is normal); skew is surfaced in diagnostics onl
 
 ## 9. Store-and-forward: the self-healing core
 
-**Design: one shared event log, per-pairing cursors.** Events are written **once** into a
-single per-device log (the `seq` is a per-device sequence, consumed by every pairing); each
-paired Mac gets its own row in a separate `pairing` table. This is the model D4 names; the
-`outbox` row carries **no** `pairing_id`.
+**Design: one transactional event store, per-pairing cursors.** Events are written **once** into
+a single per-device log (the `seq` is a per-device sequence, consumed by every pairing); each
+paired Mac gets its own row in a separate `pairing` table. The same transaction updates the
+materialized active-notification state. The `outbox` row carries **no** `pairing_id`.
 
 ```
-outbox(seq INTEGER PRIMARY KEY AUTOINCREMENT,   -- per-device sequence; monotonic, never reused
+meta(id INTEGER PRIMARY KEY CHECK (id = 1),
+     outbox_gen TEXT NOT NULL,
+     last_assigned_seq INTEGER NOT NULL)
+
+outbox(seq INTEGER PRIMARY KEY,                 -- allocated from meta.last_assigned_seq
        key TEXT NOT NULL, ev TEXT NOT NULL,
        payload TEXT NOT NULL,                    -- full structured JSON (versioned by proto)
-       content_hash TEXT,                        -- SHA-256[0..8) of the `n` object (event `h`)
+       content_hash TEXT,                        -- full SHA-256 of the `n` object (event `h`)
        created_wall INTEGER, created_elapsed INTEGER, created_boot TEXT)
 
 pairing(pairing_id TEXT PRIMARY KEY,             -- = paired Mac's device_id
-        acked_seq INTEGER NOT NULL DEFAULT 0,    -- last cumulative ack from this Mac
-        floor_seq INTEGER NOT NULL DEFAULT 0,    -- oldest seq this Mac can still be served
-        gap INTEGER NOT NULL DEFAULT 0)          -- this Mac has an unreportable hole below floor
+         acked_seq INTEGER NOT NULL DEFAULT 0,    -- last cumulative ack from this Mac
+         serve_from_seq INTEGER NOT NULL,         -- first seq this Mac may still be served
+         retention_age_ms INTEGER NOT NULL,
+         retention_count INTEGER NOT NULL)
+
+gap_span(pairing_id TEXT NOT NULL,
+         outbox_gen TEXT NOT NULL,
+         from_seq INTEGER NOT NULL,
+         to_seq INTEGER NOT NULL,
+         reason TEXT NOT NULL,
+         start_wall INTEGER, end_wall INTEGER,
+         confidence TEXT NOT NULL,
+         PRIMARY KEY(pairing_id, outbox_gen, from_seq, to_seq))
+
+active_notification(key TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    payload TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    last_seq INTEGER NOT NULL)
 ```
 
-One event row is written per NLS callback (single writer, WAL mode, **`synchronous=FULL`**,
-synchronous insert — durability before any send attempt; `synchronous=NORMAL` would let a WAL
-rollback after power loss regress `sqlite_sequence` and reuse a seq for different content,
-which the Mac would silently drop as a duplicate). The DB is created with a random `outbox_gen`
-UUID (sent in `hello`, §8) so a recreated/restored DB is detected as a sequence-space reset.
+NLS callbacks arrive on the service main thread and are handed off in order to one bounded writer
+actor; Room writes never block that thread. For each callback, one transaction increments
+`meta.last_assigned_seq`, inserts the outbox row, and upserts/deletes `active_notification` with
+the same seq. Only commit makes the event captured and eligible to send. Queue rejection or
+process death before commit is not claimed as captured. Queue rejection becomes a suspected
+capture-gap signal only if the process remains alive long enough to commit that diagnostic;
+even the evidence can be lost in a crash. The transport reads only committed rows.
 
-**Retention is virtual per pairing — physical deletion is global.** Caps are 48 h and 2'000
-events, applied *per pairing* against its `floor_seq` (both configurable, and can differ
-between Macs). When a lagging pairing exceeds its cap, its `floor_seq` advances and its `gap`
-is set — **no row is physically deleted for that.** A row is physically removed only when it
-is below **every** current pairing's `floor_seq` (i.e. every Mac has either acked or floored
-past it) **or** older than the *largest* age cap configured across current pairings — physical
-expiry must honor the most generous pairing's retention, so with differing caps the effective
-global bound is the max, not the 48 h default. This makes the multi-Mac case correct: a
-slow Mac's overflow can never drop rows a faster Mac still needs, and the fast Mac's history
-stays complete. On unpair (either side, applied on next contact) the pairing row is deleted,
-which also releases rows it was pinning.
+The separate identity store owns peer pins/endpoints, pairing lifecycle, retired generations,
+and `conn_epoch`; the event DB owns replay cursor/floor rows rehydrated from those pairings. The
+DB uses WAL and explicitly sets **`PRAGMA synchronous=FULL` on every writable connection at
+open**, then reads it back. If the effective value differs, Eko blocks capture/transport and
+reports an unhealthy store rather than advertising the durability guarantee; Room's WAL mode
+alone does not imply FULL. `outbox_gen` is created with the metadata row and sent in
+`hello`, so a recreated/restored DB is detected as a sequence-space reset. FULL is necessary for
+the contract but not treated as proof against storage-controller failure; physical power-cut
+testing is the release gate (§15).
 
-**Coalescing is content-based, never event-kind-based.** Android has no "update" callback —
-a re-post of an existing key arrives as `onNotificationPosted`, so a posted/updated
-distinction is *synthesized* and cannot be trusted to protect OTPs (a "resend code" into an
-active conversation looks like an `updated`). Rule: two consecutive same-key events
-(consecutive *for that key* — other keys may interleave) may be
-coalesced (keep latest) **only if their `content_hash` values are equal** — i.e. the visible
-text/messages are identical and they differ only in progress/chronometer/ranking noise.
-Events whose extracted content differs are **never** coalesced, so both codes in a
-resend-code flow survive. Coalescing only ever collapses rows above every pairing's
-`floor_seq`+in-flight point (so it can't punch holes a mid-stream pairing still needs).
+**Generation reset is a journaled replacement, never relabeling.** Before discarding an
+untrusted or rolled-back event DB, the identity store durably records `reset_pending`, retires the
+old generation, allocates a fresh generation, and increments `conn_epoch`. Eko then creates an
+empty event DB (`last_assigned_seq = 0`, empty outbox/active state), rehydrates one pairing row per
+confirmed peer with `acked_seq = 0` and `serve_from_seq = 1`, closes old-generation sockets, and
+marks the journal complete. Startup idempotently finishes an interrupted reset. Old rows are
+never copied or assigned the new generation. The Mac stores a generation-transition history
+marker, resets processed-through and materialized current state for the new generation, and never
+compares per-key sequence values across generations; old history remains namespaced and readable.
+
+**Retention is virtual per pairing; physical deletion is global.** A new pairing is initialized
+in the pairing-completion transaction with `acked_seq = meta.last_assigned_seq` and
+`serve_from_seq = meta.last_assigned_seq + 1`, so it can never receive pre-pair history. Default
+caps are 48 h and 2'000 events and can differ between Macs. Applying a cap computes a new
+`serve_from_seq`. If it skips any range greater than `acked_seq`, insert/merge a `gap_span` for
+exactly that range and advance the floor in the same transaction before deleting anything.
+
+A row can be physically deleted exactly when no pairing still needs it:
+
+```sql
+NOT EXISTS (
+  SELECT 1 FROM pairing p
+  WHERE outbox.seq > p.acked_seq
+    AND outbox.seq >= p.serve_from_seq
+)
+```
+
+This one rule covers ACK pruning, per-pairing count/age caps, and unpair. There is no separate
+global age-delete shortcut. A slow Mac's overflow cannot delete rows another Mac still needs,
+and every irreversible deletion is preceded transactionally by either an ACK or an explicit
+gap for each affected pairing. Gap spans remain queryable until that pairing has received them
+and advanced beyond them.
+
+**No event coalescing in v1.** Android has no distinct update callback: a re-post of an existing
+key arrives as `onNotificationPosted`, so Eko may label it `updated` by consulting durable active
+state, but one committed outbox row remains for every callback the writer successfully commits.
+This keeps the capture contract, multi-peer replay, OTP resend behavior, and randomized
+reference model aligned.
 
 **Expiry uses a boot-aware clock.** `created_elapsed` (from `elapsedRealtime()`) resets to
 zero every boot, so it is paired with `created_boot` (a per-boot id); rows from prior boots
 expire by `created_wall` with a monotonic clamp. Ordering never depends on either — it is
-strictly `(device_id, seq)` — so expiry is a soft bound only.
+strictly `(device_id, outbox_gen, seq)` — so expiry is a soft bound only.
 
-**Capture gaps** (listener dead → events never captured, so no rows and no seq holes exist)
-are surfaced by a watchdog-emitted `capture_gap` event (§8) written into the log with the
-suspected dead interval; the Mac renders it exactly like an overflow gap. This is what makes
-the §12 "NLS silently stuck" and process-kill rows honestly *surfaced* rather than silent.
+**Capture gaps** are inherently uncertain: the OS provides no history of posted-then-dismissed
+notifications, and notification silence is normal. Eko emits a `capture_gap` row only when it
+has evidence such as `onListenerDisconnected`, a process-exit record spanning the next start,
+or writer-queue rejection. It records an approximate interval, evidence code, and
+`confidence=suspected`; reconciliation can narrow the active-state discrepancy but cannot prove
+which transient events were missed. Eko never claims every listener-dead interval is detected.
 
 **Why this recovers every scenario:**
 
 | Scenario | Recovery |
 |---|---|
-| Wi-Fi blip / Mac asleep | Events accumulate in outbox; reconnect → `welcome.cursor` → replay of captured events |
-| Phone process killed / OEM force-stop | Captured rows are durable; on rebind, reconciliation replays still-active notifications and emits a `capture_gap` for the dead window; nothing captured is lost, the uncaptured window is surfaced |
+| Wi-Fi blip / Mac asleep | Events accumulate in outbox; reconnect → `welcome.cursor` → replay of committed events |
+| Phone process killed / OEM force-stop | Committed rows are durable; on rebind, reconciliation recovers still-active notifications and emits a suspected `capture_gap` only when process/listener evidence bounds an uncertain interval |
 | Mac app quit / Mac rebooted | Mac's cursor is in GRDB; on next hello it resumes exactly where it stopped |
 | Both offline for a week | Replay of retained window + per-span `gaps` + active-snapshot reconciliation; UI marks the holes honestly |
-| Duplicate delivery (ack lost) | Mac drops `seq ≤ cursor` idempotently (unique `(device_id, seq)`) |
-| Phone reboot | `conn_epoch` is persistent (supersession holds); `seq`/`sqlite_sequence` continue; capture gap between reboot and first unlock is surfaced |
-| Restored/older outbox DB | `outbox_gen` mismatch (or `cursor` > max seq) → protocol reset with an explicit gap, never silent duplicate-drop |
+| Duplicate delivery (ack lost) | Mac drops positions `≤ processed_through_seq` idempotently (unique `(device_id, outbox_gen, seq)`) |
+| Phone reboot | `conn_epoch` and `last_assigned_seq` persist; post-unlock reconciliation resumes, with a suspected gap only when lifecycle evidence bounds one |
+| Restored/older outbox DB | `outbox_gen` mismatch (or `cursor` > durable `last_assigned_seq`) → journaled generation reset with an explicit transition marker, never silent duplicate-drop |
 | Phone clock jumps | Ordering is seq-based; expiry is boot-aware and soft |
 
 The identical resume logic later heals Internet-transport gaps (§13) — it is written strictly
 transport-agnostically.
 
-> **Guarantee, stated precisely:** Eko loses **zero captured events**. Windows where the
-> listener itself was dead (OS-level capture gaps) cannot be recovered by anyone, but they are
-> bounded, detected, and surfaced with the same gap UI — never silently dropped.
+> **Guarantee, stated precisely:** Eko loses **zero events whose event-store transaction
+> committed**, until an ACK or an explicitly reported retention floor authorizes deletion.
+> Inputs queued but not committed and events never delivered by the OS are outside that
+> guarantee. Eko surfaces suspected capture gaps when evidence exists, but does not claim that
+> ordinary silence can prove or bound every missed-notification interval.
 
 ---
 
 ## 10. OTP / 2FA code extraction
 
 **Where:** on the **Mac** (D7), from the structured per-extra payload (never a flattened
-string). The phone forwards full text regardless (mirroring is the product) plus package
+string). The phone forwards full text within the protocol's documented per-field/event limits,
+marks every deterministic truncation, and includes package
 context, which sets the prior (default SMS app / email clients → high; chat/social → lower;
 apps on the user's ignore list → never).
 
@@ -927,7 +1128,7 @@ before Tier 2 runs.
 (CHF amounts, apostrophe thousands, Bestätigungscode, mTAN), shared by Swift tests and (for the
 phone-side redaction detector) Kotlin tests. Because a soak test comparing only *final* state
 would miss an OTP lost to bad coalescing, the corpus includes intermediate-update sequences and
-the M1 soak asserts against every captured event, not just the end state.
+the M1 soak asserts against every committed event, not just the end state.
 
 **Clipboard UX (macOS):**
 
@@ -983,7 +1184,12 @@ the M1 soak asserts against every captured event, not just the end state.
 ```
 
 - Grouping: chronological by default; "group by device" toggle. Filter chips: All / Codes /
-  per-device. Search is local (GRDB FTS5 later).
+  per-device. Search is local in v1 through a normalized, indexed `search_text` column and a
+  parameterized `LIKE` query, bounded by the 5'000-row/device retention cap. FTS5 is a v1.x
+  optimization, not a deferred product requirement.
+- Gap rows distinguish definitive retention spans ("History unavailable") from suspected
+  capture intervals ("Phone may have missed notifications"). Suspected intervals show their
+  evidence/time bounds but never invent a missing-event count.
 - Row actions: Copy text, Copy code (when extracted), Dismiss on phone, Mute this app (per
   device), star/keep. **Mac-side mute is display/banner-only** (the event is still received,
   stored, and counted) — it never filters the wire stream, so it can't introduce per-pairing
@@ -999,7 +1205,7 @@ the M1 soak asserts against every captured event, not just the end state.
   scripts.
 - Empty/degraded states are first-class: "waiting for phone", "Local Network access off —
   discovery disabled (direct connections still work)", "notification access disabled on phone",
-  "forwarding paused on phone (battery manager?)" — each with a fix-it link into §11.3's
+  "phone disconnected (idle, stopped, or offline)" — each with a fix-it link into §11.3's
   companion states.
 
 **Settings window** (regular window):
@@ -1012,7 +1218,9 @@ the M1 soak asserts against every captured event, not just the end state.
 - **General:** launch at login, history retention, port override, keyboard shortcut for
   panel/latest code (off by default; when enabled, defaults to `⌃⇧⌘V` — **not** `⌥⌘V`, which
   is Finder's "Move item from Clipboard" — and warns if the chosen chord collides with a
-  known system binding), locale (English/German), accessibility options.
+  known system binding), accessibility options. Localization uses String Catalogs and macOS's
+  per-app language setting; formatting always follows the user's current region. Eko does not
+  maintain a second runtime locale selector.
 - **Advanced/Diagnostics:** live connection log, protocol/skew info, export diagnostics.
 
 ### 11.2 Mac — pairing wizard
@@ -1021,7 +1229,8 @@ the M1 soak asserts against every captured event, not just the end state.
 2. Shows QR (host, port, fingerprint, one-time token) + a manual host:port line.
 3. On incoming pairing: full-screen sheet with device name + **verification code**, Confirm /
    Reject. (QR flow: code shown for reassurance, pre-verified.)
-4. Success state explains what happens next on the phone (CDM dialog, notification access).
+4. Success state explains what happens next on the phone (CDM dialog if no trust association
+   exists, restricted-settings help when applicable, then notification access).
 
 ### 11.3 Android app
 
@@ -1031,23 +1240,27 @@ Single-activity Compose app; the phone UI is mostly setup + health, not daily us
   outbox depth ("12 queued for MacBook"), last sync; global toggle "Forwarding on/off".
 - **Onboarding checklist** (re-entrant; each step shows live status and deep-links; the
   sideload install itself is covered by the Mac wizard's QR-linked guide, §5.5):
-  1. Pair with your Mac (scan QR / pick discovered Mac → verification code).
-  2. System pairing dialog (CDM associate; explains why: "unlocks 2FA codes + reliability").
-     Prechecks Location Services on (CDM discovery needs it) and runs the listener rebind kick
-     right after the association so redaction lifts immediately (§1.1).
-  3. Allow notification access (deep-link to the app's row).
-  4. Allow notifications (POST_NOTIFICATIONS, for the persistent status notification).
-  5. *Optional "maximum reliability":* battery-optimization exemption dialog
+  1. Refuse setup if Eko is running inside a managed profile; direct the user to the personal
+     profile install.
+  2. Pair with your Mac (scan QR / pick discovered Mac → verification code).
+  3. Ensure CDM trust. Show the system association dialog only when no usable association
+     exists; precheck Location Services and run the supported rebind after any mutation. Offer
+     an additional BLE-presence association as optional Android 16 reliability mode.
+  4. *Conditional Android 13+ sideload help:* App info → overflow → Allow restricted settings.
+  5. Allow notification access (deep-link to the app's row).
+  6. Allow notifications (recommended for visible FGS status; forwarding can run if denied).
+  7. *Optional "maximum reliability":* battery-optimization exemption dialog
      (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, §5.3.7).
-  6. *Conditional:* manufacturer reliability steps (Samsung/Xiaomi/Huawei/OnePlus…), only the
+  8. *Conditional:* manufacturer reliability steps (Samsung/Xiaomi/Huawei/OnePlus…), only the
      detected brand's steps, with screenshots.
-  7. Send test notification → confirmation from the Mac (round-trip proof).
+  9. Send test notification → confirmation from the Mac (round-trip proof).
 - **Apps:** per-app forwarding rules (default: all except ongoing/media; system apps curated),
   per-app "contains OTPs" hint toggle. Rules and labels are keyed on `(package, user)` so a
   work-profile app is distinct from its personal twin (§5.2).
-- **Health/Diagnostics:** NLS bound? last posted vs last forwarded timestamps (stall
-  detector verdict), redaction self-check result, CDM association state per Mac, battery
-  optimization state, connection log, "run repair" (rebind kick).
+- **Health/Diagnostics:** NLS access/bind transitions, last callback/commit/forward timestamps
+  (facts, not proof of a stall), writer queue depth/overflow, recent process-exit reason,
+  app-scoped CDM associations and presence state, redaction self-check, battery-optimization
+  state, connection log, and "run repair" (supported unbind/rebind sequence).
 - Persistent FGS notification: minimal ("Connected to 2 Macs"), with Pause action; its channel
   set to low importance; explains itself if the user long-presses.
 
@@ -1057,20 +1270,22 @@ Single-activity Compose app; the phone UI is mostly setup + health, not daily us
 
 | Failure | Detection | Recovery | Data loss |
 |---|---|---|---|
-| Wi-Fi drop (phone) | Missed pong ≤ 35 s; `NetworkCallback` | Backoff dial + discovery on network-regain; replay from cursor | None |
-| Mac sleeps | Phone: missed pong; Mac: sockets die on sleep | Phone backoff loop; Mac re-adverts Bonjour on wake (`NWPathMonitor`), resets stale sessions; optional Wake-on-Demand via Bonjour sleep proxy | None |
-| Phone process killed / OEM force-stop | FGS gone; on rebind, `capture_gap` emitted | Plain kill: system rebinds NLS (~10 s), boot/connectivity receivers restart FGS. Force-stop: no rebind until user relaunches — stall detector escalates to OEM guidance | Captured events: none. Notifications posted-and-dismissed while dead: unrecoverable except still-active ones (reconciliation) — **surfaced as gap** |
-| NLS silently stuck | Watchdog: no posts while screen active; access granted but never connected | `requestRebind` → component toggle → user toggle card; `capture_gap` for the dead window | Events during dead window unrecoverable (OS-level) — surfaced as gap |
+| Wi-Fi drop (phone) | `NetworkCallback` or heartbeat timeout while CPU/network run; no hard Doze bound | Backoff dial + discovery on network-regain/wake; replay from cursor | Committed events: none |
+| Mac sleeps | Phone observes timeout when scheduled; Mac sockets close/wake | Phone backoff loop; Mac re-advertises Bonjour on wake (`NWPathMonitor`) and resets stale sessions | Committed events: none |
+| Phone process killed / Settings force-stop / OEM kill | Mac disconnect; next start may expose `ApplicationExitInfo`; listener callbacks provide partial evidence | Ordinary kill: system normally rebinds NLS; Settings force-stop needs user interaction; OEM guidance only from concrete evidence | Committed events: none. Uncommitted or never-delivered events are unrecoverable; show a suspected gap only when evidence bounds one |
+| NLS disconnected or apparently unhealthy | `onListenerDisconnected`, or access granted but no connect after process-start grace period; notification silence alone proves nothing | If connected: `requestUnbind()` → await disconnect → `requestRebind`; if disconnected: `requestRebind`; finally user toggle card | Still-active state reconciles; transient uncaptured events are unknowable, with suspected gap only from evidence |
 | Mac app quit / crash | Phone can't connect | GRDB cursor persists; ack-only-after-commit + single event+cursor txn; replay on next launch | None |
-| Phone reboot | — | `BOOT_COMPLETED` restarts FGS; NLS re-bound by system post-unlock; `seq` and persistent `conn_epoch` continue | Captured: none. Reboot→first-unlock capture gap surfaced |
+| Mac DB restored/regressed | `welcome.cursor < effective_floor - 1` for the same generation | Send explicit `peer_cursor_regressed` gap, advance transactionally, then resume at the phone's available floor | Previously ACKed/deleted history is explicitly unavailable |
+| Phone reboot | Boot/process lifecycle evidence | `BOOT_COMPLETED` requests FGS restart; NLS rebinds post-unlock; `last_assigned_seq` and `conn_epoch` continue | Committed events: none; pre-unlock uncertainty is marked suspected, not asserted loss |
 | App updated (either side) | Binding dropped / sockets die | `MY_PACKAGE_REPLACED` receiver; version negotiation in hello; forward-only DB migration | None |
 | IP changes (either side) | Connect failures | Discovery + last-known-IP refresh; Mac listener on wildcard | None |
-| Outbox overflow / long absence | Per-pairing `floor_seq` cap or 48 h age | `floor` advances, that pairing's `gap` set; per-span `gaps` + active-snapshot reconciliation; rows only physically dropped when below every pairing's floor | Bounded, explicit |
-| Restored/older phone DB | `outbox_gen` mismatch or `cursor` > max seq | Protocol reset with explicit gap; fresh generation | Bounded, explicit (never silent) |
+| Outbox overflow / long absence | Per-pairing age/count policy advances `serve_from_seq` | Transactionally insert exact `gap_span`, advance floor, then prune only rows no pairing needs; active snapshot reconciles current state | Bounded, explicit |
+| Restored/older phone DB | `outbox_gen` mismatch or `cursor` > durable `last_assigned_seq` | Protocol reset with explicit gap; fresh generation | Bounded, explicit (never silent) |
 | Duplicate events (ack lost) | `seq ≤ cursor` | Idempotent drop (unique constraint) | None |
 | Zombie connection shadows new one | New authenticated hello, same device_id | Supersession by connection; persistent `conn_epoch` breaks live-hello ties | None |
 | Pinned-cert mismatch (reinstall) | TLS verify fails | Explicit "identity changed — re-pair" flow both sides | None (requires user action) |
-| CDM association revoked | Redaction self-check trips; CDM callback | Repair card + re-associate + rebind kick (trust is bind-time cached, §1.1) | OTP text redacted until fixed |
+| CDM trust association revoked | Association inventory/presence callback; redaction self-check | Keep/recreate at least one association and run supported rebind (trust is bind-time cached, §1.1) | OTP text redacted until fixed |
+| Task Manager Stop | No immediate app callback; Mac sees disconnect; next start may report `REASON_USER_REQUESTED` | Persist paused forwarding on that next start, explain status, and require explicit in-app Resume | Committed events survive; uncaptured interval is uncertain |
 | macOS Local Network denied | `.waiting` + `kDNSServiceErr_PolicyDenied` | Degraded-state UI; direct-IP/QR path unaffected | None (Mac-initiated discovery only) |
 | macOS Bluetooth denied | `CBManager` state | Wi-Fi-AP CDM association fallback; mirroring unaffected | None (presence benefits only) |
 | Phone DND active | `interruptionFilter` metadata | Mirror silently to panel, no banner (configurable) | None (intentional) |
@@ -1136,14 +1351,16 @@ feature work.
 | # | Spike / risk | Question | Fallback if it fails |
 |---|---|---|---|
 | S1 | **CDM association against a Mac BLE peripheral** (Pixel + Samsung + Xiaomi, Android 14/15/16) | Does profile-less `associate()` with a `BluetoothLeDeviceFilter` on a CoreBluetooth advertisement work despite macOS's rotating BLE address? Does presence tracking hold? | Wi-Fi-AP association (redaction trust still granted; lose Android 16 presence-gated Doze exemption) |
-| S2 | **Redaction trust in practice** on Android 15/16 retail builds (incl. OEM skins), **testing both orderings** (associate-then-bind and bind-then-associate) | Does any non-revoked association lift OTP redaction per the AOSP check — and, since trust is cached at listener-bind time, does the rebind kick clear it when associating after the listener is already bound? Redacted SBN delivered-with-placeholder (confirmed in source) or withheld? | Rebind kick after every associate; onboarding adds "disable Enhanced notifications" / adb appops path; feature marked degraded on affected devices |
+| S2 | **Redaction trust in practice** on Android 15/16 retail builds (incl. OEM skins), **testing both orderings** (associate-then-bind and bind-then-associate) | Does any non-revoked association lift OTP redaction per the AOSP check — and, since trust is cached at listener-bind time, does supported `requestUnbind` → disconnect → `requestRebind` refresh it after association? Redacted SBN delivered-with-placeholder or withheld? | Supported rebind after association mutations; onboarding adds "disable Enhanced notifications" / adb appops path; feature marked degraded on affected devices |
 | S3 | **TLS interop** Conscrypt (Android 8–16, incl. the bundled provider on API 26–28) ↔ Network.framework (macOS 14–26), self-signed P-256, both directions | TLS 1.3 handshake quirks (2025-era reports of self-signed peer failures on OS 26)? Does the bundled Conscrypt provider give 1.3 on API < 29? | Adjust cert profile (validity, EKU); worst case pin raw public keys / raise minSdk to 29 |
 | S4 | **UNUserNotificationCenter from an `LSUIElement` app** (signed, /Applications); also confirm `NSPasteboard.changeCount` polling is exempt from macOS 26 read alerts | Prompts and banners delivered? Copy-action fires without activation? Auto-clear polling silent? | Fall back to custom notification windows (own NSPanel toasts); drop auto-clear if changeCount reads alert |
 | S5 | **Watch-profile CDM as the stronger alternative** (part of S1's device matrix) | Does `DEVICE_PROFILE_WATCH` association grant `RECEIVE_SENSITIVE_NOTIFICATIONS` via the `COMPANION_DEVICE_WATCH` role on retail builds, and is its consent dialog acceptable UX for "a Mac"? (No store-review concern — sideload-only.) | Stay profile-less (sufficient per the AOSP trust check if S2 passes) |
 | S6 | Keychain access groups for Developer ID + sandbox | Does the data-protection keychain identity flow work without a provisioning-profile dance? | Store identity in an encrypted file inside the sandbox container |
-| S7 | Sideload onboarding friction | Do target users complete install-unknown-apps + notification access + CDM without dropping off? Test the guide with 2–3 non-technical users | Simplify: Obtainium-first instructions, more screenshots, Mac wizard hand-holding per step |
-| S8 | OEM killers vs. stall detector | Does the post-vs-forward gap heuristic yield actionable prompts without false alarms? | Tune thresholds in beta telemetry (opt-in diagnostics only) |
-| S9 | **Eko's own battery cost** — 24 h Battery Historian / `BatteryStats` soak, Pixel + one OEM (M3 gate) | Is attributed drain under the < 2 %/day budget with the 25 s heartbeat + optional BLE presence? | Relax heartbeat to ~60 s screen-off/Doze-aware; keep BLE presence opt-in |
+| S7 | Sideload onboarding friction | Do target users complete install-unknown-apps, Android 13 restricted-settings enablement, notification access, and CDM without dropping off? Test browser, GitHub, and Obtainium installs with 2–3 non-technical users | Obtainium-first instructions, installer-specific screenshots, Mac wizard hand-holding per step |
+| S8 | OEM lifecycle evidence vs. false alarms | Do disconnect callbacks, process-exit reasons, FGS denials, and committed-backlog growth yield actionable prompts without treating normal notification silence as failure? | Show neutral diagnostics instead of asserting an OEM kill; tune only from opt-in beta diagnostics |
+| S9 | **Eko's own battery cost** — 24 h Battery Historian / `BatteryStats` soak, Pixel + one OEM (M3 gate) | Is attributed drain under the < 2 %/day budget with awake-state 25 s heartbeat targets and optional BLE presence? | Relax heartbeat while screen-off/idle; explain latency tradeoff; keep BLE presence opt-in |
+| S10 | **SQLite/Room durability contract** | On every supported API, is the effective writer connection WAL + `synchronous=FULL`, does `last_assigned_seq` never regress under process/storage fault injection, and do committed rows survive abrupt physical power loss? | Own/configure the single write connection directly or weaken the published guarantee; process kill/emulator shutdown alone cannot pass this spike |
+| S11 | **Managed-profile behavior** | With TestDPC and a physical enterprise enrollment, is an in-profile NLS ignored, when does a personal-profile listener receive work notifications, and which labels/icons are inaccessible? | Refuse in-profile setup; call work capture best effort and use package-name fallback |
 | R1 | Google tightens NLS or CDM trust further (they've moved yearly: 13 filters → 15 redaction → 16 presence-gating) | — | The outbox/protocol layer is unaffected; worst case the OTP feature degrades to explicitly-user-enabled paths. Track each Android beta. |
 | R2 | macOS pasteboard-privacy expansion breaks clipboard flows | — | We only *write*; ConcealedType + no-read design already conforms |
 
@@ -1154,22 +1371,27 @@ feature work.
 ### Milestones
 
 - **M0 — Spikes (≈2 weeks):** S1–S4 as tiny throwaway apps. Go/no-go on the CDM approach.
-- **M1 — Protocol core (≈3 weeks):** `/protocol` spec + test vectors (incl. pairing/unpair
-  frames, `fetch`, `capture_gap`); Android capture→outbox→TLS client; Mac
-  listener→session→GRDB; commit-then-reveal pairing; resume/ack/supersession complete;
-  `outbox_gen`/generation-reset handling. Exit criterion: pull the Wi-Fi plug mid-stream
-  1'000 times **plus** kill/restore the phone DB and force multi-Mac cap overflow in a soak
-  test — zero loss of captured events, no duplicate rows, every gap correctly reported, assert
-  against **every captured event including intermediate updates** (not just final state).
+- **M1 — Protocol core (≈3 weeks):** normative `/protocol` spec + test vectors (including
+  pending pairing, revoked tombstones, `state_seq` fetches, invalid ACKs, retention gaps, and
+  `capture_gap`); Android callback→transactional event store→TLS client; Mac
+  listener→session→GRDB; resume/ack/supersession and generation reset complete. Exit criterion:
+  randomized reference-model tests plus 1'000 scripted disconnects, phone generation reset, Mac
+  cursor regression, stale fetch, and multi-Mac cap-overflow cycles — zero loss of **committed**
+  events, no duplicate rows, every retention gap correct, and every intermediate committed
+  update asserted. Room migration and
+  effective WAL/`synchronous=FULL` checks pass on all emulator API levels; physical power-loss
+  survival remains an M3 release gate.
 - **M2 — Product (≈4 weeks):** menubar panel + banners + copy actions; OTP extractor + corpus;
-  Android onboarding checklist + OEM guide + QR pairing; dismissal sync; work-profile handling;
+  Android onboarding checklist (including restricted settings) + OEM guide + QR pairing;
+  dismissal sync; personal/work-profile handling;
   DND parity; **accessibility (keyboard/VoiceOver/non-color state)**; localization (en + de);
   multi-device polish.
-- **M3 — Hardening/beta (≈3 weeks):** watchdogs, stall detection, diagnostics, battery-drain
-  soak vs the < 2 %/day budget (S9), backup-exclusion + at-rest posture verification, notarized
-  builds, signed-APK beta channel (GitHub pre-releases via Obtainium), dogfood across
+- **M3 — Hardening/beta (≈3 weeks):** lifecycle health/rebind, diagnostics, battery-drain soak
+  vs the < 2 %/day budget (S9), on-prem network chaos soak, physical storage-fault/power-loss
+  gate (S10), backup-exclusion + at-rest posture verification, notarized builds, signed-APK beta
+  channel, Android Developer Console package/certificate registration, and dogfood across
   Pixel/Samsung/Xiaomi + macOS 14/15/26.
-- **v1.0 release**, then: v1.x (Bonjour sleep-proxy wake, FTS search, inline reply via
+- **v1.0 release**, then: v1.x (Bonjour sleep-proxy wake, FTS5 search optimization, inline reply via
   `RemoteInput`), v2 (Internet transport), v3 (screen sharing) per §13.
 
 ### Repository layout (monorepo)
@@ -1191,21 +1413,40 @@ manual matrix items (§5.6).
 ### Testing strategy
 
 - **Protocol conformance:** both implementations run the same `/protocol/test-vectors` (golden
-  frames, resume scenarios incl. gap/overflow/supersession/dup-ack).
+  frames, SAS transcripts, resume/generation, peer-cursor regression, floor/gap, stale fetch,
+  supersession, malformed framing, non-monotonic/ahead ACK, pending-pair retry, and
+  offline-unpair tombstone scenarios).
+- **Reference model:** pure Kotlin/JVM property tests generate callback, pair/unpair, ACK loss,
+  cap changes, pruning, process death, and generation-reset sequences, then compare every DB
+  state and outbound frame against a small in-memory model. These run in Linux CI.
 - **Simulators:** a JVM "fake phone" (drives the Mac app in CI, macOS runner) and a Swift-free
   "fake Mac" (drives Android instrumentation tests) — each side tests against scripted chaos:
   mid-frame disconnects, ack withholding, epoch races, clock jumps.
-- **Soak rig:** a Raspberry Pi Wi-Fi AP toggling the radio on a schedule while a device farm
-  phone posts synthetic notifications; assertion = Mac DB equals phone-side ground truth.
+- **Android emulator instrumentation:** API 26, 27, and 28 each exercise bundled Conscrypt;
+  API 29, 30, 31, 33, 34, 35, and 36 exercise Room migrations/PRAGMAs, callback ordering, stock NLS
+  unbind/rebind, FGS/boot paths, Doze commands, Task Manager-adjacent lifecycle cases, and
+  TestDPC work profiles. An API 37 compatibility job verifies that target-36 builds do not
+  declare/request `ACCESS_LOCAL_NETWORK`; a separate migration branch tests target-37 denial.
+- **macOS CI/real Mac:** Network.framework mutual TLS, exact DER pinning, Security/Keychain,
+  GRDB transactions, AppKit/SwiftUI shell, notifications, and local-network TCC run on macOS
+  runners or real Macs, never substituted with Linux mocks.
+- **On-prem soak rig:** a Raspberry Pi-controlled AP toggles radio, routing, multicast, and AP
+  isolation while physical Android devices and a real Mac run synthetic notification traffic;
+  assertion = Mac DB equals the phone's committed-event ground truth plus explicit gaps. A
+  generic public cloud device farm cannot join this arbitrary LAN or exercise Mac BLE.
+- **Physical fault rig:** abrupt reset/power-cut capable Android hardware plus storage fault
+  injection verifies committed-row and high-water durability. Process kill, emulator shutdown,
+  and `adb reboot` are useful tests but do not prove flash power-loss behavior.
 - **OTP corpus:** ~120 YAML cases (multilingual, Swiss-specific, adversarial false-positive
   families) gating CI on extraction precision/recall.
-- **Matrix:** Android 8/10/13/14/15/16 × Pixel/Samsung/Xiaomi, **including one work-profile
-  device**; macOS 14/15/26; both fresh installs and upgrade paths (cert persistence, DB
-  migrations).
-- Manual QA scripts for the flows that can't be automated: permission grants (notification
-  access, CDM dialog, macOS Local Network prompt — the latter only resettable via VM
-  snapshots), and **accessibility** (panel keyboard operability, VoiceOver labels on rows/
-  actions, non-color device state).
+- **Physical matrix:** Android 14/15/16 retail Pixel + Samsung + Xiaomi, including personal/work
+  profile policy, CDM BLE/presence/address rotation, retail OTP redaction, restricted-settings
+  UX, OEM process behavior, battery drain, and AP isolation; macOS 14/15/26 on real Macs. Cover
+  fresh installs and upgrades, including cert persistence and DB migrations.
+- **Manual QA:** browser/GitHub/Obtainium sideloads, restricted settings, notification access,
+  CDM dialogs, FGS notification swipe, Task Manager Stop, Settings force-stop, battery modes,
+  macOS Bluetooth/Local Network prompts (the latter reset with VM snapshots/fresh users), and
+  accessibility (keyboard, VoiceOver, and non-color state).
 
 ---
 
@@ -1215,11 +1456,13 @@ Key primary sources this plan rests on (full list per topic in the research note
 
 **Android capture & redaction:** [NotificationListenerService reference](https://developer.android.com/reference/android/service/notification/NotificationListenerService) · [Android 15 behavior changes — sensitive notifications](https://developer.android.com/about/versions/15/behavior-changes-all) · [AOSP `NotificationManagerService.isAppTrustedNotificationListenerService()`](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/services/core/java/com/android/server/notification/NotificationManagerService.java) · [Android Authority: Android 15 2FA protection](https://www.androidauthority.com/android-15-two-factor-authentication-codes-3492585/) · [home-assistant/android #5153](https://github.com/home-assistant/android/issues/5153)
 
-**Background survival & CDM:** [FGS types](https://developer.android.com/develop/background-work/services/fgs/service-types) · [FGS timeouts](https://developer.android.com/develop/background-work/services/fgs/timeout) · [Doze/App Standby](https://developer.android.com/training/monitoring-device-state/doze-standby) · [Companion device pairing](https://developer.android.com/develop/connectivity/bluetooth/companion-device-pairing) · [AOSP `CompanionExemptionProcessor` (android16)](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/companion/java/com/android/server/companion/CompanionExemptionProcessor.java) · [AOSP core manifest — REQUEST_COMPANION_* protection levels](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/res/AndroidManifest.xml) · [dontkillmyapp.com](https://dontkillmyapp.com/) · [Syncthing-Android #1039](https://github.com/syncthing/syncthing-android/issues/1039) · [Play FGS declaration](https://support.google.com/googleplay/android-developer/answer/13392821)
+**Background survival & CDM:** [FGS types](https://developer.android.com/develop/background-work/services/fgs/service-types) · [FGS timeouts](https://developer.android.com/develop/background-work/services/fgs/timeout) · [Doze/App Standby](https://developer.android.com/training/monitoring-device-state/doze-standby) · [Handle Task Manager Stop](https://developer.android.com/develop/background-work/services/fgs/handle-user-stopping) · [Companion device pairing](https://developer.android.com/develop/connectivity/bluetooth/companion-device-pairing) · [`CompanionDeviceService`](https://developer.android.com/reference/android/companion/CompanionDeviceService) · [AOSP `CompanionExemptionProcessor` (android16)](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/services/companion/java/com/android/server/companion/CompanionExemptionProcessor.java) · [AOSP core manifest — REQUEST_COMPANION_* protection levels](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/android16-release/core/res/AndroidManifest.xml) · [dontkillmyapp.com](https://dontkillmyapp.com/) · [Syncthing-Android #1039](https://github.com/syncthing/syncthing-android/issues/1039) · [Play FGS declaration](https://support.google.com/googleplay/android-developer/answer/13392821)
 
 **Networking & privacy:** [Apple TN3179 — local network privacy](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) · [Android local network permission](https://developer.android.com/privacy-and-security/local-network-permission) · [NSD guide](https://developer.android.com/develop/connectivity/wifi/use-nsd) · [KDE Connect `lanlinkprovider`](https://github.com/KDE/kdeconnect-kde/blob/master/core/backends/lan/lanlinkprovider.cpp) · [KDE advisory CVE-2025-66270](https://kde.org/info/security/advisory-20251128-1.txt) · [NWProtocolTCP.Options](https://developer.apple.com/documentation/network/nwprotocoltcp/options) · [TLS for NWListener](https://developer.apple.com/forums/thread/687308)
 
-**Sync & resume patterns:** [AOSP `StatusBarNotification` key construction](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/service/notification/StatusBarNotification.java) · [XEP-0198 Stream Management](https://xmpp.org/extensions/xep-0198.html) · [Discord Gateway resume](https://docs.discord.com/developers/events/gateway) · [AWS: exponential backoff and jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/) · [KDE Connect notifications plugin README](https://github.com/KDE/kdeconnect-kde/blob/master/plugins/notifications/README)
+**Distribution & managed devices:** [Restricted settings for sideloaded apps](https://support.google.com/android/answer/12623953) · [Android developer-verification FAQ](https://developer.android.com/developer-verification/guides/faq) · [Managed profiles](https://developer.android.com/work/managed-profiles)
+
+**Sync & durability:** [AOSP `StatusBarNotification` key construction](https://android.googlesource.com/platform/frameworks/base/+/refs/heads/main/core/java/android/service/notification/StatusBarNotification.java) · [SQLite WAL](https://www.sqlite.org/wal.html) · [SQLite `PRAGMA synchronous`](https://www.sqlite.org/pragma.html#pragma_synchronous) · [XEP-0198 Stream Management](https://xmpp.org/extensions/xep-0198.html) · [Discord Gateway resume](https://docs.discord.com/developers/events/gateway) · [AWS: exponential backoff and jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/) · [KDE Connect notifications plugin README](https://github.com/KDE/kdeconnect-kde/blob/master/plugins/notifications/README)
 
 **macOS app:** [Quinn: On Mac Keychains](https://developer.apple.com/forums/thread/696431) · [MenuBarExtraAccess (gaps in MenuBarExtra)](https://github.com/orchetect/MenuBarExtraAccess) · [SMAppService](https://developer.apple.com/documentation/servicemanagement/smappservice) · [GRDB](https://github.com/groue/GRDB.swift) · [Gatekeeper changes in Sequoia](https://developer.apple.com/news/?id=saqachfa) · [UNNotificationAction](https://developer.apple.com/documentation/usernotifications/unnotificationaction)
 

@@ -1,0 +1,2 @@
+"NSBluetoothAlwaysUsageDescription" = "Eko sendet ein privates Bluetooth-Anwesenheitssignal, damit gekoppelte Android-Telefone im Hintergrund zuverlässig bleiben.";
+"NSLocalNetworkUsageDescription" = "Eko findet und empfängt Benachrichtigungen von Ihren gekoppelten Android-Telefonen im lokalen Netzwerk.";

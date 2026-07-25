@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/fetch.schema.json",
+  "title": "Eko v1 fetch",
+  "type": "object",
+  "required": ["type", "request_id", "keys"],
+  "properties": {
+    "type": { "const": "fetch" },
+    "request_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": { "$ref": "common.schema.json#/$defs/key" }
+    }
+  }
+}

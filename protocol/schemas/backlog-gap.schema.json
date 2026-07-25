@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/backlog-gap.schema.json",
+  "title": "Eko v1 backlog_gap",
+  "type": "object",
+  "required": ["type", "sync_id", "from_seq", "to_seq", "reason"],
+  "properties": {
+    "type": { "const": "backlog_gap" },
+    "sync_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "from_seq": { "$ref": "common.schema.json#/$defs/positiveSeq" },
+    "to_seq": { "$ref": "common.schema.json#/$defs/positiveSeq" },
+    "reason": { "$ref": "common.schema.json#/$defs/gapReason" }
+  }
+}

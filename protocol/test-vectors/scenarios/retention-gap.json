@@ -1,0 +1,169 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "retention-gap-is-processed-coverage",
+  "initial": {
+    "generation": "11111111-2222-4333-8444-555555555555",
+    "phone_last_assigned_seq": 10,
+    "phone_acked_seq": 3,
+    "phone_serve_from_seq": 8,
+    "persisted_gap": { "from_seq": 4, "to_seq": 7, "reason": "retention_count" },
+    "mac_processed_through_seq": 3
+  },
+  "steps": [
+    {
+      "step": 1,
+      "from": "mac",
+      "frame": {
+        "type": "welcome",
+        "proto": 1,
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "mac_name": "Vector Mac",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "cursor": 3,
+        "caps": ["notif", "dismiss", "otp_context"]
+      },
+      "expect": { "requested_from": 4, "effective_floor": 8, "replay_from": 8 }
+    },
+    {
+      "step": 2,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_start",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "from_seq": 8,
+        "replay_to_seq": 10,
+        "event_count": 3
+      },
+      "expect": { "authorized_through": 3 }
+    },
+    {
+      "step": 3,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_gap",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "from_seq": 4,
+        "to_seq": 7,
+        "reason": "retention_count"
+      },
+      "expect": {
+        "mac_processed_through_seq": 7,
+        "authorized_through": 7,
+        "gap_marker_committed": true
+      }
+    },
+    {
+      "step": 4,
+      "from": "mac",
+      "frame": { "type": "ack", "seq": 7 },
+      "expect": { "phone_acked_seq": 7 }
+    },
+    {
+      "step": 5,
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "seq": 8,
+        "ev": "posted",
+        "key": "0|com.example.sms|42|null|10001",
+        "posted_at": 1753351199000,
+        "user": 0,
+        "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+        "app": { "pkg": "com.example.sms", "label": "Messages", "category": "msg" },
+        "n": {
+          "title": null,
+          "text": "Your login code is 482913",
+          "big_text": null,
+          "sub_text": null,
+          "info_text": null,
+          "summary_text": null,
+          "text_lines": null,
+          "messages": null,
+          "is_clearable": true,
+          "is_group_summary": false,
+          "group_key": null
+        },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": true, "reconciled": false },
+        "truncated_fields": []
+      },
+      "expect": { "mac_processed_through_seq": 8, "authorized_through": 8 }
+    },
+    {
+      "step": 6,
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "seq": 9,
+        "ev": "capture_gap",
+        "h": null,
+        "flags": { "replayed": true, "reconciled": false },
+        "confidence": "suspected",
+        "interval": { "start_at": 1753350000000, "end_at": 1753350060000 },
+        "evidence": "listener_disconnected",
+        "details": "Listener disconnect callback bounded this interval."
+      },
+      "expect": {
+        "mac_processed_through_seq": 9,
+        "capture_gap_is_event_not_definitive_span": true
+      }
+    },
+    {
+      "step": 7,
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "seq": 10,
+        "ev": "removed",
+        "key": "0|com.example.sms|42|null|10001",
+        "posted_at": 1753351199000,
+        "user": 0,
+        "h": null,
+        "app": { "pkg": "com.example.sms", "label": "Messages", "category": "msg" },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": true, "reconciled": false },
+        "truncated_fields": [],
+        "remove_reason": { "code": 2, "reconciled": false }
+      },
+      "expect": { "mac_processed_through_seq": 10, "authorized_through": 10 }
+    },
+    {
+      "step": 8,
+      "from": "phone",
+      "frame": {
+        "type": "active_chunk",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "index": 0,
+        "final": true,
+        "active": []
+      }
+    },
+    {
+      "step": 9,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_end",
+        "sync_id": "cccccccc-dddd-4eee-8fff-000000000000",
+        "state_seq": 10
+      }
+    },
+    {
+      "step": 10,
+      "from": "mac",
+      "frame": { "type": "ack", "seq": 10 },
+      "expect": { "phone_acked_seq": 10 }
+    }
+  ],
+  "final_assertions": {
+    "definitive_gap_spans": [
+      { "from_seq": 4, "to_seq": 7, "reason": "retention_count" }
+    ],
+    "capture_gap_event_sequences": [9],
+    "covered_positions": "1-10",
+    "mac_processed_through_seq": 10,
+    "phone_acked_seq": 10
+  }
+}

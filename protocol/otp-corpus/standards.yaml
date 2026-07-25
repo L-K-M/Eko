@@ -1,0 +1,165 @@
+format: eko-otp-corpus-v1
+license: CC0-1.0
+provenance: Clean-room synthetic origin-bound and SMS Retriever cases written for Eko without copying third-party extractor fixtures.
+defaults:
+  omitted_text_field: null
+  omitted_array_field: []
+  is_group_summary: false
+  source: sms
+cases:
+  - id: std-001-origin-basic
+    locale: en
+    events:
+      - text: "Your Example login code is 482913.\n@example.test #482913"
+        expected: {code: "482913", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-002-origin-alphanumeric
+    locale: en
+    events:
+      - text: "Use this sign-in value.\n@accounts.example #A7B4C9"
+        expected: {code: "A7B4C9", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-003-origin-embedded-at
+    locale: en
+    events:
+      - text: "Checkout verification.\n@shop.example #731804 @pay.example"
+        expected: {code: "731804", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-004-origin-embedded-percent
+    locale: en
+    events:
+      - text: "Checkout verification.\n@shop.example #905177 %pay.example"
+        expected: {code: "905177", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-005-origin-only-line
+    locale: en
+    events:
+      - text: "@login.example #620918"
+        expected: {code: "620918", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-006-origin-crlf
+    locale: en
+    events:
+      - text: "One-time sign-in value.\r\n@id.example #339122"
+        expected: {code: "339122", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-007-origin-verbatim-hyphen
+    locale: en
+    events:
+      - text: "Use the value below.\n@id.example #123-456"
+        expected: {code: "123-456", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-008-origin-verbatim-three-digits
+    locale: en
+    events:
+      - text: "Short site challenge.\n@id.example #731"
+        expected: {code: "731", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-009-origin-trailing-future-data
+    locale: en
+    events:
+      - text: "Site challenge.\n@id.example #480155 $future-field"
+        expected: {code: "480155", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-010-origin-wins-over-human-text
+    locale: en
+    events:
+      - text: "An earlier code 111111 is obsolete.\n@id.example #960281"
+        expected: {code: "960281", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-011-invalid-origin-prefix-falls-back
+    locale: en
+    events:
+      - text: "Your code is 702844.\nprefix @id.example #702844"
+        expected: {code: "702844", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-012-invalid-origin-order-falls-back
+    locale: en
+    events:
+      - text: "Verification code 552904.\n#552904 @id.example"
+        expected: {code: "552904", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-013-invalid-origin-no-space-falls-back
+    locale: en
+    events:
+      - text: "Your code is 401928.\n@id.example#401928"
+        expected: {code: "401928", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-014-sms-retriever-prefix
+    locale: en
+    events:
+      - text: "<#> Your verification code is 740215"
+        expected: {code: "740215", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-015-sms-retriever-hash-line
+    locale: en
+    events:
+      - text: "<#> Your code is 881204\nQx7Ab9Lm2Pz"
+        expected: {code: "881204", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-016-sms-retriever-alphanumeric-code
+    locale: en
+    events:
+      - text: "<#> Login code QGFDAE\nA1B2C3D4E5F"
+        expected: {code: "QGFDAE", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-017-sms-retriever-eight-char-code
+    locale: en
+    events:
+      - text: "<#> Verification code 12AB34CD\nLm9Qr2St7Uv"
+        expected: {code: "12AB34CD", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-018-sms-retriever-hash-must-not-win
+    locale: en
+    events:
+      - text: "<#> Tap the app to continue verification.\nQx7Ab9Lm2Pz"
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: std-019-sms-hash-inline-not-artifact
+    locale: en
+    events:
+      - text: "Your code is 620184; diagnostic app hash Qx7Ab9Lm2Pz was recorded inline."
+        expected: {code: "620184", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-020-google-g-prefix
+    locale: en
+    events:
+      - text: "G-482913 is your verification code."
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-021-bracket-tag
+    locale: en
+    events:
+      - text: "[#][Example] code 731804"
+        expected: {code: "731804", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-022-bracket-tag-before-code
+    locale: en
+    events:
+      - text: "[#][Login] 905177 is your passcode."
+        expected: {code: "905177", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-023-origin-with-retriever-prefix
+    locale: en
+    events:
+      - text: "<#> Site verification.\n@id.example #620918"
+        expected: {code: "620918", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-024-origin-percent-and-hash-like-human-text
+    locale: en
+    events:
+      - text: "Ignore diagnostic Qx7Ab9Lm2Pz.\n@id.example #339122 %frame.example"
+        expected: {code: "339122", tier: origin_bound, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: std-025-retriever-intermediate-update
+    locale: en
+    device_id: device-a
+    events:
+      - at_ms: 5000000
+        notification_key: retriever-key
+        text: "<#> Your code is 507401\nQx7Ab9Lm2Pz"
+        expected: {code: "507401", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+      - at_ms: 5060000
+        notification_key: retriever-key
+        text: "<#> Your new code is 771902\nQx7Ab9Lm2Pz"
+        expected: {code: "771902", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/pair-result.schema.json",
+  "title": "Eko v1 pair_result",
+  "type": "object",
+  "required": ["type", "attempt_id", "device_id", "transcript_hash", "result"],
+  "properties": {
+    "type": { "const": "pair_result" },
+    "attempt_id": { "$ref": "common.schema.json#/$defs/attemptId" },
+    "device_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "transcript_hash": { "$ref": "common.schema.json#/$defs/sha256" },
+    "result": { "enum": ["accept", "reject", "ready", "confirmed"] },
+    "reason": {
+      "enum": ["user_rejected", "qr_rejected"]
+    },
+    "outbox_gen": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "initial_cursor": { "$ref": "common.schema.json#/$defs/uint53" }
+  },
+  "oneOf": [
+    {
+      "properties": { "result": { "const": "accept" } },
+      "not": {
+        "anyOf": [
+          { "required": ["reason"] },
+          { "required": ["outbox_gen"] },
+          { "required": ["initial_cursor"] }
+        ]
+      }
+    },
+    {
+      "properties": { "result": { "const": "reject" } },
+      "required": ["reason"],
+      "not": {
+        "anyOf": [
+          { "required": ["outbox_gen"] },
+          { "required": ["initial_cursor"] }
+        ]
+      }
+    },
+    {
+      "properties": { "result": { "const": "ready" } },
+      "required": ["outbox_gen", "initial_cursor"],
+      "not": { "required": ["reason"] }
+    },
+    {
+      "properties": { "result": { "const": "confirmed" } },
+      "required": ["outbox_gen", "initial_cursor"],
+      "not": { "required": ["reason"] }
+    }
+  ]
+}

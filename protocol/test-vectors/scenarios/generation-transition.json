@@ -1,0 +1,216 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "generation-transition-and-rollback",
+  "cases": [
+    {
+      "id": "unseen-generation-becomes-current-without-gap",
+      "initial": {
+        "mac_current_generation": "11111111-2222-4333-8444-555555555555",
+        "mac_current_cursor": 55,
+        "mac_retired_generations": [],
+        "mac_highest_epoch": 10
+      },
+      "steps": [
+        {
+          "from": "phone",
+          "frame": {
+            "type": "hello",
+            "mode": "normal",
+            "proto_min": 1,
+            "proto_max": 1,
+            "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "device_name": "Vector Phone",
+            "os": "android",
+            "os_version": 36,
+            "caps": ["notif", "dismiss", "otp_context"],
+            "outbox_gen": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+            "conn_epoch": 11,
+            "phone_time": 1753351300000
+          },
+          "expect": {
+            "mac_highest_epoch": 11,
+            "mac_current_generation": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+            "mac_processed_through_seq": 0,
+            "retire_generation": "11111111-2222-4333-8444-555555555555",
+            "generation_transition_marker": true,
+            "definitive_gap_created": false,
+            "old_history_retained": true,
+            "old_materialized_active_cleared": true
+          }
+        },
+        {
+          "from": "mac",
+          "frame": {
+            "type": "welcome",
+            "proto": 1,
+            "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "mac_name": "Vector Mac",
+            "outbox_gen": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+            "cursor": 0,
+            "caps": ["notif", "dismiss", "otp_context"]
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "backlog_start",
+            "sync_id": "dddddddd-eeee-4fff-8000-111111111111",
+            "from_seq": 1,
+            "replay_to_seq": 0,
+            "event_count": 0
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "active_chunk",
+            "sync_id": "dddddddd-eeee-4fff-8000-111111111111",
+            "index": 0,
+            "final": true,
+            "active": []
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "backlog_end",
+            "sync_id": "dddddddd-eeee-4fff-8000-111111111111",
+            "state_seq": 0
+          }
+        }
+      ],
+      "final": {
+        "mac_current_generation": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "mac_retired_generations": ["11111111-2222-4333-8444-555555555555"],
+        "namespaced_event_identity_required": true
+      }
+    },
+    {
+      "id": "retired-generation-is-rejected-even-with-newer-epoch",
+      "initial": {
+        "mac_current_generation": "66666666-7777-4888-9999-aaaaaaaaaaaa",
+        "mac_retired_generations": ["11111111-2222-4333-8444-555555555555"],
+        "mac_highest_epoch": 11
+      },
+      "receive": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 12,
+        "phone_time": 1753351301000
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "stale_generation",
+        "fatal": true,
+        "message": "Generation was previously retired."
+      },
+      "expect_close": true,
+      "final": {
+        "mac_highest_epoch": 12,
+        "mac_current_generation": "66666666-7777-4888-9999-aaaaaaaaaaaa"
+      }
+    },
+    {
+      "id": "cursor-ahead-forces-journaled-phone-reset",
+      "initial": {
+        "phone_generation": "22222222-3333-4444-8555-666666666666",
+        "phone_last_assigned_seq": 40,
+        "phone_conn_epoch_before_attempt": 100,
+        "mac_generation": "22222222-3333-4444-8555-666666666666",
+        "mac_processed_through_seq": 55,
+        "mac_highest_epoch": 100
+      },
+      "steps": [
+        {
+          "from": "phone",
+          "frame": {
+            "type": "hello",
+            "mode": "normal",
+            "proto_min": 1,
+            "proto_max": 1,
+            "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "device_name": "Vector Phone",
+            "os": "android",
+            "os_version": 36,
+            "caps": ["notif", "dismiss", "otp_context"],
+            "outbox_gen": "22222222-3333-4444-8555-666666666666",
+            "conn_epoch": 101,
+            "phone_time": 1753351400000
+          }
+        },
+        {
+          "from": "mac",
+          "frame": {
+            "type": "welcome",
+            "proto": 1,
+            "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "mac_name": "Vector Mac",
+            "outbox_gen": "22222222-3333-4444-8555-666666666666",
+            "cursor": 55,
+            "caps": ["notif", "dismiss", "otp_context"]
+          },
+          "expect": {
+            "no_cursor_clamp": true,
+            "no_backlog_start": true,
+            "write_reset_pending_before_db_replacement": true,
+            "old_rows_not_relabelled": true
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "error",
+            "code": "store_reset",
+            "fatal": true,
+            "message": "Peer cursor exceeds durable phone high-water."
+          },
+          "expect_close": true
+        },
+        {
+          "action": "complete_reset_journal",
+          "expect": {
+            "phone_generation": "77777777-8888-4999-aaaa-bbbbbbbbbbbb",
+            "phone_last_assigned_seq": 0,
+            "pairing_acked_seq": 0,
+            "pairing_serve_from_seq": 1,
+            "phone_conn_epoch_after_reset_increment": 102
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "hello",
+            "mode": "normal",
+            "proto_min": 1,
+            "proto_max": 1,
+            "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "device_name": "Vector Phone",
+            "os": "android",
+            "os_version": 36,
+            "caps": ["notif", "dismiss", "otp_context"],
+            "outbox_gen": "77777777-8888-4999-aaaa-bbbbbbbbbbbb",
+            "conn_epoch": 103,
+            "phone_time": 1753351401000
+          },
+          "expect": {
+            "mac_generation_transition": true,
+            "mac_new_cursor": 0
+          }
+        }
+      ],
+      "final": {
+        "phone_old_generation_retired": true,
+        "mac_old_generation_retired_after_new_hello": true,
+        "fabricated_gap": false
+      }
+    }
+  ]
+}

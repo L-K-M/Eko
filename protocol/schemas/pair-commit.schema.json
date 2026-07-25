@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/pair-commit.schema.json",
+  "title": "Eko v1 pair_commit",
+  "type": "object",
+  "required": ["type", "attempt_id", "device_id", "commitment"],
+  "properties": {
+    "type": { "const": "pair_commit" },
+    "attempt_id": { "$ref": "common.schema.json#/$defs/attemptId" },
+    "device_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "commitment": { "$ref": "common.schema.json#/$defs/sha256" }
+  }
+}

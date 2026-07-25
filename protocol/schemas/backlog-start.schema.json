@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/backlog-start.schema.json",
+  "title": "Eko v1 backlog_start",
+  "type": "object",
+  "required": ["type", "sync_id", "from_seq", "replay_to_seq", "event_count"],
+  "properties": {
+    "type": { "const": "backlog_start" },
+    "sync_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "from_seq": { "$ref": "common.schema.json#/$defs/positiveSeq" },
+    "replay_to_seq": { "$ref": "common.schema.json#/$defs/uint53" },
+    "event_count": { "$ref": "common.schema.json#/$defs/uint53" }
+  }
+}

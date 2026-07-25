@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/ack.schema.json",
+  "title": "Eko v1 ack",
+  "type": "object",
+  "required": ["type", "seq"],
+  "properties": {
+    "type": { "const": "ack" },
+    "seq": { "$ref": "common.schema.json#/$defs/positiveSeq" }
+  }
+}

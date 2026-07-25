@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/pong.schema.json",
+  "title": "Eko v1 pong",
+  "type": "object",
+  "required": ["type", "ping_id", "phone_time", "mac_time"],
+  "properties": {
+    "type": { "const": "pong" },
+    "ping_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "phone_time": { "$ref": "common.schema.json#/$defs/uint53" },
+    "mac_time": { "$ref": "common.schema.json#/$defs/uint53" }
+  }
+}

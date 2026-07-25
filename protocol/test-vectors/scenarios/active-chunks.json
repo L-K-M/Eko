@@ -1,0 +1,144 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "active-snapshot-chunk-assembly",
+  "cases": [
+    {
+      "id": "two-chunk-snapshot-applies-only-at-backlog-end",
+      "initial": {
+        "sync_high_water": 7,
+        "mac_active_keys": ["key-a", "key-c"],
+        "mac_hashes": {
+          "key-a": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+          "key-c": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59"
+        }
+      },
+      "steps": [
+        {
+          "from": "phone",
+          "frame": {
+            "type": "backlog_start",
+            "sync_id": "56789012-5678-4ef0-a123-56789012abcd",
+            "from_seq": 8,
+            "replay_to_seq": 7,
+            "event_count": 0
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "active_chunk",
+            "sync_id": "56789012-5678-4ef0-a123-56789012abcd",
+            "index": 0,
+            "final": false,
+            "active": [
+              {
+                "key": "key-a",
+                "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+                "state_seq": 3
+              }
+            ]
+          },
+          "expect": { "snapshot_applied": false, "next_chunk_index": 1 }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "active_chunk",
+            "sync_id": "56789012-5678-4ef0-a123-56789012abcd",
+            "index": 1,
+            "final": true,
+            "active": [
+              {
+                "key": "key-b",
+                "h": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289",
+                "state_seq": 7
+              }
+            ]
+          },
+          "expect": { "snapshot_applied": false, "all_chunks_buffered": true }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "backlog_end",
+            "sync_id": "56789012-5678-4ef0-a123-56789012abcd",
+            "state_seq": 7
+          },
+          "expect": {
+            "snapshot_applied": true,
+            "key_a_fetch": false,
+            "key_b_fetch": true,
+            "key_c_synthesized_removed_at_state_seq": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "chunk-index-must-start-at-zero",
+      "initial": { "expected_sync_id": "67890123-6789-4f01-b234-67890123abcd", "next_chunk_index": 0 },
+      "receive": {
+        "type": "active_chunk",
+        "sync_id": "67890123-6789-4f01-b234-67890123abcd",
+        "index": 1,
+        "final": true,
+        "active": []
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "invalid_state",
+        "fatal": true,
+        "message": "Active chunk index is not contiguous."
+      },
+      "expect_close": true
+    },
+    {
+      "id": "duplicate-key-across-chunks-is-fatal",
+      "initial": {
+        "expected_sync_id": "78901234-7890-4012-8234-78901234abcd",
+        "buffered_keys": ["key-a"],
+        "next_chunk_index": 1
+      },
+      "receive": {
+        "type": "active_chunk",
+        "sync_id": "78901234-7890-4012-8234-78901234abcd",
+        "index": 1,
+        "final": true,
+        "active": [
+          {
+            "key": "key-a",
+            "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+            "state_seq": 3
+          }
+        ]
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "invalid_state",
+        "fatal": true,
+        "message": "Active key appears more than once in a snapshot."
+      },
+      "expect_close": true
+    },
+    {
+      "id": "chunk-after-final-is-fatal",
+      "initial": {
+        "expected_sync_id": "89012345-8901-4123-9234-89012345abcd",
+        "final_chunk_received": true
+      },
+      "receive": {
+        "type": "active_chunk",
+        "sync_id": "89012345-8901-4123-9234-89012345abcd",
+        "index": 1,
+        "final": true,
+        "active": []
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "invalid_state",
+        "fatal": true,
+        "message": "Active chunk received after final chunk."
+      },
+      "expect_close": true
+    }
+  ]
+}

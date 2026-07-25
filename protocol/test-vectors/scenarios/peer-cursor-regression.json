@@ -1,0 +1,90 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "regressed-mac-cursor-is-an-explicit-gap",
+  "initial": {
+    "generation": "11111111-2222-4333-8444-555555555555",
+    "phone_last_assigned_seq": 90,
+    "phone_acked_seq": 90,
+    "phone_serve_from_seq": 91,
+    "mac_processed_through_seq": 70
+  },
+  "steps": [
+    {
+      "step": 1,
+      "from": "mac",
+      "frame": {
+        "type": "welcome",
+        "proto": 1,
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "mac_name": "Vector Mac",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "cursor": 70,
+        "caps": ["notif", "dismiss", "otp_context"]
+      },
+      "expect": {
+        "requested_from": 71,
+        "effective_floor": 91,
+        "replay_from": 91
+      }
+    },
+    {
+      "step": 2,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_start",
+        "sync_id": "34567890-3456-4cde-8f01-34567890abcd",
+        "from_seq": 91,
+        "replay_to_seq": 90,
+        "event_count": 0
+      },
+      "expect": { "fixed_high_water": 90, "authorized_through": 70 }
+    },
+    {
+      "step": 3,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_gap",
+        "sync_id": "34567890-3456-4cde-8f01-34567890abcd",
+        "from_seq": 71,
+        "to_seq": 90,
+        "reason": "peer_cursor_regressed"
+      },
+      "expect": {
+        "mac_processed_through_seq": 90,
+        "authorized_through": 90,
+        "history_incomplete_exactly": "71-90"
+      }
+    },
+    {
+      "step": 4,
+      "from": "phone",
+      "frame": {
+        "type": "active_chunk",
+        "sync_id": "34567890-3456-4cde-8f01-34567890abcd",
+        "index": 0,
+        "final": true,
+        "active": []
+      }
+    },
+    {
+      "step": 5,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_end",
+        "sync_id": "34567890-3456-4cde-8f01-34567890abcd",
+        "state_seq": 90
+      }
+    },
+    {
+      "step": 6,
+      "from": "mac",
+      "frame": { "type": "ack", "seq": 90 },
+      "expect": { "phone_acked_seq": 90, "ack_is_idempotent": true }
+    }
+  ],
+  "final_assertions": {
+    "mac_processed_through_seq": 90,
+    "definitive_gap": { "from_seq": 71, "to_seq": 90, "reason": "peer_cursor_regressed" },
+    "cursor_silently_clamped": false
+  }
+}

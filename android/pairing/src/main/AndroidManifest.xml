@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE" />
+    <application>
+        <service
+            android:name="dev.eko.pairing.EkoCompanionDeviceService"
+            android:enabled="@bool/eko_cds_legacy_enabled"
+            android:exported="true"
+            android:label="@string/eko_companion_service_label"
+            android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE"
+            tools:targetApi="31">
+            <intent-filter>
+                <action android:name="android.companion.CompanionDeviceService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name="dev.eko.pairing.EkoCompanionDeviceServiceApi33"
+            android:enabled="@bool/eko_cds_api33_enabled"
+            android:exported="true"
+            android:label="@string/eko_companion_service_label"
+            android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE"
+            tools:targetApi="33">
+            <intent-filter>
+                <action android:name="android.companion.CompanionDeviceService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name="dev.eko.pairing.EkoCompanionDeviceServiceApi36"
+            android:enabled="@bool/eko_cds_api36_enabled"
+            android:exported="true"
+            android:label="@string/eko_companion_service_label"
+            android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE"
+            tools:targetApi="36">
+            <intent-filter>
+                <action android:name="android.companion.CompanionDeviceService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

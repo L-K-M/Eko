@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/event.schema.json",
+  "title": "Eko v1 event",
+  "type": "object",
+  "required": ["type", "ev", "h", "flags"],
+  "properties": {
+    "type": { "const": "event" },
+    "sync_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "seq": { "$ref": "common.schema.json#/$defs/positiveSeq" },
+    "state_seq": { "$ref": "common.schema.json#/$defs/positiveSeq" },
+    "request_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "ev": { "enum": ["posted", "updated", "removed", "capture_gap"] },
+    "key": { "$ref": "common.schema.json#/$defs/key" },
+    "posted_at": { "$ref": "common.schema.json#/$defs/uint53" },
+    "user": { "$ref": "common.schema.json#/$defs/uint32" },
+    "h": {
+      "oneOf": [
+        { "$ref": "common.schema.json#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "app": { "$ref": "common.schema.json#/$defs/app" },
+    "n": { "$ref": "common.schema.json#/$defs/notification" },
+    "dnd": { "$ref": "common.schema.json#/$defs/dnd" },
+    "flags": { "$ref": "common.schema.json#/$defs/flags" },
+    "truncated_fields": { "$ref": "common.schema.json#/$defs/truncatedFields" },
+    "remove_reason": { "$ref": "common.schema.json#/$defs/removeReason" },
+    "confidence": { "const": "suspected" },
+    "interval": { "$ref": "common.schema.json#/$defs/captureInterval" },
+    "evidence": { "$ref": "common.schema.json#/$defs/captureEvidence" },
+    "details": { "type": "string", "maxLength": 2048 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "flags": {
+            "properties": { "replayed": { "const": true } },
+            "required": ["replayed"]
+          }
+        },
+        "required": ["flags"]
+      },
+      "then": { "required": ["sync_id"] },
+      "else": { "not": { "required": ["sync_id"] } }
+    }
+  ],
+  "oneOf": [
+    {
+      "properties": {
+        "ev": { "enum": ["posted", "updated"] },
+        "h": { "$ref": "common.schema.json#/$defs/sha256" }
+      },
+      "required": [
+        "seq", "key", "posted_at", "user", "app", "n", "dnd",
+        "truncated_fields"
+      ],
+      "not": {
+        "anyOf": [
+          { "required": ["state_seq"] },
+          { "required": ["request_id"] },
+          { "required": ["remove_reason"] },
+          { "required": ["confidence"] },
+          { "required": ["interval"] },
+          { "required": ["evidence"] },
+          { "required": ["details"] }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "ev": { "const": "removed" },
+        "h": { "type": "null" }
+      },
+      "required": [
+        "seq", "key", "posted_at", "user", "app", "dnd",
+        "truncated_fields", "remove_reason"
+      ],
+      "not": {
+        "anyOf": [
+          { "required": ["state_seq"] },
+          { "required": ["request_id"] },
+          { "required": ["n"] },
+          { "required": ["confidence"] },
+          { "required": ["interval"] },
+          { "required": ["evidence"] },
+          { "required": ["details"] }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "ev": { "const": "capture_gap" },
+        "h": { "type": "null" },
+        "flags": {
+          "allOf": [
+            { "$ref": "common.schema.json#/$defs/flags" },
+            {
+              "properties": { "reconciled": { "const": false } },
+              "required": ["reconciled"]
+            }
+          ]
+        }
+      },
+      "required": ["seq", "confidence", "interval", "evidence"],
+      "not": {
+        "anyOf": [
+          { "required": ["state_seq"] },
+          { "required": ["request_id"] },
+          { "required": ["key"] },
+          { "required": ["posted_at"] },
+          { "required": ["user"] },
+          { "required": ["app"] },
+          { "required": ["n"] },
+          { "required": ["dnd"] },
+          { "required": ["truncated_fields"] },
+          { "required": ["remove_reason"] }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "ev": { "const": "posted" },
+        "h": { "$ref": "common.schema.json#/$defs/sha256" },
+        "flags": {
+          "allOf": [
+            { "$ref": "common.schema.json#/$defs/flags" },
+            {
+              "properties": {
+                "replayed": { "const": false },
+                "reconciled": { "const": true }
+              },
+              "required": ["replayed", "reconciled"]
+            }
+          ]
+        }
+      },
+      "required": [
+        "state_seq", "request_id", "key", "posted_at", "user", "app", "n",
+        "dnd", "truncated_fields"
+      ],
+      "not": {
+        "anyOf": [
+          { "required": ["seq"] },
+          { "required": ["remove_reason"] },
+          { "required": ["confidence"] },
+          { "required": ["interval"] },
+          { "required": ["evidence"] },
+          { "required": ["details"] }
+        ]
+      }
+    }
+  ]
+}

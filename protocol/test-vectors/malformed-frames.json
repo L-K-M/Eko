@@ -1,0 +1,169 @@
+{
+  "format": "eko-malformed-v1",
+  "description": "Each case is independent. For payload_utf8 cases, construct a type 0x01 frame with the exact UTF-8 bytes unless frame_type says otherwise.",
+  "vectors": [
+    {
+      "id": "zero-length",
+      "input": { "wire_hex": "00000000" },
+      "expect": { "action": "close", "error": "length_zero", "read_body": false }
+    },
+    {
+      "id": "one-over-maximum",
+      "input": { "wire_hex": "00100001" },
+      "expect": { "action": "close", "error": "frame_too_large", "read_body": false }
+    },
+    {
+      "id": "partial-prefix-eof",
+      "input": { "wire_hex": "0000", "eof": true },
+      "expect": { "action": "close", "error": "incomplete_prefix" }
+    },
+    {
+      "id": "partial-body-eof",
+      "input": { "wire_hex": "00000005017b7d", "eof": true },
+      "expect": { "action": "close", "error": "incomplete_body", "missing_body_bytes": 2 }
+    },
+    {
+      "id": "json-type-with-empty-payload",
+      "input": { "wire_hex": "0000000101" },
+      "expect": { "action": "close", "error": "invalid_json" }
+    },
+    {
+      "id": "invalid-utf8",
+      "input": { "wire_hex": "0000000301c328" },
+      "expect": { "action": "close", "error": "invalid_utf8" }
+    },
+    {
+      "id": "utf8-bom-forbidden",
+      "input": { "wire_hex": "0000000601efbbbf7b7d" },
+      "expect": { "action": "close", "error": "utf8_bom" }
+    },
+    {
+      "id": "trailing-non-whitespace",
+      "input": { "frame_type": 1, "payload_utf8": "{}x" },
+      "expect": { "action": "close", "error": "trailing_json_data" }
+    },
+    {
+      "id": "top-level-array",
+      "input": { "frame_type": 1, "payload_utf8": "[]" },
+      "expect": { "action": "close", "error": "top_level_not_object" }
+    },
+    {
+      "id": "duplicate-root-required-member",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":1,\"seq\":2}" },
+      "expect": { "action": "close", "error": "duplicate_member", "member": "seq" }
+    },
+    {
+      "id": "duplicate-nested-member",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"error\",\"code\":\"protocol_error\",\"fatal\":true,\"meta\":{\"x\":1,\"x\":2}}" },
+      "expect": { "action": "close", "error": "duplicate_member", "member": "x" }
+    },
+    {
+      "id": "unknown-json-type-without-capability",
+      "context": { "negotiated_caps": [] },
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"future_widget\",\"value\":1}" },
+      "expect": { "action": "close", "error": "unknown_message_type" }
+    },
+    {
+      "id": "unknown-json-type-with-extension-capability",
+      "context": { "negotiated_caps": ["ext_types"] },
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"future_widget\",\"value\":1}" },
+      "expect": { "action": "ignore", "connection_open": true }
+    },
+    {
+      "id": "fractional-integer-field",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":1.5}" },
+      "expect": { "action": "close", "error": "schema_failure", "field": "seq" }
+    },
+    {
+      "id": "exponent-integer-lexical-form",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":1e1}" },
+      "expect": { "action": "close", "error": "integer_lexical_form", "field": "seq" }
+    },
+    {
+      "id": "negative-sequence",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":-1}" },
+      "expect": { "action": "close", "error": "integer_out_of_range", "field": "seq" }
+    },
+    {
+      "id": "zero-event-sequence",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":0}" },
+      "expect": { "action": "close", "error": "integer_out_of_range", "field": "seq" }
+    },
+    {
+      "id": "integer-over-uint53",
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":9007199254740992}" },
+      "expect": { "action": "close", "error": "integer_out_of_range", "field": "seq" }
+    },
+    {
+      "id": "invalid-hello-mode",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"hello\",\"mode\":\"repair\",\"proto_min\":1,\"proto_max\":1,\"device_id\":\"1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2\",\"device_name\":\"Vector Phone\",\"os\":\"android\",\"os_version\":36,\"caps\":[\"notif\"],\"conn_epoch\":1,\"phone_time\":1753351200000}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "mode" }
+    },
+    {
+      "id": "uppercase-certificate-fingerprint",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"hello\",\"mode\":\"normal\",\"proto_min\":1,\"proto_max\":1,\"device_id\":\"1032BB16EB78521EE5E17D381B31E17C699FBDA2CC5872E348551CFE1AE415C2\",\"device_name\":\"Vector Phone\",\"os\":\"android\",\"os_version\":36,\"caps\":[\"notif\"],\"outbox_gen\":\"11111111-2222-4333-8444-555555555555\",\"conn_epoch\":1,\"phone_time\":1753351200000}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "device_id" }
+    },
+    {
+      "id": "pair-reveal-short-nonce",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"pair_reveal\",\"attempt_id\":\"00112233445566778899aabbccddeeff\",\"device_id\":\"1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2\",\"nonce\":\"000102030405060708090a0b0c0d0e0f\"}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "nonce" }
+    },
+    {
+      "id": "truncated-content-hash",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"active_chunk\",\"sync_id\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\",\"index\":0,\"final\":true,\"active\":[{\"key\":\"opaque\",\"h\":\"6cb500ea\",\"state_seq\":1}]}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "h" }
+    },
+    {
+      "id": "fetch-event-illegally-has-seq",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"event\",\"seq\":9,\"state_seq\":8,\"request_id\":\"12345678-1234-4abc-8def-1234567890ab\",\"ev\":\"posted\",\"key\":\"opaque\",\"posted_at\":1,\"user\":0,\"h\":\"6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59\",\"app\":{\"pkg\":\"com.example\",\"label\":\"Example\",\"category\":null},\"n\":{\"title\":null,\"text\":\"Your login code is 482913\",\"big_text\":null,\"sub_text\":null,\"info_text\":null,\"summary_text\":null,\"text_lines\":null,\"messages\":null,\"is_clearable\":true,\"is_group_summary\":false,\"group_key\":null},\"dnd\":{\"filter\":\"all\",\"suppressed\":false},\"flags\":{\"replayed\":false,\"reconciled\":true},\"truncated_fields\":[]}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "seq" }
+    },
+    {
+      "id": "ack-before-hello",
+      "context": { "connection_state": "await_hello" },
+      "input": { "frame_type": 1, "payload_utf8": "{\"type\":\"ack\",\"seq\":1}" },
+      "expect": { "action": "close", "error": "invalid_state" }
+    },
+    {
+      "id": "welcome-in-restricted-unpair",
+      "context": { "connection_state": "restricted_unpair" },
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"welcome\",\"proto\":1,\"device_id\":\"99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523\",\"mac_name\":\"Vector Mac\",\"outbox_gen\":\"11111111-2222-4333-8444-555555555555\",\"cursor\":0,\"caps\":[\"notif\"]}"
+      },
+      "expect": { "action": "close", "error": "invalid_state", "notification_data_disclosed": false }
+    },
+    {
+      "id": "replayed-event-missing-sync-id",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"event\",\"seq\":1,\"ev\":\"capture_gap\",\"h\":null,\"flags\":{\"replayed\":true,\"reconciled\":false},\"confidence\":\"suspected\",\"interval\":{\"start_at\":1,\"end_at\":2},\"evidence\":\"process_exit\"}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "sync_id" }
+    },
+    {
+      "id": "live-event-illegally-has-sync-id",
+      "input": {
+        "frame_type": 1,
+        "payload_utf8": "{\"type\":\"event\",\"sync_id\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\",\"seq\":1,\"ev\":\"capture_gap\",\"h\":null,\"flags\":{\"replayed\":false,\"reconciled\":false},\"confidence\":\"suspected\",\"interval\":{\"start_at\":1,\"end_at\":2},\"evidence\":\"process_exit\"}"
+      },
+      "expect": { "action": "close", "error": "schema_failure", "field": "sync_id" }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/fetch-missing.schema.json",
+  "title": "Eko v1 fetch_missing",
+  "type": "object",
+  "required": ["type", "request_id", "key", "state_seq"],
+  "properties": {
+    "type": { "const": "fetch_missing" },
+    "request_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "key": { "$ref": "common.schema.json#/$defs/key" },
+    "state_seq": { "$ref": "common.schema.json#/$defs/uint53" }
+  }
+}

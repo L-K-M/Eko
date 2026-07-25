@@ -1,0 +1,63 @@
+{
+  "format": "eko-framing-v1",
+  "description": "All hex strings are lowercase and include the four-byte prefix unless stated otherwise.",
+  "vectors": [
+    {
+      "id": "json-ack",
+      "frame_type": 1,
+      "payload_utf8": "{\"type\":\"ack\",\"seq\":41060}",
+      "length": 27,
+      "prefix_hex": "0000001b",
+      "wire_hex": "0000001b017b2274797065223a2261636b222c22736571223a34313036307d",
+      "expect": "decode_json"
+    },
+    {
+      "id": "json-normal-hello",
+      "frame_type": 1,
+      "payload_utf8": "{\"type\":\"hello\",\"mode\":\"normal\",\"proto_min\":1,\"proto_max\":1,\"device_id\":\"1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2\",\"device_name\":\"Vector Phone\",\"os\":\"android\",\"os_version\":36,\"caps\":[\"notif\",\"dismiss\",\"otp_context\"],\"outbox_gen\":\"11111111-2222-4333-8444-555555555555\",\"conn_epoch\":17,\"phone_time\":1753351200000}",
+      "length": 336,
+      "prefix_hex": "00000150",
+      "wire_hex": "00000150017b2274797065223a2268656c6c6f222c226d6f6465223a226e6f726d616c222c2270726f746f5f6d696e223a312c2270726f746f5f6d6178223a312c226465766963655f6964223a2231303332626231366562373835323165653565313764333831623331653137633639396662646132636335383732653334383535316366653161653431356332222c226465766963655f6e616d65223a22566563746f722050686f6e65222c226f73223a22616e64726f6964222c226f735f76657273696f6e223a33362c2263617073223a5b226e6f746966222c226469736d697373222c226f74705f636f6e74657874225d2c226f7574626f785f67656e223a2231313131313131312d323232322d343333332d383434342d353535353535353535353535222c22636f6e6e5f65706f6368223a31372c2270686f6e655f74696d65223a313735333335313230303030307d",
+      "expect": "decode_json"
+    },
+    {
+      "id": "json-empty-backlog-end",
+      "frame_type": 1,
+      "payload_utf8": "{\"type\":\"backlog_end\",\"sync_id\":\"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee\",\"state_seq\":0}",
+      "length": 86,
+      "prefix_hex": "00000056",
+      "wire_hex": "00000056017b2274797065223a226261636b6c6f675f656e64222c2273796e635f6964223a2261616161616161612d626262622d346363632d386464642d656565656565656565656565222c2273746174655f736571223a307d",
+      "expect": "decode_json"
+    },
+    {
+      "id": "unknown-type-skipped",
+      "frame_type": 127,
+      "payload_hex": "616263",
+      "length": 4,
+      "prefix_hex": "00000004",
+      "wire_hex": "000000047f616263",
+      "expect": "skip"
+    },
+    {
+      "id": "reserved-binary-empty-skipped",
+      "frame_type": 2,
+      "payload_hex": "",
+      "length": 1,
+      "prefix_hex": "00000001",
+      "wire_hex": "0000000102",
+      "expect": "skip"
+    },
+    {
+      "id": "maximum-legal-frame",
+      "construction": {
+        "prefix_hex": "00100000",
+        "frame_type_hex": "7f",
+        "payload_octet_hex": "00",
+        "payload_repeat": 1048575
+      },
+      "length": 1048576,
+      "total_wire_bytes": 1048580,
+      "expect": "skip"
+    }
+  ]
+}

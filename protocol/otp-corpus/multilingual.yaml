@@ -1,0 +1,224 @@
+format: eko-otp-corpus-v1
+license: CC0-1.0
+provenance: Clean-room synthetic multilingual cases written for Eko without consulting third-party extractor source code.
+defaults:
+  omitted_text_field: null
+  omitted_array_field: []
+  is_group_summary: false
+  source: sms
+cases:
+  - id: ml-001-french
+    locale: fr-FR
+    events:
+      - text: "Votre code de vérification est 482913."
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-002-spanish-codigo
+    locale: es-ES
+    events:
+      - text: "Tu código de verificación es 731804."
+        expected: {code: "731804", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-003-spanish-clave
+    locale: es-MX
+    events:
+      - text: "Clave de acceso: A7B4C9"
+        expected: {code: "A7B4C9", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-004-portuguese
+    locale: pt-BR
+    events:
+      - text: "Seu código de confirmação é 905177."
+        expected: {code: "905177", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-005-italian
+    locale: it-IT
+    events:
+      - text: "Il tuo codice di accesso è 620918."
+        expected: {code: "620918", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-006-dutch
+    locale: nl-NL
+    events:
+      - text: "Uw verificatiecode is 339122."
+        expected: {code: "339122", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-007-polish
+    locale: pl-PL
+    events:
+      - text: "Kod weryfikacyjny: 507401"
+        expected: {code: "507401", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-008-turkish-kodu
+    locale: tr-TR
+    events:
+      - text: "Doğrulama kodu 771902."
+        expected: {code: "771902", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-009-turkish-sifre
+    locale: tr-TR
+    events:
+      - text: "Tek kullanımlık şifre: 480155"
+        expected: {code: "480155", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-010-finnish
+    locale: fi-FI
+    events:
+      - text: "Vahvistuskoodi on 960281."
+        expected: {code: "960281", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-011-russian-code
+    locale: ru-RU
+    events:
+      - text: "Код подтверждения: 702844"
+        expected: {code: "702844", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-012-russian-password
+    locale: ru-RU
+    events:
+      - text: "Одноразовый пароль 552904."
+        expected: {code: "552904", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-013-ukrainian
+    locale: uk-UA
+    events:
+      - text: "Код підтвердження 401928."
+        expected: {code: "401928", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-014-bulgarian
+    locale: bg-BG
+    events:
+      - text: "Код за потвърждение: 740215"
+        expected: {code: "740215", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-015-hebrew
+    locale: he-IL
+    events:
+      - text: "קוד האימות שלך הוא 881204"
+        expected: {code: "881204", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-016-arabic
+    locale: ar
+    events:
+      - text: "كود التحقق هو 620184"
+        expected: {code: "620184", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-017-arabic-indic-digits
+    locale: ar
+    events:
+      - text: "رمز التحقق: ٤٨٢٩١٣"
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-018-persian
+    locale: fa-IR
+    events:
+      - text: "کد تأیید شما 731804 است"
+        expected: {code: "731804", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-019-persian-digits
+    locale: fa-IR
+    events:
+      - text: "کد ورود: ۹۰۵۱۷۷"
+        expected: {code: "905177", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-020-chinese-verification
+    locale: zh-CN
+    events:
+      - text: "您的验证码是 620918，请勿泄露。"
+        expected: {code: "620918", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-021-chinese-check
+    locale: zh-CN
+    events:
+      - text: "校验码 339122，五分钟内有效。"
+        expected: {code: "339122", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-022-japanese-code
+    locale: ja-JP
+    events:
+      - text: "確認コードは 507401 です。"
+        expected: {code: "507401", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-023-japanese-auth-number
+    locale: ja-JP
+    events:
+      - text: "認証番号: 771902"
+        expected: {code: "771902", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-024-korean
+    locale: ko-KR
+    events:
+      - text: "인증번호는 480155 입니다."
+        expected: {code: "480155", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-025-czech
+    locale: cs-CZ
+    events:
+      - text: "Ověřovací kód je 960281."
+        expected: {code: "960281", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-026-romanian
+    locale: ro-RO
+    events:
+      - text: "Codul de verificare este 702844."
+        expected: {code: "702844", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-027-hungarian
+    locale: hu-HU
+    events:
+      - text: "Az ellenőrző kód: 552904"
+        expected: {code: "552904", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-028-swedish
+    locale: sv-SE
+    events:
+      - text: "Din verifieringskod är 401928."
+        expected: {code: "401928", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-029-norwegian
+    locale: nb-NO
+    events:
+      - text: "Bekreftelseskoden er 740215."
+        expected: {code: "740215", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-030-danish
+    locale: da-DK
+    events:
+      - text: "Din bekræftelseskode er 881204."
+        expected: {code: "881204", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-031-indonesian
+    locale: id-ID
+    events:
+      - text: "Kode verifikasi Anda adalah 620184."
+        expected: {code: "620184", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-032-vietnamese
+    locale: vi-VN
+    events:
+      - text: "Mã xác minh của bạn là 482913."
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-033-thai
+    locale: th-TH
+    events:
+      - text: "รหัสยืนยันของคุณคือ 731804"
+        expected: {code: "731804", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-034-hindi
+    locale: hi-IN
+    events:
+      - text: "आपका सत्यापन कोड 905177 है।"
+        expected: {code: "905177", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-035-greek
+    locale: el-GR
+    events:
+      - text: "Ο κωδικός επαλήθευσης είναι 620918."
+        expected: {code: "620918", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ml-036-croatian
+    locale: hr-HR
+    events:
+      - text: "Kod za potvrdu je 339122."
+        expected: {code: "339122", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}

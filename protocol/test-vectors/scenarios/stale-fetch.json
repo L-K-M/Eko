@@ -1,0 +1,199 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "active-snapshot-and-stale-fetch",
+  "initial": {
+    "generation": "11111111-2222-4333-8444-555555555555",
+    "sync_high_water": 50,
+    "key_a": "0|com.example.sms|42|null|10001",
+    "phone_key_a_state_seq": 49,
+    "phone_key_a_hash": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+    "mac_key_a_hash": null
+  },
+  "steps": [
+    {
+      "step": 1,
+      "from": "phone",
+      "frame": {
+        "type": "active_chunk",
+        "sync_id": "eeeeeeee-ffff-4000-8111-222222222222",
+        "index": 0,
+        "final": true,
+        "active": [
+          {
+            "key": "0|com.example.sms|42|null|10001",
+            "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+            "state_seq": 49
+          }
+        ]
+      },
+      "expect": { "snapshot_buffered_not_applied": true }
+    },
+    {
+      "step": 2,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_end",
+        "sync_id": "eeeeeeee-ffff-4000-8111-222222222222",
+        "state_seq": 50
+      },
+      "expect": {
+        "snapshot_applied": true,
+        "mac_latest_state_seq_for_key_a": 49,
+        "fetch_key_a": true
+      }
+    },
+    {
+      "step": 3,
+      "from": "mac",
+      "frame": {
+        "type": "fetch",
+        "request_id": "12345678-1234-4abc-8def-1234567890ab",
+        "keys": ["0|com.example.sms|42|null|10001"]
+      }
+    },
+    {
+      "step": 4,
+      "action": "phone_reads_fetch_response_then_delivery_is_delayed",
+      "captured_response": {
+        "type": "event",
+        "state_seq": 49,
+        "request_id": "12345678-1234-4abc-8def-1234567890ab",
+        "ev": "posted",
+        "key": "0|com.example.sms|42|null|10001",
+        "posted_at": 1753351199000,
+        "user": 0,
+        "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+        "app": { "pkg": "com.example.sms", "label": "Messages", "category": "msg" },
+        "n": {
+          "title": null,
+          "text": "Your login code is 482913",
+          "big_text": null,
+          "sub_text": null,
+          "info_text": null,
+          "summary_text": null,
+          "text_lines": null,
+          "messages": null,
+          "is_clearable": true,
+          "is_group_summary": false,
+          "group_key": null
+        },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": false, "reconciled": true },
+        "truncated_fields": []
+      }
+    },
+    {
+      "step": 5,
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "seq": 51,
+        "ev": "updated",
+        "key": "0|com.example.sms|42|null|10001",
+        "posted_at": 1753351205000,
+        "user": 0,
+        "h": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289",
+        "app": { "pkg": "com.example.sms", "label": "Messages", "category": "msg" },
+        "n": {
+          "title": "Support",
+          "text": "Code: AB12-CD",
+          "big_text": "Use code AB12-CD for sign-in. Quote: \"single use\".",
+          "sub_text": "Account",
+          "info_text": null,
+          "summary_text": null,
+          "text_lines": ["First line", "Second / line"],
+          "messages": [
+            { "sender": "Eko Bot", "text": "Code: AB12-CD", "ts": 1753351198500 }
+          ],
+          "is_clearable": true,
+          "is_group_summary": false,
+          "group_key": "group/support"
+        },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": false, "reconciled": false },
+        "truncated_fields": []
+      },
+      "expect": {
+        "mac_latest_state_seq_for_key_a": 51,
+        "mac_key_a_hash": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289"
+      }
+    },
+    {
+      "step": 6,
+      "from": "phone",
+      "frame_from_step": 4,
+      "expect": {
+        "ignored_as_stale": true,
+        "reason": "fetch state_seq 49 is below applied state_seq 51",
+        "mac_key_a_hash": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289"
+      }
+    },
+    {
+      "step": 7,
+      "from": "mac",
+      "frame": {
+        "type": "fetch",
+        "request_id": "23456789-2345-4bcd-9ef0-234567890abc",
+        "keys": ["0|com.example.mail|9|null|10002"]
+      }
+    },
+    {
+      "step": 8,
+      "action": "phone_reads_absence_at_high_water_51_then_delivery_is_delayed",
+      "captured_response": {
+        "type": "fetch_missing",
+        "request_id": "23456789-2345-4bcd-9ef0-234567890abc",
+        "key": "0|com.example.mail|9|null|10002",
+        "state_seq": 51
+      }
+    },
+    {
+      "step": 9,
+      "from": "phone",
+      "frame": {
+        "type": "event",
+        "seq": 52,
+        "ev": "posted",
+        "key": "0|com.example.mail|9|null|10002",
+        "posted_at": 1753351206000,
+        "user": 0,
+        "h": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59",
+        "app": { "pkg": "com.example.mail", "label": "Mail", "category": "email" },
+        "n": {
+          "title": null,
+          "text": "Your login code is 482913",
+          "big_text": null,
+          "sub_text": null,
+          "info_text": null,
+          "summary_text": null,
+          "text_lines": null,
+          "messages": null,
+          "is_clearable": true,
+          "is_group_summary": false,
+          "group_key": null
+        },
+        "dnd": { "filter": "all", "suppressed": false },
+        "flags": { "replayed": false, "reconciled": false },
+        "truncated_fields": []
+      },
+      "expect": { "mac_latest_state_seq_for_key_b": 52, "key_b_active": true }
+    },
+    {
+      "step": 10,
+      "from": "phone",
+      "frame_from_step": 8,
+      "expect": {
+        "ignored_as_stale": true,
+        "reason": "fetch_missing state_seq 51 is below applied state_seq 52",
+        "key_b_active": true
+      }
+    }
+  ],
+  "final_assertions": {
+    "key_a_state_seq": 51,
+    "key_a_hash": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289",
+    "key_b_state_seq": 52,
+    "key_b_active": true,
+    "fetch_frames_advance_processed_through": false
+  }
+}

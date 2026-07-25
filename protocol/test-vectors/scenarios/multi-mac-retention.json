@@ -1,0 +1,81 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "per-pairing-retention-does-not-delete-another-macs-needed-rows",
+  "initial": {
+    "generation": "11111111-2222-4333-8444-555555555555",
+    "phone_last_assigned_seq": 100,
+    "outbox_rows": "1-100",
+    "pairings": {
+      "mac_a": { "acked_seq": 100, "serve_from_seq": 1 },
+      "mac_b": { "acked_seq": 50, "serve_from_seq": 51 }
+    }
+  },
+  "steps": [
+    {
+      "step": 1,
+      "action": "apply_mac_b_count_cap",
+      "computed_count_floor": 81,
+      "computed_age_floor": 51,
+      "expect_atomic": {
+        "mac_b_serve_from_seq": 81,
+        "insert_gap": { "pairing": "mac_b", "from_seq": 51, "to_seq": 80, "reason": "retention_count" }
+      }
+    },
+    {
+      "step": 2,
+      "action": "apply_global_physical_deletion_predicate",
+      "expect": {
+        "deletable_rows": "1-80",
+        "retained_rows": "81-100",
+        "reason_rows_81_100_retained": "mac_b has not ACKed and remains eligible to receive them",
+        "mac_a_gap_created": false
+      }
+    },
+    {
+      "step": 3,
+      "from": "mac_b",
+      "frame": {
+        "type": "welcome",
+        "proto": 1,
+        "device_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+        "mac_name": "Vector Mac B",
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "cursor": 50,
+        "caps": ["notif", "dismiss", "otp_context"]
+      },
+      "expect": { "requested_from": 51, "effective_floor": 81, "replay_from": 81 }
+    },
+    {
+      "step": 4,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_start",
+        "sync_id": "45678901-4567-4def-9012-45678901abcd",
+        "from_seq": 81,
+        "replay_to_seq": 100,
+        "event_count": 20
+      }
+    },
+    {
+      "step": 5,
+      "from": "phone",
+      "frame": {
+        "type": "backlog_gap",
+        "sync_id": "45678901-4567-4def-9012-45678901abcd",
+        "from_seq": 51,
+        "to_seq": 80,
+        "reason": "retention_count"
+      },
+      "expect": {
+        "authorized_through": 80,
+        "expected_event_sequences_after_gap": [81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100]
+      }
+    }
+  ],
+  "final_assertions": {
+    "slow_mac_overflow_deleted_rows_needed_by_fast_mac": false,
+    "fast_mac_policy_changed": false,
+    "mac_b_gap_exact": true,
+    "physical_deletion_was_preceded_by_ack_or_gap_for_every_pairing": true
+  }
+}

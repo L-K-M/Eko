@@ -1,0 +1,237 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/common.schema.json",
+  "title": "Eko protocol v1 common definitions",
+  "$defs": {
+    "uint53": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveSeq": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "uint32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "deviceId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "uuidV4": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "attemptId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "certDer": {
+      "type": "string",
+      "minLength": 4,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+      "contentEncoding": "base64"
+    },
+    "qrToken": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "caps": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      }
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192
+    },
+    "flags": {
+      "type": "object",
+      "required": ["replayed", "reconciled"],
+      "properties": {
+        "replayed": { "type": "boolean" },
+        "reconciled": { "type": "boolean" }
+      }
+    },
+    "app": {
+      "type": "object",
+      "required": ["pkg", "label", "category"],
+      "properties": {
+        "pkg": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "category": {
+          "type": ["string", "null"],
+          "maxLength": 128
+        }
+      }
+    },
+    "dnd": {
+      "type": "object",
+      "required": ["filter", "suppressed"],
+      "properties": {
+        "filter": {
+          "enum": ["unknown", "all", "priority", "none", "alarms"]
+        },
+        "suppressed": { "type": "boolean" }
+      }
+    },
+    "message": {
+      "type": "object",
+      "required": ["sender", "text", "ts"],
+      "properties": {
+        "sender": {
+          "type": ["string", "null"],
+          "maxLength": 4096
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 16384
+        },
+        "ts": {
+          "oneOf": [
+            { "$ref": "#/$defs/uint53" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "notification": {
+      "type": "object",
+      "required": [
+        "title",
+        "text",
+        "big_text",
+        "sub_text",
+        "info_text",
+        "summary_text",
+        "text_lines",
+        "messages",
+        "is_clearable",
+        "is_group_summary",
+        "group_key"
+      ],
+      "properties": {
+        "title": { "type": ["string", "null"], "maxLength": 8192 },
+        "text": { "type": ["string", "null"], "maxLength": 8192 },
+        "big_text": { "type": ["string", "null"], "maxLength": 65536 },
+        "sub_text": { "type": ["string", "null"], "maxLength": 8192 },
+        "info_text": { "type": ["string", "null"], "maxLength": 8192 },
+        "summary_text": { "type": ["string", "null"], "maxLength": 8192 },
+        "text_lines": {
+          "oneOf": [
+            {
+              "type": "array",
+              "maxItems": 64,
+              "items": { "type": "string", "maxLength": 8192 }
+            },
+            { "type": "null" }
+          ]
+        },
+        "messages": {
+          "oneOf": [
+            {
+              "type": "array",
+              "maxItems": 64,
+              "items": { "$ref": "#/$defs/message" }
+            },
+            { "type": "null" }
+          ]
+        },
+        "is_clearable": { "type": "boolean" },
+        "is_group_summary": { "type": "boolean" },
+        "group_key": { "type": ["string", "null"], "maxLength": 8192 }
+      }
+    },
+    "truncatedFields": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^/(?:[^~/]|~[01])*(?:/(?:[^~/]|~[01])*)*$"
+      }
+    },
+    "removeReason": {
+      "type": "object",
+      "required": ["code", "reconciled"],
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "reconciled": { "type": "boolean" }
+      }
+    },
+    "captureInterval": {
+      "type": "object",
+      "required": ["start_at", "end_at"],
+      "properties": {
+        "start_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/uint53" },
+            { "type": "null" }
+          ]
+        },
+        "end_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/uint53" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "not": {
+        "properties": {
+          "start_at": { "type": "null" },
+          "end_at": { "type": "null" }
+        },
+        "required": ["start_at", "end_at"]
+      }
+    },
+    "activeEntry": {
+      "type": "object",
+      "required": ["key", "h", "state_seq"],
+      "properties": {
+        "key": { "$ref": "#/$defs/key" },
+        "h": { "$ref": "#/$defs/sha256" },
+        "state_seq": { "$ref": "#/$defs/positiveSeq" }
+      }
+    },
+    "gapReason": {
+      "enum": ["retention_count", "retention_age", "peer_cursor_regressed"]
+    },
+    "captureEvidence": {
+      "enum": ["listener_disconnected", "process_exit", "writer_overflow"]
+    }
+  }
+}

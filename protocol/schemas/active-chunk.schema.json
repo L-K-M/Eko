@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/active-chunk.schema.json",
+  "title": "Eko v1 active_chunk",
+  "type": "object",
+  "required": ["type", "sync_id", "index", "final", "active"],
+  "properties": {
+    "type": { "const": "active_chunk" },
+    "sync_id": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "index": { "$ref": "common.schema.json#/$defs/uint53" },
+    "final": { "type": "boolean" },
+    "active": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": { "$ref": "common.schema.json#/$defs/activeEntry" }
+    }
+  }
+}

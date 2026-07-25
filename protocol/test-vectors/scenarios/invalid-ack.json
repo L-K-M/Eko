@@ -1,0 +1,53 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "invalid-ack-rejection",
+  "cases": [
+    {
+      "id": "ahead-of-sent-coverage",
+      "initial": {
+        "pairing_acked_seq": 20,
+        "welcome_cursor": 20,
+        "authorized_through": 22,
+        "replay_to_seq_advertised": 30
+      },
+      "receive": { "type": "ack", "seq": 30 },
+      "expect_send": {
+        "type": "error",
+        "code": "invalid_ack",
+        "fatal": true,
+        "message": "ACK exceeds sent contiguous coverage."
+      },
+      "expect_close": true,
+      "expect_pairing_acked_seq": 20
+    },
+    {
+      "id": "lower-than-durable-ack",
+      "initial": {
+        "pairing_acked_seq": 40,
+        "welcome_cursor": 39,
+        "authorized_through": 45
+      },
+      "receive": { "type": "ack", "seq": 39 },
+      "expect_send": {
+        "type": "error",
+        "code": "invalid_ack",
+        "fatal": true,
+        "message": "ACK regresses durable pairing state."
+      },
+      "expect_close": true,
+      "expect_pairing_acked_seq": 40
+    },
+    {
+      "id": "equal-ack-is-idempotent",
+      "initial": {
+        "pairing_acked_seq": 40,
+        "welcome_cursor": 40,
+        "authorized_through": 40
+      },
+      "receive": { "type": "ack", "seq": 40 },
+      "expect_send": null,
+      "expect_close": false,
+      "expect_pairing_acked_seq": 40
+    }
+  ]
+}

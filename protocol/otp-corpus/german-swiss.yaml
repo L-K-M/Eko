@@ -1,0 +1,228 @@
+format: eko-otp-corpus-v1
+license: CC0-1.0
+provenance: Clean-room synthetic German and Swiss cases written for Eko without consulting third-party extractor source code.
+defaults:
+  omitted_text_field: null
+  omitted_array_field: []
+  is_group_summary: false
+cases:
+  - id: de-001-bestaetigungscode
+    locale: de-DE
+    source: sms
+    events:
+      - text: "Ihr Bestätigungscode lautet 448 291."
+        expected: {code: "448291", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-002-ascii-compound
+    locale: de-DE
+    source: sms
+    events:
+      - text: "Bestaetigungscode: 905177"
+        expected: {code: "905177", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-003-sicherheitscode
+    locale: de-DE
+    source: sms
+    events:
+      - text: "Der Sicherheitscode ist 7310."
+        expected: {code: "7310", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-004-einmalkennwort
+    locale: de-DE
+    source: email
+    events:
+      - text: "Einmalkennwort 44K9P2 für Ihre Anmeldung."
+        expected: {code: "44K9P2", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-005-mtan-code
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Ihr mTAN-Code ist 819204. Prüfen Sie den Betrag in der App."
+        expected: {code: "819204", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: de-006-sms-tan
+    locale: de-DE
+    source: banking
+    events:
+      - text: "SMS-TAN 620918 für die Freigabe."
+        expected: {code: "620918", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: de-007-tan-after-token
+    locale: de-CH
+    source: banking
+    events:
+      - text: "339122 ist Ihre TAN für diese Zahlung."
+        expected: {code: "339122", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: de-008-pin
+    locale: de-DE
+    source: sms
+    events:
+      - text: "PIN: 5074. Nicht weitergeben."
+        expected: {code: "5074", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-009-code-before-compound
+    locale: de-DE
+    source: sms
+    events:
+      - text: "771902 ist der Bestätigungscode für Ihr neues Gerät."
+        expected: {code: "771902", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-010-hyphenated-groups
+    locale: de-CH
+    source: sms
+    events:
+      - text: "Verifizierungscode 123-908"
+        expected: {code: "123908", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-011-alphanumeric
+    locale: de-DE
+    source: email
+    events:
+      - text: "Ihr Anmeldecode ist Q7F4KD."
+        expected: {code: "Q7F4KD", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-012-lowercase-keyword
+    locale: de-DE
+    source: sms
+    events:
+      - text: "code für die Anmeldung: 480155"
+        expected: {code: "480155", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-013-big-text
+    locale: de-CH
+    source: email
+    events:
+      - text: "Neue Anmeldung"
+        big_text: "Für die Bestätigung verwenden Sie den Code 960281."
+        expected: {code: "960281", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: de-014-message-style
+    locale: de-DE
+    source: sms
+    events:
+      - messages:
+          - {sender: "Dienst", text: "Ihr Einmalcode ist 702844", ts: 1753351198500}
+        expected: {code: "702844", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ch-001-francais
+    locale: fr-CH
+    source: sms
+    events:
+      - text: "Votre code de confirmation est 552 904."
+        expected: {code: "552904", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ch-002-italiano
+    locale: it-CH
+    source: sms
+    events:
+      - text: "Il codice di verifica è 401928."
+        expected: {code: "401928", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ch-003-rumantsch
+    locale: rm-CH
+    source: sms
+    events:
+      - text: "Voss code da verificaziun è 740215."
+        expected: {code: "740215", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: ch-004-banking-amount-and-tan
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Zahlung CHF 1'234.50. mTAN 881204 zur Freigabe."
+        expected: {code: "881204", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: ch-005-franc-amount-not-code
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Kartenzahlung bestätigt: CHF 1'234.50."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: ch-006-amount-near-code-word
+    locale: de-CH
+    source: retail
+    events:
+      - text: "Gutscheincode angewendet. Neuer Totalbetrag CHF 4'812.00."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: ch-007-swiss-phone-number
+    locale: de-CH
+    source: other
+    events:
+      - text: "Rückruf-Code beim Support: +41 79 555 12 34"
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: ch-008-card-endziffer
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Ihre Karte mit Endziffer 4821 wurde belastet."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-015-rabattcode
+    locale: de-DE
+    source: retail
+    events:
+      - text: "Ihr Rabattcode SOMMER24 spart 10 Prozent."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-016-strichcode
+    locale: de-DE
+    source: retail
+    events:
+      - text: "Der Strichcode 4012345678901 wurde gescannt."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-017-versionscode
+    locale: de-DE
+    source: other
+    events:
+      - text: "Versionscode 41028 ist jetzt installiert."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-018-order-number
+    locale: de-DE
+    source: retail
+    events:
+      - text: "Bestellcode 77190244 wurde versandt."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-019-year-near-code
+    locale: de-DE
+    source: other
+    events:
+      - text: "Der Abgabecode gilt für das Steuerjahr 2026."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-020-title-number-excluded
+    locale: de-CH
+    source: sms
+    events:
+      - title: "Bestätigungscode 995104"
+        text: "Öffnen Sie die App, um fortzufahren."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-021-group-summary-excluded
+    locale: de-DE
+    source: email
+    events:
+      - text: "Sicherheitscode 540118"
+        is_group_summary: true
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: de-022-intermediate-tan-update
+    locale: de-CH
+    source: banking
+    device_id: device-ch
+    events:
+      - at_ms: 4000000
+        notification_key: bank-conversation
+        text: "mTAN 110482 für CHF 20.00"
+        expected: {code: "110482", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+      - at_ms: 4060000
+        notification_key: bank-conversation
+        text: "Neue mTAN 902771 für CHF 20.00"
+        expected: {code: "902771", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}

@@ -1,0 +1,2 @@
+"NSBluetoothAlwaysUsageDescription" = "Eko advertises a private Bluetooth presence signal so paired Android phones can remain reliable in the background.";
+"NSLocalNetworkUsageDescription" = "Eko discovers and receives notifications from your paired Android phones on your local network.";

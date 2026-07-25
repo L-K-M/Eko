@@ -1,0 +1,46 @@
+{
+  "format": "eko-content-hash-v1",
+  "canonicalization": "RFC 8785 JCS followed by UTF-8",
+  "vectors": [
+    {
+      "id": "minimal-text",
+      "n": {
+        "title": null,
+        "text": "Your login code is 482913",
+        "big_text": null,
+        "sub_text": null,
+        "info_text": null,
+        "summary_text": null,
+        "text_lines": null,
+        "messages": null,
+        "is_clearable": true,
+        "is_group_summary": false,
+        "group_key": null
+      },
+      "canonical_utf8": "{\"big_text\":null,\"group_key\":null,\"info_text\":null,\"is_clearable\":true,\"is_group_summary\":false,\"messages\":null,\"sub_text\":null,\"summary_text\":null,\"text\":\"Your login code is 482913\",\"text_lines\":null,\"title\":null}",
+      "canonical_utf8_hex": "7b226269675f74657874223a6e756c6c2c2267726f75705f6b6579223a6e756c6c2c22696e666f5f74657874223a6e756c6c2c2269735f636c65617261626c65223a747275652c2269735f67726f75705f73756d6d617279223a66616c73652c226d65737361676573223a6e756c6c2c227375625f74657874223a6e756c6c2c2273756d6d6172795f74657874223a6e756c6c2c2274657874223a22596f7572206c6f67696e20636f646520697320343832393133222c22746578745f6c696e6573223a6e756c6c2c227469746c65223a6e756c6c7d",
+      "sha256": "6cb500ea71e3a78d056f0ad4bb28f43a0372e425e884bf7f7315a958fb852b59"
+    },
+    {
+      "id": "messages-and-escaping",
+      "n": {
+        "title": "Support",
+        "text": "Code: AB12-CD",
+        "big_text": "Use code AB12-CD for sign-in. Quote: \"single use\".",
+        "sub_text": "Account",
+        "info_text": null,
+        "summary_text": null,
+        "text_lines": ["First line", "Second / line"],
+        "messages": [
+          { "sender": "Eko Bot", "text": "Code: AB12-CD", "ts": 1753351198500 }
+        ],
+        "is_clearable": true,
+        "is_group_summary": false,
+        "group_key": "group/support"
+      },
+      "canonical_utf8": "{\"big_text\":\"Use code AB12-CD for sign-in. Quote: \\\"single use\\\".\",\"group_key\":\"group/support\",\"info_text\":null,\"is_clearable\":true,\"is_group_summary\":false,\"messages\":[{\"sender\":\"Eko Bot\",\"text\":\"Code: AB12-CD\",\"ts\":1753351198500}],\"sub_text\":\"Account\",\"summary_text\":null,\"text\":\"Code: AB12-CD\",\"text_lines\":[\"First line\",\"Second / line\"],\"title\":\"Support\"}",
+      "canonical_utf8_hex": "7b226269675f74657874223a2255736520636f646520414231322d434420666f72207369676e2d696e2e2051756f74653a205c2273696e676c65207573655c222e222c2267726f75705f6b6579223a2267726f75702f737570706f7274222c22696e666f5f74657874223a6e756c6c2c2269735f636c65617261626c65223a747275652c2269735f67726f75705f73756d6d617279223a66616c73652c226d65737361676573223a5b7b2273656e646572223a22456b6f20426f74222c2274657874223a22436f64653a20414231322d4344222c227473223a313735333335313139383530307d5d2c227375625f74657874223a224163636f756e74222c2273756d6d6172795f74657874223a6e756c6c2c2274657874223a22436f64653a20414231322d4344222c22746578745f6c696e6573223a5b224669727374206c696e65222c225365636f6e64202f206c696e65225d2c227469746c65223a22537570706f7274227d",
+      "sha256": "d4470862860fdd8637c04cc994c003b6ba65b4201e4ef65daf7a263698820289"
+    }
+  ]
+}

@@ -1,0 +1,142 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "strict-persistent-epoch-supersession",
+  "initial": {
+    "mac_highest_epoch": 20,
+    "authoritative_connection": "c20",
+    "generation": "11111111-2222-4333-8444-555555555555"
+  },
+  "cases": [
+    {
+      "id": "equal-epoch-rejected",
+      "connection": "c20b",
+      "receive": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 20,
+        "phone_time": 1753351500000
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "superseded",
+        "fatal": true,
+        "message": "Connection epoch is not strictly newer."
+      },
+      "expect_closed_connection": "c20b",
+      "expect_authoritative_connection": "c20"
+    },
+    {
+      "id": "lower-epoch-rejected",
+      "connection": "c19",
+      "receive": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 19,
+        "phone_time": 1753351501000
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "superseded",
+        "fatal": true,
+        "message": "Connection epoch is not strictly newer."
+      },
+      "expect_closed_connection": "c19",
+      "expect_authoritative_connection": "c20"
+    },
+    {
+      "id": "higher-epoch-atomically-wins",
+      "connection": "c21",
+      "receive": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif", "dismiss", "otp_context"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 21,
+        "phone_time": 1753351502000
+      },
+      "expect": {
+        "reserve_epoch_before_response": 21,
+        "authoritative_connection": "c21",
+        "closed_connection": "c20",
+        "discard_all_buffered_frames_from": "c20"
+      },
+      "buffered_old_connection_frame": {
+        "type": "event",
+        "seq": 51,
+        "ev": "capture_gap",
+        "h": null,
+        "flags": { "replayed": false, "reconciled": false },
+        "confidence": "suspected",
+        "interval": { "start_at": 1753351400000, "end_at": 1753351410000 },
+        "evidence": "process_exit"
+      },
+      "expect_old_frame_applied": false
+    },
+    {
+      "id": "epoch-high-water-survives-disconnect",
+      "precondition": { "c21_closed": true, "no_live_connection": true, "mac_highest_epoch": 21 },
+      "receive": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 21,
+        "phone_time": 1753351503000
+      },
+      "expect_send": {
+        "type": "error",
+        "code": "superseded",
+        "fatal": true,
+        "message": "Connection epoch is not strictly newer."
+      },
+      "expect_close": true
+    },
+    {
+      "id": "next-epoch-after-disconnect-accepted",
+      "precondition": { "no_live_connection": true, "mac_highest_epoch": 21 },
+      "receive": {
+        "type": "hello",
+        "mode": "normal",
+        "proto_min": 1,
+        "proto_max": 1,
+        "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+        "device_name": "Vector Phone",
+        "os": "android",
+        "os_version": 36,
+        "caps": ["notif"],
+        "outbox_gen": "11111111-2222-4333-8444-555555555555",
+        "conn_epoch": 22,
+        "phone_time": 1753351504000
+      },
+      "expect": { "accepted": true, "mac_highest_epoch": 22 }
+    }
+  ]
+}

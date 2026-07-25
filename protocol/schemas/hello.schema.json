@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/hello.schema.json",
+  "title": "Eko v1 hello",
+  "type": "object",
+  "required": [
+    "type", "mode", "proto_min", "proto_max", "device_id", "device_name",
+    "os", "os_version", "caps", "conn_epoch", "phone_time"
+  ],
+  "properties": {
+    "type": { "const": "hello" },
+    "mode": { "enum": ["normal", "pair", "unpair"] },
+    "proto_min": { "const": 1 },
+    "proto_max": { "const": 1 },
+    "device_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "device_name": { "$ref": "common.schema.json#/$defs/displayName" },
+    "os": { "const": "android" },
+    "os_version": { "$ref": "common.schema.json#/$defs/uint32" },
+    "caps": { "$ref": "common.schema.json#/$defs/caps" },
+    "outbox_gen": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "conn_epoch": { "$ref": "common.schema.json#/$defs/positiveSeq" },
+    "phone_time": { "$ref": "common.schema.json#/$defs/uint53" },
+    "attempt_id": { "$ref": "common.schema.json#/$defs/attemptId" },
+    "qr_token": { "$ref": "common.schema.json#/$defs/qrToken" },
+    "unpair_id": { "$ref": "common.schema.json#/$defs/uuidV4" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "mode": { "const": "normal" },
+        "caps": { "contains": { "const": "notif" } }
+      },
+      "required": ["outbox_gen"],
+      "not": {
+        "anyOf": [
+          { "required": ["attempt_id"] },
+          { "required": ["qr_token"] },
+          { "required": ["unpair_id"] }
+        ]
+      }
+    },
+    {
+      "properties": {
+        "mode": { "const": "pair" },
+        "caps": { "contains": { "const": "notif" } }
+      },
+      "required": ["attempt_id", "outbox_gen"],
+      "not": { "required": ["unpair_id"] }
+    },
+    {
+      "properties": { "mode": { "const": "unpair" } },
+      "required": ["unpair_id"],
+      "not": {
+        "anyOf": [
+          { "required": ["attempt_id"] },
+          { "required": ["qr_token"] },
+          { "required": ["outbox_gen"] }
+        ]
+      }
+    }
+  ]
+}

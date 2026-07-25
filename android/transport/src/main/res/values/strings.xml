@@ -1,0 +1,10 @@
+<resources>
+    <string name="eko_connection_channel_name">Connection status</string>
+    <string name="eko_connection_channel_description">Keeps paired Macs connected on the local network</string>
+    <string name="eko_connection_title">Eko forwarding is active</string>
+    <string name="eko_connection_connected">Connected to %1$d Mac(s)</string>
+    <string name="eko_connection_reconnecting">Reconnecting to paired Macs</string>
+    <string name="eko_connection_paused">Notification forwarding is paused</string>
+    <string name="eko_pause">Pause</string>
+    <string name="eko_resume">Resume</string>
+</resources>

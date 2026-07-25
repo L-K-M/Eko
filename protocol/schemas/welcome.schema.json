@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/welcome.schema.json",
+  "title": "Eko v1 welcome",
+  "type": "object",
+  "required": ["type", "proto", "device_id", "mac_name", "outbox_gen", "cursor", "caps"],
+  "properties": {
+    "type": { "const": "welcome" },
+    "proto": { "const": 1 },
+    "device_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "mac_name": { "$ref": "common.schema.json#/$defs/displayName" },
+    "outbox_gen": { "$ref": "common.schema.json#/$defs/uuidV4" },
+    "cursor": { "$ref": "common.schema.json#/$defs/uint53" },
+    "caps": {
+      "allOf": [
+        { "$ref": "common.schema.json#/$defs/caps" },
+        { "contains": { "const": "notif" } }
+      ]
+    }
+  }
+}

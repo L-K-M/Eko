@@ -1,0 +1,14 @@
+# SwiftPM build artifacts
+.build/
+.swiftpm/
+
+# Xcode build artifacts
+DerivedData/
+
+# Per-user Xcode state
+xcuserdata/
+
+# Generated deterministically from project.yml by Scripts/generate-project.sh
+# (XcodeGen); regenerate locally instead of tracking.
+Eko.xcodeproj/
+*.xcworkspace

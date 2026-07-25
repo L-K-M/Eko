@@ -1,0 +1,230 @@
+{
+  "format": "eko-scenario-v1",
+  "name": "two-phase-unpair-and-tombstones",
+  "actors": {
+    "phone_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+    "mac_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523"
+  },
+  "cases": [
+    {
+      "id": "connected-mac-initiates-and-waits-for-ack",
+      "initial": {
+        "connection_state": "live",
+        "phone_pairing_exists": true,
+        "mac_pairing_exists": true,
+        "mac_pin_exists": true
+      },
+      "steps": [
+        {
+          "action": "mac_durably_enters_revoked_pending",
+          "expect": {
+            "normal_traffic_blocked": true,
+            "mac_pin_exists": true,
+            "mac_history_exists_until_ack": true
+          }
+        },
+        {
+          "from": "mac",
+          "frame": {
+            "type": "unpair",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000001",
+            "initiator_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "peer_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "reason": "user_request"
+          },
+          "expect": { "phone_enters_restricted_unpair": true }
+        },
+        {
+          "action": "phone_applies_revocation_transaction",
+          "expect": {
+            "phone_pairing_exists": false,
+            "phone_pairing_cursor_released": true,
+            "unused_cdm_dependencies_removed_only": true,
+            "applied_receipt_with_exact_mac_cert_exists": true
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "unpair_ack",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000001",
+            "initiator_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "peer_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "status": "applied"
+          },
+          "expect": { "close_after_flush": true }
+        },
+        {
+          "action": "mac_commits_acknowledged_deletion",
+          "expect": {
+            "mac_pairing_exists": false,
+            "mac_pin_exists": false,
+            "mac_history_exists": false,
+            "mac_pending_tombstone_exists": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "lost-ack-reuses-id-and-receipt",
+      "initial": {
+        "mac_state": "revoked_pending",
+        "phone_state": "revoked_applied",
+        "phone_applied_unpair_id": "deadbeef-0000-4000-8000-000000000001",
+        "previous_ack_was_lost": true,
+        "phone_highest_epoch": 70,
+        "mac_highest_epoch_for_phone": 70
+      },
+      "steps": [
+        {
+          "from": "phone",
+          "frame": {
+            "type": "hello",
+            "mode": "unpair",
+            "proto_min": 1,
+            "proto_max": 1,
+            "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "device_name": "Vector Phone",
+            "os": "android",
+            "os_version": 36,
+            "caps": [],
+            "conn_epoch": 71,
+            "phone_time": 1753351600000,
+            "unpair_id": "deadbeef-0000-4000-8000-000000000001"
+          },
+          "expect": {
+            "restricted_unpair": true,
+            "welcome_sent": false,
+            "mac_highest_epoch_for_phone": 71
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "unpair_ack",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000001",
+            "initiator_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "peer_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "status": "already_applied"
+          },
+          "expect": {
+            "mac_deletes_pending_tombstone": true,
+            "close_after_flush": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "offline-phone-tombstone-dials-unpair-only",
+      "initial": {
+        "phone_normal_pairing_deleted": true,
+        "phone_tombstone_has_endpoint_and_exact_cert": true,
+        "mac_pairing_exists": true,
+        "mac_highest_epoch_for_phone": 80
+      },
+      "steps": [
+        {
+          "from": "phone",
+          "frame": {
+            "type": "hello",
+            "mode": "unpair",
+            "proto_min": 1,
+            "proto_max": 1,
+            "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "device_name": "Vector Phone",
+            "os": "android",
+            "os_version": 36,
+            "caps": [],
+            "conn_epoch": 81,
+            "phone_time": 1753351610000,
+            "unpair_id": "deadbeef-0000-4000-8000-000000000002"
+          },
+          "expect": { "restricted_unpair": true, "welcome_sent": false }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "unpair",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000002",
+            "initiator_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "peer_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "reason": "user_request"
+          }
+        },
+        {
+          "from": "mac",
+          "frame": {
+            "type": "unpair_ack",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000002",
+            "initiator_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "peer_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "status": "applied"
+          },
+          "expect": {
+            "mac_normal_pairing_deleted": true,
+            "phone_tombstone_deleted_after_ack": true,
+            "notification_data_exchanged": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "offline-mac-tombstone-restricts-unaware-normal-phone",
+      "initial": {
+        "mac_normal_pairing_deleted": true,
+        "mac_tombstone_has_exact_phone_cert": true,
+        "phone_pairing_exists": true,
+        "mac_highest_epoch_for_phone": 90
+      },
+      "steps": [
+        {
+          "from": "phone",
+          "frame": {
+            "type": "hello",
+            "mode": "normal",
+            "proto_min": 1,
+            "proto_max": 1,
+            "device_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "device_name": "Vector Phone",
+            "os": "android",
+            "os_version": 36,
+            "caps": ["notif", "dismiss", "otp_context"],
+            "outbox_gen": "11111111-2222-4333-8444-555555555555",
+            "conn_epoch": 91,
+            "phone_time": 1753351620000
+          },
+          "expect": {
+            "normal_mode_denied": true,
+            "restricted_unpair": true,
+            "welcome_sent": false
+          }
+        },
+        {
+          "from": "mac",
+          "frame": {
+            "type": "unpair",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000003",
+            "initiator_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "peer_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "reason": "user_request"
+          }
+        },
+        {
+          "from": "phone",
+          "frame": {
+            "type": "unpair_ack",
+            "unpair_id": "deadbeef-0000-4000-8000-000000000003",
+            "initiator_id": "99ec855a2845f730cc5bf199568eeab3572210dc313520ac8780f22b5b9bb523",
+            "peer_id": "1032bb16eb78521ee5e17d381b31e17c699fbda2cc5872e348551cfe1ae415c2",
+            "status": "applied"
+          },
+          "expect": {
+            "phone_pairing_deleted": true,
+            "mac_tombstone_deleted_after_ack": true,
+            "sync_frames_exchanged": false
+          }
+        }
+      ]
+    }
+  ]
+}

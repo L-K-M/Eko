@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/pair-request.schema.json",
+  "title": "Eko v1 pair_request",
+  "type": "object",
+  "required": ["type", "attempt_id", "role", "method", "device_id", "device_name", "cert_der"],
+  "properties": {
+    "type": { "const": "pair_request" },
+    "attempt_id": { "$ref": "common.schema.json#/$defs/attemptId" },
+    "role": { "enum": ["phone", "mac"] },
+    "method": { "enum": ["compare", "qr"] },
+    "device_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "device_name": { "$ref": "common.schema.json#/$defs/displayName" },
+    "cert_der": { "$ref": "common.schema.json#/$defs/certDer" }
+  }
+}

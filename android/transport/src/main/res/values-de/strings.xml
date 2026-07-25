@@ -1,0 +1,10 @@
+<resources>
+    <string name="eko_connection_channel_name">Verbindungsstatus</string>
+    <string name="eko_connection_channel_description">Hält gekoppelte Macs im lokalen Netzwerk verbunden</string>
+    <string name="eko_connection_title">Eko-Weiterleitung ist aktiv</string>
+    <string name="eko_connection_connected">Mit %1$d Mac(s) verbunden</string>
+    <string name="eko_connection_reconnecting">Verbindung zu gekoppelten Macs wird hergestellt</string>
+    <string name="eko_connection_paused">Benachrichtigungsweiterleitung ist pausiert</string>
+    <string name="eko_pause">Pausieren</string>
+    <string name="eko_resume">Fortsetzen</string>
+</resources>

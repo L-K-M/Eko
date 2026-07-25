@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eko.local/protocol/v1/schemas/pair-reveal.schema.json",
+  "title": "Eko v1 pair_reveal",
+  "type": "object",
+  "required": ["type", "attempt_id", "device_id", "nonce"],
+  "properties": {
+    "type": { "const": "pair_reveal" },
+    "attempt_id": { "$ref": "common.schema.json#/$defs/attemptId" },
+    "device_id": { "$ref": "common.schema.json#/$defs/deviceId" },
+    "nonce": { "$ref": "common.schema.json#/$defs/nonce" }
+  }
+}

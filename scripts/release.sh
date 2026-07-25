@@ -113,7 +113,10 @@ else
   # Restore every edited file if anything below fails, so a half-applied bump
   # can never be committed.
   restore() { git checkout -- "$GRADLE_FILE" "$PROJECT_FILE" "$README_FILE" 2>/dev/null || true; }
-  $DRY_RUN || trap restore ERR
+  # EXIT, not ERR: die() exits explicitly, and an explicit exit never fires an
+  # ERR trap — which would leave a half-applied bump sitting in the tree. The
+  # trap is cleared once the bump is committed.
+  $DRY_RUN || trap restore EXIT
 
   edit() { # edit <file> <sed-expression>
     local file="$1" expr="$2"
@@ -137,8 +140,6 @@ else
   edit "$PROJECT_FILE" "s/^([[:space:]]*MARKETING_VERSION:[[:space:]]*).*$/\1$VERSION/"
   edit "$PROJECT_FILE" "s/^([[:space:]]*CURRENT_PROJECT_VERSION:[[:space:]]*).*$/\1$NEXT_BUILD/"
   edit "$README_FILE" "s|(<!-- version -->).*(<!-- /version -->)|\1$VERSION\2|"
-
-  $DRY_RUN || trap - ERR
 fi
 
 # --- verify what we are about to tag ----------------------------------------
@@ -160,6 +161,9 @@ fi
 if [[ -n "$NEW_VERSION" ]]; then
   git add "$GRADLE_FILE" "$PROJECT_FILE" "$README_FILE"
   git commit -m "Release $TAG"
+  # Committed: the bump is now history, so stop trying to restore it. A later
+  # failure (tag, push) leaves the commit in place to be dealt with directly.
+  trap - EXIT
   echo "-- committed the bump"
 fi
 

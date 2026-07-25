@@ -26,7 +26,7 @@ None of these are merged yet. Repository CI could not run while they were opened
 | [#18](https://github.com/L-K-M/Eko/pull/18) Capture durability | Queued commits discarded when the listener is torn down (**the notification-loss bug**); `removeCallbacks(::enqueueReconciliation)` removing nothing, and the phantom Diagnostics counters it produced; per-notification `Resources.getIdentifier` for the redaction marker |
 | [#19](https://github.com/L-K-M/Eko/pull/19) ViewModel hot path | N+1 `pairingRows()` per peer per captured notification; Home recomputing at the capture rate; uncaught store failure killing the app on launch; five binder round-trips on the main thread per resume |
 | [#20](https://github.com/L-K-M/Eko/pull/20) Android UI | Landing on the setup checklist every launch; the invisible QR reticle, missing `BackHandler` and missing insets; nothing surviving rotation; the Mac name starved to one glyph per line; fake-button status chip; unlabelled switch rows; unpair dialog overflow and inverted hierarchy; frozen diagnostics timestamps; dark-mode launch flash; off-centre launcher icon with no monochrome layer |
-| [#21](https://github.com/L-K-M/Eko/pull/21) macOS menu & chrome | **No main menu** — app could not be quit, ⌘C/⌘V/⌘Q dead; opaque panel defeating `.ultraThinMaterial`; traffic lights over the logo; `.popUpMenu` above the Settings window; status-item redraw storm; the "code available" badge that never expired; no Escape, no highlight, no right-click menu |
+| [#21](https://github.com/L-K-M/Eko/pull/21) macOS menu & chrome | **No main menu** — app could not be quit, ⌘C/⌘V/⌘Q dead; traffic lights over the logo; `.popUpMenu` above Settings *when the panel is pinned*; status-item redraw storm; the "code available" badge that never expired; no Escape, no highlight, no right-click menu. (An opacity change was reverted — see [Verification outcome](#verification-outcome).) |
 | [#22](https://github.com/L-K-M/Eko/pull/22) macOS panel performance | **A synchronous main-thread DB read per committed event**; `focus` blocking the panel on a 500-row query; three `pool.write`s on the main actor behind a 5 s busy timeout; the feed observation running while the panel is hidden; the one-shot diagnostics content toggle that wasn't |
 | [#23](https://github.com/L-K-M/Eko/pull/23) CI | `:core`'s nine test classes never ran — including the shared protocol vectors and the pinning test |
 
@@ -39,6 +39,40 @@ icon and window background but not the wider brand/design-token work ([D-01](#d-
 [D-02](#d-02)). #22 suspended the feed observation but did not add the missing index or stop
 the `device` table being dirtied per event ([P-01](#p-01)). #18 cached the redaction marker but
 not app labels, and left extraction on the listener's main thread ([P-02](#p-02)).
+
+---
+
+<a id="verification-outcome"></a>
+
+## Verification outcome
+
+The review's adversarial pass — one agent per finding, told to refute it and to default to
+"not real" when it could not confirm from source — finished after `opus.md` and the seven
+code PRs were already written. It confirmed 112 of 132 non-idea findings and **refuted 20**.
+
+Every refuted item is corrected in place below rather than deleted, marked **withdrawn**,
+**downgraded** or **narrowed**, with the residual that survived. Four were already known
+stale (#4 landed the CI, release, schema-validation and Dependabot work mid-review) and were
+annotated before this pass reported. The interesting ones are the rest:
+
+| Withdrawn claim | Why it was wrong |
+| --- | --- |
+| Opaque panel defeats `.ultraThinMaterial` | The AppKit premise was wrong; the material was already working. **Reverted from #21.** |
+| `.popUpMenu` sits above modal alerts | Impossible as described — the controller does not exist on the startup-failure path. The pinned-panel case is real, so #21 stands on that. |
+| Moving `blockStartsAfterUserStop()` off the main thread | It is a deliberate ordering barrier: `ConnectionService.requestStart` consults the flag it writes. Acting on this would have been a regression. **#19 never touched it** — only the `refreshSystemChecks` half the verifier upheld. |
+| "Include ongoing" is inert on Android 13+ | Checked against AOSP: the platform never classifies a notification as ONGOING when applying the listener type filter. |
+| Not resuming `NWListener .waiting` | That is the correct Network.framework contract; the recommendation would have broken it. |
+| Pairing has no manual fallback | The manual host:port line is rendered, and token-less pairing is a first-class SAS path. |
+| The QR is resampled badly | Computed from the real payload size: the downscale does not drop module rows. |
+| Apps screen is a 300-switch wall | The list is traffic-derived, not every installed app. |
+| Phone dials forever after a remote unpair | That path sends a real `unpair` frame the phone already handles. |
+| No update path | PLAN puts Sparkle and the Android updater explicitly post-1.0. |
+
+The pattern is worth noting for the next round: **the code observations were almost always
+accurate; what failed was the platform assumption or the impact argument layered on top.**
+Two of the twenty would have caused a regression if implemented. That is the case for keeping
+the verify stage rather than shipping straight from a finder pass — and for not writing up a
+review before it lands, which is what happened here.
 
 ---
 
@@ -87,10 +121,13 @@ Per-chunk entries are capped; the *number* of chunks is not, and `final` is peer
 8 KiB keys, a phone that never finalises grows the array and the `Set` until the process dies.
 Needs a documented ceiling in `protocol.md` §9 as well as the check.
 
-**B-05 · `NWListener .waiting` never resumes the start continuation** — `low` [S] · `TLSListener.swift:80`
-`.waiting` is reported but not resumed, and `NWListener` can sit there indefinitely (port held,
-Local Network not granted). `startWithPortFallback` then never reaches its `catch`, the `.any`-port
-fallback never runs, and the task hangs — a permanently "starting" listener with no error.
+**B-05 · ~~`NWListener .waiting` never resumes the start continuation~~** — **withdrawn**
+Not resuming on `.waiting` is the correct Network.framework contract: `.waiting` is transient, and the
+framework retries until `.ready` (resumes with the port) or `.failed` (resumes with the error). Acting
+on it would break correct behaviour. The residual is a design observation, not a bug — there is no
+upper bound on time-to-ready, so a permanently-`.waiting` listener would never reach the random-port
+fallback, which is only reachable via `.failed`. The state *is* visible: `waiting("<error>")` reaches
+the diagnostics StateCard.
 
 **B-06 · A paired peer can flip another device's UI state to failed** — `low` [S] · `SessionManager.swift:96,193`
 `claimedDeviceID = hello.deviceID` is assigned *before* the fingerprint check, and the catch block
@@ -114,13 +151,14 @@ onboarding, before any foreground service holds the process up. Needs corroborat
 "fgs active" marker, or `getImportance()`) before latching — and a visible, dismissible banner with
 a Resume button either way (see [F-05](#f-05)).
 
-**B-09 · Per-app "include ongoing" cannot work on Android 13+** — `medium` [S]
-`capture/AndroidManifest.xml:12`
-`default_filter_types="conversations|alerting|silent"` omits `ongoing`, which on API 33+ means those
-notifications are never delivered and never appear in `getActiveNotifications()`. The per-app toggle
-that exists to admit them is therefore inert on 33+ and functional on 26–32, with no public API to
-widen the filter from the app. Either add `ongoing` and rely on the app-side `shouldForward` filter,
-or hide the switch on 33+ and explain via `getCurrentListenerFilter()`.
+**B-09 · ~~Per-app "include ongoing" cannot work on Android 13+~~** — **withdrawn**
+The platform behaviour assumed here does not exist. Verified against AOSP rather than from memory:
+`NotificationManagerService.isVisibleToListener` is the single gate for both delivery paths, and the
+platform never classifies a notification as ONGOING when applying the listener type filter — so
+omitting `ongoing` from `default_filter_types` does not suppress those notifications, and the per-app
+toggle works on every supported API level. The only residue is cosmetic: because Eko's mask is 7
+against a `DEFAULT_TYPES` of 15, system Settings renders Eko's listener as having a custom type
+filter.
 
 <a id="b-10"></a>
 **B-10 · A stalled TCP write disables the heartbeat's own liveness check** — `medium` [S]
@@ -147,9 +185,16 @@ per-frame deadline to the phone's `pair_result`. A user who takes 40 s to press 
 gets a failure the protocol says cannot happen.
 
 <a id="b-13"></a>
-**B-13 · The phone ignores `error{unpaired}` / `error{stale_generation}`** — `high` [S]
-The Mac sends these as terminal. The phone logs and falls back into its ordinary reconnect loop, so a
-revoked device dials forever, showing "Reconnecting" with no explanation and no path to re-pair.
+**B-13 · The phone does not parse `error` frames before `welcome`** — `low` [S] · **downgraded**
+The original claim — that unpairing from the Mac while the phone is offline leaves it dialling forever
+— is refuted. That path writes a *pending* tombstone, so on reconnect the Mac sends a real `unpair`
+frame, which `NormalPeerSession.handleUnpairBeforeWelcome` already handles; the peer is removed and the
+loop exits. The `unpaired` error branch is only reached when the phone itself initiated the unpair, and
+it removes the confirmed peer atomically when it does. What survives: `protocol.md:194` lists `error`
+as accepted in the await-welcome state and the phone accepts only `welcome` and `unpair`. Since the Mac
+only sends fatal errors there and `ErrorMessage.fatal` defaults true, the behaviour (close and retry) is
+already correct — the loss is purely diagnostic, logging "First peer frame must be welcome" instead of
+the actual code.
 
 **B-14 · Mac measures pairing/QR expiry on the wall clock** — `medium` [S]
 `protocol.md` requires monotonic and Android uses `elapsedRealtime()`. An NTP step during a pairing
@@ -269,13 +314,17 @@ certificate mint**. Then `StatusPanelController.init` eagerly builds *both* host
 720×560 Settings window the user may never open, whose SwiftUI tree then subscribes to `AppModel` for
 the process lifetime. This app is designed to launch at login.
 
-**P-11 · QR image regenerated by `CIFilter` on every body evaluation** — `medium` [S]
-`PanelViews.swift:534` — no `@State`, no memoization, and `PairingView` observes `AppModel`, which
-publishes continuously during pairing. The payload is fixed for the invitation's lifetime.
+**P-11 · ~~QR image regenerated by `CIFilter` on every body evaluation~~** — **withdrawn**
+The code shape is real — `makeImage()` is called from `body` with no memoization — but the impact
+argument fails. `PanelViews.swift:462-465` swaps `QRCodeView` out for `PairingConfirmationView` as soon
+as the phone connects, i.e. precisely during the window where the model publishes continuously; and
+the `now` ticker is once per 60 s. Memoizing it is a one-line nit, not a performance defect.
 
-**P-12 · Group-by-device is O(devices × notifications) per body evaluation** — `low` [S]
-`PanelViews.swift:227` — two full scans of the 400-element array per device, producing new array
-instances each pass and defeating SwiftUI's identity diffing.
+**P-12 · Group-by-device re-derives its grouping in the view body** — `idea` [S] · **downgraded**
+`PanelViews.swift:227-243` does an O(D × N) pass per body evaluation with N ≤ 400. The "defeats
+SwiftUI's identity diffing" half is **withdrawn** — `Device` and `CurrentNotification` are
+`Identifiable` with stable ids, and `ForEach` diffs on element id, not on array instance identity, so a
+freshly allocated array costs nothing. Hoisting the grouping into the model is tidier, not a fix.
 
 ---
 
@@ -324,11 +373,13 @@ flow on the phone.
 round-trip echo — is silently discarded, while `onChange` writes on every mutation. **A write-only
 surface whose displayed state can permanently diverge from what is persisted.**
 
-**M-07 · Pairing has no manual fallback** — `high` [S] · `AppModel.swift:214`, `PanelViews.swift:475`
-`PairingDisplay` carries the one-time `token` and the view never renders it. PLAN specifies QR *plus*
-a manual line precisely so pairing survives a broken camera or a phone that cannot scan; as shipped
-there is no fallback path at all. The fingerprint is also truncated and not selectable, so it cannot
-be copied to compare.
+**M-07 · `PairingDisplay.token` is dead code; the fingerprint is not selectable** — `low` [S] · **downgraded**
+The original claim — no manual fallback at all — is refuted. PLAN asks for a manual **host:port** line
+and `PanelViews.swift:476` renders exactly that, and token-less pairing is a first-class protocol path,
+not a degraded one: with no token the flow runs the commit-then-reveal SAS and the user compares the
+short code. What survives is smaller: `PairingDisplay.token` is written and never read by any view
+(the QR payload carries `invitation.token` independently), and the fingerprint is shown truncated
+without `.textSelection(.enabled)`, so a security-conscious user cannot copy it to compare.
 
 <a id="m-08"></a>
 **M-08 · Banner authorization is provisional-only and nothing surfaces it** — `high` [S]
@@ -376,20 +427,24 @@ collection they can never look at.
 No checkmark, no label swap, no sound, no VoiceOver announcement. The product's central interaction
 produces zero perceptible response, and the clipboard then silently empties 120 s later.
 
-**M-16 · Pairing title mis-centred; QR resampled at a non-integer ratio** — `low` [S]
-`PanelViews.swift:448,531` — a hardcoded 44 pt counterweight against a ~52 pt (EN) / ~62 pt (DE) Back
-button, and a 10× filter output down-scaled into 220 pt with nearest-neighbour, which drops whole
-module rows on the one screen that must scan reliably.
+**M-16 · Pairing title mis-centred by ~5 pt in German** — `low` [S] · **narrowed**
+`PanelViews.swift:459` balances the Back button with a hardcoded 44 pt spacer, which is close for
+English and leaves the title ~5 pt off-centre for "Zurück". The QR half of this finding is
+**withdrawn**: computed from the actual payload size and correction level, the 10× filter output is
+large enough that the downscale into 220 pt does not drop module rows, so scan reliability is not
+affected.
 
 **M-17 · Diagnostics log: duplicate identities, no wrap, no live tail** — `low` [S] · `SettingsView.swift:249`
 Keyed on `timestamp`, which the recorder can emit in bursts; long messages clip horizontally with no
 wrap; refreshes only on appear or an explicit click, so a user reproducing a problem watches a frozen
 log.
 
-**M-18 · No About window, no version display, no Help, no update path** — `low` [S]
-`CFBundleShortVersionString` is read exactly once, to stamp the diagnostics export. A user cannot find
-which build they are running. With Developer-ID/sideload distribution there is also no mechanism at
-all to deliver a fix to an installed copy.
+**M-18 · No version string anywhere in the macOS UI** — `low` [S] · **narrowed**
+`CFBundleShortVersionString` is read exactly once, to stamp the diagnostics export — so the
+maintainer-triage path exists, but a user cannot see which build they are running without exporting
+diagnostics. The updater half is **withdrawn**: PLAN.md:639 says "Sparkle 2 for updates post-1.0" and
+PLAN.md:467 makes the Android in-app updater a v1.x nicety, so its absence at 1.0.0 is the plan, not a
+gap. (F-01's "update notice" row is the *Android* promise, which is separate and still open.)
 
 ---
 
@@ -431,13 +486,14 @@ A bare launch intent with no extras, and `MainActivity` has no `onNewIntent`. Th
 "Reconnecting to paired Macs" lands on Setup rather than Home or Diagnostics. It is also state-blind
 about *which* Mac.
 
-**A-06 · The Apps screen is the raw-toggle wall the product is trying not to be** — `medium` [S]
-`EkoScreens.kt:559`
-100–200 cards and 300–600 switches in one flat list, with no search, no filter, **no app icons**
-(trivially available from `PackageManager`, and the single highest-impact visual upgrade here), no
-grouping, no use of the `lastSeenWall` already in the row, no explanation of what "Contains codes"
-does, and no bulk actions. Both Apps and Home also flash their empty state before real data loads,
-because `stateIn` starts at `emptyList()` — an empty state shown to users who are not empty.
+**A-06 · Apps screen: unused data and an unexplained switch** — `idea` [S] · **narrowed**
+The "100–200 cards / 300–600 switches" premise is **withdrawn**: the list is driven by `seen_app`,
+written only by `recordSeen()` during capture, so it contains apps that have actually posted a
+notification — not every installed app. What survives is small: `AppWithRule.lastSeenWall` is selected
+by the query and carried into the UI but never rendered (a free "last notification 2 days ago" line),
+and the "Contains codes" switch is offered with no explanation of what it changes. App icons and a
+search field remain worthwhile once the list is long enough to need them. Separately, both Apps and
+Home do flash their empty state before data loads, because `stateIn` starts at `emptyList()`.
 
 **A-07 · Pending pairings and the `+` action are ambiguous** — `low` [S] · `EkoScreens.kt:129,340`
 Pending pairings are unlabelled bare `TextButton`s with no expiry, no endpoint and **no way to dismiss
@@ -556,10 +612,14 @@ promises "default: all except ongoing/media" as a policy.
 build, neither side offers a rename, and the Mac overwrites it from `hello` on every connection. For
 the product's stated multi-phone premise, two of the same model give two identical chips.
 
-**F-08 · What a switcher reaches for first** — `low` — inline reply, app icons in the feed, and shared
-clipboard / send-file / ring-my-phone. All deliberately deferred, which is right; making the deferral
-*visible* costs nothing. App icons are the cheapest large perceived-quality win and worth pulling into
-the first point release.
+**F-08 · PLAN claims the protocol reserves fields it does not** — `low` [S] · **rewritten**
+The "users expect reply and icons" framing is **withdrawn** as unactionable — PLAN defers both
+deliberately and the row offered exactly what PLAN says it should. What is real is a documentation
+inconsistency: PLAN.md:179 asserts the protocol "reserves fields" for notification actions beyond
+dismiss, but the shipped spec and schemas reserve no such fields — only frame type 0x02 and the generic
+forward-compat rules (unknown members ignored, `ext_types`). Either reserve them or correct the claim,
+since it is load-bearing for how cheap reply looks. App icons remain the cheapest large
+perceived-quality win and are worth pulling into the first point release.
 
 ---
 
@@ -596,18 +656,18 @@ here on JDK 21:
 CI is unaffected (`setup-java` pins 17), so this is a local-development footgun. Pick one policy —
 drop the toolchain, or add the foojay resolver and apply it uniformly.
 
-**C-04 · Two of CICD.md's planned jobs cannot run on their assigned runner** — `medium` [S]
-The `otp-corpus` job is assigned `ubuntu-latest`, but the corpus is executed only by
-`OTPCorpusTests.swift`, which does `@testable import EkoCore` and link-depends on
-AppKit/Security/CoreBluetooth — and per locked decision D7 there is no Kotlin extractor to run it
-against. `macos/README.md` says explicitly the package will not build on Linux.
+**C-04 · ~~Two of CICD.md's planned jobs cannot run on their assigned runner~~** — **withdrawn**
+Written against the pre-code blueprint (`ddacdc8`), which #4 replaced. The shipped CICD.md declares the
+same four jobs the workflow actually has — protocol, tools, android (ubuntu), macos (macos-15, Xcode
+16.3) — and handles the OTP corpus on Linux exactly as data validation, which is what
+`scripts/check-protocol.py` does.
 
 **C-05 · Documentation contradicts the code** — `medium` [S]
 `docs/diagnostics.md` documents an Android export that does not exist; the macOS export is a single
 JSON file, not the ZIP the docs tell users to unzip; two user docs instruct a synthetic test
-notification and a panel keyboard shortcut that were never built; `macos/README.md`'s build command
-omits the destination and code-signing flags the sanctioned gate requires; the release checklist's
-entitlement allowlist omits a shipped, required entitlement.
+notification and a panel keyboard shortcut that were never built; the release checklist's
+entitlement allowlist omits a shipped, required entitlement. (The `macos/README.md` build-command
+claim is **withdrawn** — `Scripts/verify-macos.sh` is the sanctioned gate and README points at it.)
 
 **C-06 · Supply chain and tooling** — `medium` **[V]**
 No `Package.resolved` is committed and `swift-crypto` is pinned as a range, so macOS builds are not
@@ -646,6 +706,14 @@ as bare literals. The type ramp mixes semantic styles with five absolute sizes, 
 appears exactly once — on the wordmark — so the brand voice exists in one place and nowhere else.
 Colours are `Color.primary.opacity(0.05/0.06/0.07)` for what is conceptually one "subtle fill", plus
 bare `.white`, `.red`, `.orange`, `.yellow`.
+
+One specific case worth doing first, and the residual the panel-opacity refutation left behind: the
+panel's `.ultraThinMaterial` works, and then `PanelViews.swift:85`, `:223` and `:379` layer semi-opaque
+*solid* system greys on top of it (`windowBackgroundColor.opacity(0.55)`,
+`controlBackgroundColor.opacity(0.35)`, `controlBackgroundColor.opacity(0.72)`). Diluting a material
+with translucent solids is what produces the muddy, low-contrast surfaces. Each surface should be
+either a real material (`.bar`, `.regularMaterial`) or a real opaque solid — never a translucent solid
+over a material.
 
 A small `DesignSystem.swift`: `Radius` (sm/md/lg, all `.continuous`), `Spacing` on a 4 pt grid,
 `Typography` (named roles, `.rounded` applied consistently to numerals and codes), `Palette` (surface,

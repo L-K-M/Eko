@@ -3,6 +3,11 @@
 A full read of the code as it stands at commit `56b6796` ("Implement Eko v1"), covering
 bugs, performance, interface, aesthetics, missing features, and ideas.
 
+> **Verification note.** The adversarial pass finished after this document was written. It confirmed
+> 112 of 132 non-idea findings and refuted 20. This file is preserved as written, except where a
+> refutation would otherwise mislead — see the corrections inline and the full accounting in
+> [`ANALYSIS.md`](ANALYSIS.md#verification-outcome), which is the document to work from.
+>
 > **Baseline note.** This was written against `56b6796`. `2bf40dd` (PR #4) landed on `main`
 > mid-review and resolved several build/CI/docs items; §H is annotated accordingly and
 > nothing was silently dropped. Everything outside §H is unaffected — #4 touched no
@@ -747,9 +752,14 @@ first `getSharedPreferences` read (blocking XML parse).
 ViewModel's `init` and from `onResume` on **every** resume, which is precisely the onboarding flow where
 the user bounces to Settings and back repeatedly.
 
-**Fix:** move `blockStartsAfterUserStop()` into the existing `applicationScope.launch { }`; make
-`refreshSystemChecks()` a `viewModelScope.launch(Dispatchers.IO)` assigning at the end; hoist
-`CdmAssociationController` to a field.
+**Fix:** make `refreshSystemChecks()` a `viewModelScope.launch(Dispatchers.IO)` assigning at the end,
+and hoist `CdmAssociationController` to a field.
+
+> **Correction (verification pass).** An earlier version of this entry also recommended moving
+> `blockStartsAfterUserStop()` into `applicationScope.launch { }`. **That would be a regression.** It
+> writes the `start-blocked` flag that `ConnectionService.requestStart` consults on the very next
+> statement — it is an ordering barrier, not a lazily-consumed cache. The main-thread call is
+> deliberate. Only the `refreshSystemChecks` half is real, and that is what PR #19 changed.
 
 ### P-19 · Group-by-device does O(devices × notifications) work per body evaluation — `low` [S]
 `macos/App/PanelViews.swift:227-243` — one full scan of the 400-element array per device for the outer

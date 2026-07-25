@@ -3,6 +3,11 @@
 A full read of the code as it stands at commit `56b6796` ("Implement Eko v1"), covering
 bugs, performance, interface, aesthetics, missing features, and ideas.
 
+> **Baseline note.** This was written against `56b6796`. `2bf40dd` (PR #4) landed on `main`
+> mid-review and resolved several build/CI/docs items; §H is annotated accordingly and
+> nothing was silently dropped. Everything outside §H is unaffected — #4 touched no
+> application code.
+
 **How this was produced.** Ten independent review passes over the tree (macOS UI, Android UI,
 macOS core correctness, Android core correctness, cross-platform performance, protocol/interop
 conformance, security & privacy, product completeness, build/CI/docs, and idea generation), each
@@ -1516,16 +1521,21 @@ app icons are the cheapest large perceived-quality win and worth pulling into th
 
 # H. Build, CI, tests, docs
 
-<a id="c-01"></a>
-### C-01 · The repository has no CI at all — `high` **[V]**
-`.github/workflows/` contains exactly one file: `zai-code-review.yml`, an LLM reviewer. Nothing compiles,
-tests or lints either platform, the protocol vectors, or the Python harness on any push or PR. The gate
-AGENTS.md calls "Planned verification" is entirely unenforced now that ~21 k lines across two toolchains have
-landed. CICD.md's own stated trigger ("the first project that builds reproducibly from a documented local
-command") is met on both sides.
+> **Re-baselined.** This review was written against `56b6796`. While it was being written,
+> `2bf40dd` (PR #4, "Land the CI/CD the blueprint described") landed on `main` and resolved
+> several items in this section outright: `.github/workflows/ci.yml` and `release.yml` now
+> exist, `scripts/check-protocol.py` validates every schema and embedded scenario frame,
+> Dependabot covers Gradle and Swift, and README/AGENTS no longer claim pre-scaffold status.
+> The entries below are what survives against that newer `main`. Nothing was deleted —
+> C-01, C-07 and most of C-08 are recorded as resolved rather than dropped.
+
+### C-01 · ~~No CI at all~~ — **resolved on `main` by #4**
+`ci.yml` now runs four jobs (protocol, tools, android, macos) on every push and PR, and
+`release.yml` re-proves a tagged commit through `workflow_call`. Kept here only as the
+provenance for C-03, which is a defect *in* that new workflow.
 
 **Verified here:** with a real SDK 36 + JDK 17 toolchain, `./gradlew :app:assembleDebug test lint` completes
-green from a clean checkout — so the Android job is genuinely landable today, not aspirational.
+green from a clean checkout — so the Android job's premise holds.
 
 ### C-02 · `:core`'s JDK-17 toolchain breaks the build on any other JDK — `high` **[V]**
 `android/core/build.gradle.kts:6`, `android/settings.gradle.kts:1`
@@ -1550,17 +1560,23 @@ Installing Temurin 17 and setting `JAVA_HOME` fixed it. **Fix:** pick one policy
 `jvmToolchain(17)` so `:core` matches the other five and builds on any JDK ≥ 17, or add the foojay resolver
 and apply the toolchain uniformly. Either way CI must pin the JDK explicitly.
 
-### C-03 · CICD.md's prescribed Android command silently skips every `:core` test — `high` **[V]**
-`CICD.md:80` specifies `testDebugUnitTest lintDebug assembleDebug`. `:core` applies
+### C-03 · The shipped CI command silently skips every `:core` test — `high` **[V]**
+`ci.yml`'s Android job — and `CICD.md` and `AGENTS.md`, which document the same command —
+run `./gradlew testDebugUnitTest lintDebug assembleDebug`. `:core` applies
 `org.jetbrains.kotlin.jvm`, not `com.android.library`, so it has **neither task** — its task is `test`.
-Gradle runs a task-name request only in projects that have it, so the command reports green while never
-executing any of `:core`'s 12 test classes, including `SharedProtocolVectorsTest` and `FrameCodecTest`.
+Gradle runs a task-name request only in projects that have it, so the job reports green while never
+executing any of `:core`'s nine test classes, including `SharedProtocolVectorsTest` (the Android half of
+the shared wire-format vectors) and `ExactDerTrustManagerTest` (certificate pinning).
 
-**Confirmed here:** running `./gradlew test lint` executed `:transport:testDebugUnitTest` and friends;
-`:core:test` only runs when named explicitly or via the `build` lifecycle task.
+**Confirmed here** against the real task graph:
 
-**Fix:** `./gradlew :core:test testDebugUnitTest lintDebug assembleDebug`, or just `./gradlew build`. Add a
-guard (assert the expected count of test-result XMLs) so it can't regress silently.
+```
+$ ./gradlew testDebugUnitTest lintDebug assembleDebug --dry-run | grep -E '^:.*:(test|lint)'
+:app:testDebugUnitTest SKIPPED   … :transport:testDebugUnitTest SKIPPED
+   (no :core: entry of any kind)
+```
+
+Naming the task adds 26 passing tests. **Fixed in PR #23.**
 
 ### C-04 · Two of CICD.md's four planned jobs cannot run on their assigned runner — `medium` [S]
 The `otp-corpus` job is assigned `ubuntu-latest`, but the corpus is executed only by
@@ -1595,17 +1611,14 @@ the design exists to get right. Four of them map directly onto logic already han
 `EventRepositoryTest.kt` and `EkoStoreTests.swift`; replacing those hand-written fixtures with the shared
 vectors is nearly free and turns them into genuine conformance tests.
 
-### C-07 · No JSON Schema validation runs anywhere — `medium` [S]
-`protocol.md:732` declares "The schemas are the field-level source of truth" and `protocol/README.md:194`
-instructs that validation "must preload the local schema registry … and then validate every complete frame
-object embedded in scenario files". Nothing does. There is no JSON Schema library in either build. The 23
-schema files are effectively documentation, and both sides hand-roll validators against them. This is the
-cheapest possible way to keep two independent hand-rolled validators honest.
+### C-07 · ~~No JSON Schema validation~~ — **resolved on `main` by #4**
+`scripts/check-protocol.py` now loads the schema registry and validates every embedded scenario frame,
+and runs as its own CI job. This closes the "the schemas are the field-level source of truth" gap.
+What remains open is C-06: seven scenario vectors are validated as *data* but still consumed by no
+*test* on either platform, and Android consumes none.
 
 ### C-08 · Documentation contradicts the code — `medium` [S]
-- **`README.md` and `AGENTS.md` still say the project is "pre-scaffold (M0)" with no build, no release, and
-  the `android/`, `macos/`, `protocol/`, `docs/`, `tools/` projects "do not exist yet".** They landed in
-  commit `56b6796`. This is the first thing any reader sees and it is now false.
+- ~~README.md and AGENTS.md claim pre-scaffold (M0) status~~ — **resolved on `main` by #4.**
 - `docs/diagnostics.md` documents an Android diagnostics export that does not exist.
 - The macOS export is a single JSON file, not the ZIP archive the docs tell users to unzip.
 - Two user docs instruct a synthetic test notification and a panel keyboard shortcut that were never built.
@@ -1615,8 +1628,7 @@ cheapest possible way to keep two independent hand-rolled validators honest.
 ### C-09 · Supply-chain and tooling gaps — `medium` **[V]**
 - **No `Package.resolved` is committed** and `swift-crypto` is pinned as a range, so macOS builds are not
   reproducible.
-- **Dependabot still covers `github-actions` only**, though CICD.md's own trigger ("the Gradle root exists at
-  `android/`") is met.
+- ~~Dependabot covers `github-actions` only~~ — **resolved on `main` by #4** (Gradle and Swift added).
 - **No version catalog** (`gradle/libs.versions.toml`): `androidx.core:core-ktx:1.17.0` and
   `kotlinx-coroutines:1.10.2` are duplicated verbatim across four and five module files respectively.
 - **`:outbox` uses `kapt` for Room** — lint flags it: *"This library supports using KSP instead of kapt,

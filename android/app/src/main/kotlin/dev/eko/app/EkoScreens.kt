@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,17 +53,20 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,11 +74,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import dev.eko.capture.CaptureHealth
 import dev.eko.outbox.AppWithRule
 import dev.eko.outbox.StoreDurability
@@ -114,18 +124,22 @@ fun EkoRoot(
     val transport by viewModel.transport.collectAsStateWithLifecycle()
     val store by viewModel.storeHealth.collectAsStateWithLifecycle()
     val presence by CompanionPresenceState.state.collectAsStateWithLifecycle()
-    var page by remember { mutableStateOf(AppPage.SETUP) }
 
-    LaunchedEffect(identity.confirmedPeers.isNotEmpty()) {
-        if (identity.confirmedPeers.isNotEmpty() && pairing is PairingUiState.Success) page = AppPage.HOME
-    }
+    // Setup is where a *new* user starts, not where every launch starts. The start
+    // destination used to be a constant, and the only escape was a LaunchedEffect that
+    // required `pairing is Success` — a value that is Idle again on every cold process.
+    // So a fully-paired, fully-permissioned user opened the app, or tapped the ongoing
+    // service notification, and landed on an eight-card permission wall.
+    val setupComplete = identity.confirmedPeers.isNotEmpty() && checks.notificationAccess
+    var page by rememberSaveable { mutableStateOf<AppPage?>(null) }
+    val currentPage = page ?: if (setupComplete) AppPage.HOME else AppPage.SETUP
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (page == AppPage.SETUP) stringResource(R.string.setup_title) else stringResource(R.string.app_name)) },
+                title = { Text(if (currentPage == AppPage.SETUP) stringResource(R.string.setup_title) else stringResource(R.string.app_name)) },
                 actions = {
-                    if (page != AppPage.SETUP) {
+                    if (currentPage != AppPage.SETUP) {
                         IconButton(onClick = { page = AppPage.SETUP }) {
                             Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.add_mac))
                         }
@@ -137,7 +151,7 @@ fun EkoRoot(
             NavigationBar {
                 AppPage.entries.forEach { destination ->
                     NavigationBarItem(
-                        selected = page == destination,
+                        selected = currentPage == destination,
                         onClick = { page = destination },
                         icon = { Icon(destination.icon, contentDescription = null) },
                         label = { Text(stringResource(destination.label)) },
@@ -146,7 +160,7 @@ fun EkoRoot(
             }
         },
     ) { padding ->
-        when (page) {
+        when (currentPage) {
             AppPage.HOME -> HomeScreen(home, viewModel, Modifier.padding(padding))
             AppPage.APPS -> AppsScreen(apps, viewModel, Modifier.padding(padding))
             AppPage.DIAGNOSTICS -> DiagnosticsScreen(
@@ -208,10 +222,13 @@ private fun OnboardingScreen(
             udpHints.close()
         }
     }
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("48808") }
-    var fingerprint by remember { mutableStateOf("") }
-    var token by remember { mutableStateOf("") }
+    // Saveable, not remembered: a rotation, fold, dark-mode switch or font-size change
+    // recreates the Activity, and losing a manually typed IP address and a 64-hex
+    // fingerprint mid-entry is the most annoying possible moment to lose them.
+    var host by rememberSaveable { mutableStateOf("") }
+    var port by rememberSaveable { mutableStateOf("48808") }
+    var fingerprint by rememberSaveable { mutableStateOf("") }
+    var token by rememberSaveable { mutableStateOf("") }
 
     scannerError?.let { error ->
         AlertDialog(
@@ -475,27 +492,51 @@ private fun DiscoveredMacChip(mac: DiscoveredMac, onClick: () -> Unit) {
 
 @Composable
 private fun HomeScreen(home: HomeState, viewModel: EkoViewModel, modifier: Modifier = Modifier) {
-    var unpair by remember { mutableStateOf<HomePeer?>(null) }
+    // The device id, not the peer object: a HomePeer is not Parcelable, and the
+    // confirmation dialog used to vanish mid-decision on any configuration change.
+    var unpairDeviceId by rememberSaveable { mutableStateOf<String?>(null) }
+    val unpair = unpairDeviceId?.let { id -> home.peers.firstOrNull { it.peer.deviceId == id } }
     unpair?.let { selected ->
+        // Three actions, laid out vertically inside `text` rather than crammed into the
+        // two button slots. M3's AlertDialogFlowRow can wrap between slots but not
+        // inside one, so the previous Row{Forget, Cancel} in the dismissButton slot was
+        // atomic and could not fit — "Ohne Benachrichtigung vergessen" alone is 30
+        // characters. Stacking also fixes the hierarchy: the irreversible action is now
+        // error-coloured and the safe one is the plain confirm.
         AlertDialog(
-            onDismissRequest = { unpair = null },
+            onDismissRequest = { unpairDeviceId = null },
             confirmButton = {
-                Button(onClick = {
-                    viewModel.unpair(selected.peer.deviceId)
-                    unpair = null
-                }) { Text(stringResource(R.string.unpair)) }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = {
-                        viewModel.unpair(selected.peer.deviceId, notifyPeer = false)
-                        unpair = null
-                    }) { Text(stringResource(R.string.forget_without_notifying)) }
-                    TextButton(onClick = { unpair = null }) { Text(stringResource(R.string.cancel)) }
-                }
+                TextButton(onClick = { unpairDeviceId = null }) { Text(stringResource(R.string.cancel)) }
             },
             title = { Text(stringResource(R.string.unpair_title, selected.peer.name)) },
-            text = { Text(stringResource(R.string.unpair_body)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.unpair_body))
+                    Button(
+                        onClick = {
+                            viewModel.unpair(selected.peer.deviceId)
+                            unpairDeviceId = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError,
+                        ),
+                    ) { Text(stringResource(R.string.unpair)) }
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.unpair(selected.peer.deviceId, notifyPeer = false)
+                            unpairDeviceId = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(stringResource(R.string.forget_without_notifying)) }
+                    Text(
+                        stringResource(R.string.forget_without_notifying_detail),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
         )
     }
     LazyColumn(
@@ -504,15 +545,21 @@ private fun HomeScreen(home: HomeState, viewModel: EkoViewModel, modifier: Modif
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = !home.forwardingPaused,
+                        role = Role.Switch,
+                        onValueChange = { viewModel.setForwardingPaused(!it) },
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.home_title), style = MaterialTheme.typography.headlineSmall)
                     Text(stringResource(if (home.forwardingPaused) R.string.forwarding_off else R.string.forwarding_on))
                 }
-                Switch(
-                    checked = !home.forwardingPaused,
-                    onCheckedChange = { viewModel.setForwardingPaused(!it) },
-                )
+                Switch(checked = !home.forwardingPaused, onCheckedChange = null)
             }
         }
         if (home.peers.isEmpty()) item { Text(stringResource(R.string.no_macs)) }
@@ -522,13 +569,24 @@ private fun HomeScreen(home: HomeState, viewModel: EkoViewModel, modifier: Modif
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Computer, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
-                        Text(peer.peer.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        TransportStatus(peer.status)
+                        // The status badge used to sit in this row unweighted, so Compose
+                        // measured its full intrinsic width first and the name got the
+                        // scraps: "Warten auf WLAN, Ethernet oder VPN" left under 30dp for
+                        // a 22sp name on a 360dp phone, wrapping it to one glyph per line.
+                        // The badge now owns its own line and the name truncates instead.
+                        Text(
+                            peer.peer.name,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
+                    TransportStatus(peer.status)
                     Text(pluralStringResource(R.plurals.queued_events, peer.queuedEvents.toInt(), peer.queuedEvents))
                     Text("${peer.peer.endpoint.host}:${peer.peer.endpoint.port}", fontFamily = FontFamily.Monospace)
                     Text(stringResource(R.string.fingerprint_short, peer.peer.deviceId.take(12)), style = MaterialTheme.typography.bodySmall)
-                    OutlinedButton(onClick = { unpair = peer }) { Text(stringResource(R.string.unpair)) }
+                    OutlinedButton(onClick = { unpairDeviceId = peer.peer.deviceId }) { Text(stringResource(R.string.unpair)) }
                 }
             }
         }
@@ -544,7 +602,8 @@ private fun TransportStatus(status: PeerTransportState) {
         PeerTransportState.WaitingForNetwork -> stringResource(R.string.status_waiting_network)
         PeerTransportState.Paused -> stringResource(R.string.status_paused)
         PeerTransportState.Offline -> stringResource(R.string.status_offline)
-        is PeerTransportState.Failed -> stringResource(R.string.status_failed, status.reason)
+        // An arbitrary-length exception message does not belong in a status badge.
+        is PeerTransportState.Failed -> stringResource(R.string.status_failed, status.reason.take(FAILURE_REASON_CHARS))
     }
     val icon = when (status) {
         is PeerTransportState.Connected -> Icons.Outlined.CheckCircle
@@ -552,8 +611,32 @@ private fun TransportStatus(status: PeerTransportState) {
         is PeerTransportState.Failed -> Icons.Outlined.Warning
         else -> Icons.Outlined.Refresh
     }
-    AssistChip(onClick = {}, label = { Text(text) }, leadingIcon = { Icon(icon, contentDescription = null) })
+    val tone = when (status) {
+        is PeerTransportState.Connected -> MaterialTheme.colorScheme.primaryContainer
+        is PeerTransportState.Failed -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    // A Surface, not an AssistChip. AssistChip wraps a clickable Surface with
+    // Role.Button, so TalkBack announced this as an actionable button whose double-tap
+    // did nothing — it is a readout, not a control. Merged semantics so it is announced
+    // once, as one phrase.
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = tone,
+        modifier = Modifier.semantics(mergeDescendants = true) {},
+    ) {
+        Row(
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
+
+private const val FAILURE_REASON_CHARS = 60
 
 @Composable
 private fun AppsScreen(apps: List<AppWithRule>, viewModel: EkoViewModel, modifier: Modifier = Modifier) {
@@ -579,9 +662,20 @@ private fun AppsScreen(apps: List<AppWithRule>, viewModel: EkoViewModel, modifie
 
 @Composable
 private fun RuleSwitch(label: String, checked: Boolean, changed: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    // toggleable on the row, onCheckedChange = null on the control. Without this the
+    // label and the switch are unrelated semantics nodes: TalkBack reads the text, then
+    // separately reads an unnamed "on, switch", and tapping the label — the natural
+    // target and most of the row's width — does nothing. On the Apps screen that was
+    // three unlabelled switches per app card.
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .toggleable(value = checked, role = Role.Switch, onValueChange = changed)
+            .minimumInteractiveComponentSize(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = changed)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -596,6 +690,7 @@ private fun DiagnosticsScreen(
     viewModel: EkoViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val now = rememberTickingWallClock()
     LazyColumn(
         modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -614,8 +709,8 @@ private fun DiagnosticsScreen(
         item {
             DiagnosticCard(stringResource(R.string.listener_health)) {
                 Text(stringResource(if (capture.listenerConnected) R.string.listener_connected else R.string.listener_disconnected))
-                Text(stringResource(R.string.last_callback, relativeTime(capture.lastCallbackWall)))
-                Text(stringResource(R.string.last_commit, relativeTime(capture.lastCommitWall)))
+                Text(stringResource(R.string.last_callback, relativeTime(capture.lastCallbackWall, now)))
+                Text(stringResource(R.string.last_commit, relativeTime(capture.lastCommitWall, now)))
                 Text(stringResource(R.string.writer_queue, capture.queueDepth, capture.overflowCount))
                 Text(
                     stringResource(if (capture.redactionDetected) R.string.redaction_broken else R.string.redaction_ok),
@@ -651,7 +746,7 @@ private fun DiagnosticsScreen(
                 recentExitReason?.let { Text(stringResource(R.string.recent_exit_reason, it.toString())) }
                 transport.peers.forEach { (id, state) ->
                     Text("${id.take(12)}: ${state::class.simpleName}")
-                    Text(stringResource(R.string.last_forward, relativeTime(transport.lastForwardWall[id] ?: 0)))
+                    Text(stringResource(R.string.last_forward, relativeTime(transport.lastForwardWall[id] ?: 0, now)))
                 }
             }
         }
@@ -674,11 +769,32 @@ private fun DiagnosticCard(title: String, content: @Composable ColumnScope.() ->
     }
 }
 
+/**
+ * A clock that actually ticks.
+ *
+ * `System.currentTimeMillis()` read during composition is not snapshot state, so
+ * `relativeTime` only recomputed when its `wall` argument changed. That is precisely
+ * inverted from what a diagnostics screen needs: while the listener is healthy
+ * CaptureHealth emits often and the value looks live, but the moment the listener dies —
+ * the one situation this screen exists to diagnose — nothing emits, and the screen keeps
+ * insisting the last callback was "3 minutes ago" indefinitely.
+ */
 @Composable
-private fun relativeTime(wall: Long): String = if (wall <= 0) {
+private fun rememberTickingWallClock(): Long {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    return now
+}
+
+@Composable
+private fun relativeTime(wall: Long, now: Long): String = if (wall <= 0) {
     stringResource(R.string.never)
 } else {
-    DateUtils.getRelativeTimeSpanString(wall, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS).toString()
+    DateUtils.getRelativeTimeSpanString(wall, now, DateUtils.SECOND_IN_MILLIS).toString()
 }
 
 private fun oemGuideResource(manufacturer: String): Int = when (manufacturer.lowercase()) {

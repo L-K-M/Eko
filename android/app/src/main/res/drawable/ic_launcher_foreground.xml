@@ -1,9 +1,42 @@
+<!--
+  Eko's mark, matching macos/App/Resources/Assets.xcassets/BrandMark.imageset/BrandMark.svg:
+  a phone outline with a speaker dot and a sound wave on each side. The two platforms
+  previously shipped unrelated glyphs — a generic phone-with-text-lines here, the wave
+  mark on the Mac.
+
+  The paths are written in BrandMark's 128 artboard and mapped into the 108 adaptive
+  viewport by the group transform. Scale 0.6594 puts the content bounding box
+  (72 x 78 in artboard units) on a 70-unit diagonal, so the whole mark clears the 66dp
+  safe-zone circle that every launcher mask is guaranteed to keep; translate 11.796
+  re-centres it on (54, 54). Verified against the circle, squircle and rounded-square
+  masks and at 48dp.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M34,22h31a9,9 0,0 1,9 9v36a9,9 0,0 1,-9 9H34a9,9 0,0 1,-9 -9V31a9,9 0,0 1,9 -9M34,28a3,3 0,0 0,-3 3v36a3,3 0,0 0,3 3h31a3,3 0,0 0,3 -3V31a3,3 0,0 0,-3 -3zM39,37h21v6H39zM39,49h29v6H39zM39,61h17v6H39z" />
+    <group
+        android:scaleX="0.6594"
+        android:scaleY="0.6594"
+        android:translateX="11.796"
+        android:translateY="11.796">
+        <path
+            android:pathData="M52,25h24a13,13 0,0 1,13 13v52a13,13 0,0 1,-13 13h-24a13,13 0,0 1,-13 -13v-52a13,13 0,0 1,13 -13z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="8" />
+        <path
+            android:pathData="M60,88a4,4 0,1 0,8 0a4,4 0,1 0,-8 0z"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M28,49c-9,9 -9,21 0,30"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M100,49c9,9 9,21 0,30"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round" />
+    </group>
 </vector>

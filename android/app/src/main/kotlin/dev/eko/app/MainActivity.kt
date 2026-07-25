@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -51,8 +52,10 @@ private fun EkoApp(viewModel: EkoViewModel) {
     val context = LocalContext.current
     val activity = context as ComponentActivity
     val scope = rememberCoroutineScope()
-    var scannerVisible by remember { mutableStateOf(false) }
-    var scannerError by remember { mutableStateOf<String?>(null) }
+    // Saveable: a rotation used to close the scanner, restart the camera, and drop an
+    // unread error dialog.
+    var scannerVisible by rememberSaveable { mutableStateOf(false) }
+    var scannerError by rememberSaveable { mutableStateOf<String?>(null) }
     val controller = remember {
         CdmAssociationController(context) {
             NotificationListenerController.supportedRebind(context)

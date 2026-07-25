@@ -16,6 +16,8 @@
     <string name="token_label">One-time token</string>
     <string name="scan_qr">Scan QR code</string>
     <string name="close_scanner">Close scanner</string>
+    <string name="scan_instruction">Point the camera at the QR code shown in Eko on your Mac.</string>
+    <string name="scan_torch">Torch</string>
     <string name="pair_action">Pair</string>
     <string name="pair_connecting">Establishing an authenticated connection...</string>
     <string name="pair_verify_title">Compare this code</string>
@@ -81,6 +83,7 @@
     <string name="unpair_title">Unpair %1$s?</string>
     <string name="unpair_body">Local history and cursors for this Mac are deleted immediately. Eko will send a restricted unpair notice on next contact.</string>
     <string name="forget_without_notifying">Forget without notifying</string>
+    <string name="forget_without_notifying_detail">Unpair tells the Mac to drop this phone on next contact. Forget removes it here only — the Mac keeps its pairing until you remove it there too.</string>
     <string name="cancel">Cancel</string>
     <string name="apps_title">Forwarding rules</string>
     <string name="apps_intro">Rules are separate for each Android user or work profile. Ongoing notifications stay off by default.</string>

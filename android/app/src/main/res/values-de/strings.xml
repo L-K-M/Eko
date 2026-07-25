@@ -16,6 +16,8 @@
     <string name="token_label">Einmal-Token</string>
     <string name="scan_qr">QR-Code scannen</string>
     <string name="close_scanner">Scanner schließen</string>
+    <string name="scan_instruction">Richte die Kamera auf den QR-Code, den Eko auf deinem Mac anzeigt.</string>
+    <string name="scan_torch">Taschenlampe</string>
     <string name="pair_action">Koppeln</string>
     <string name="pair_connecting">Authentifizierte Verbindung wird aufgebaut...</string>
     <string name="pair_verify_title">Diesen Code vergleichen</string>
@@ -81,6 +83,7 @@
     <string name="unpair_title">%1$s entkoppeln?</string>
     <string name="unpair_body">Lokaler Verlauf und Cursor für diesen Mac werden sofort gelöscht. Eko sendet beim nächsten Kontakt eine eingeschränkte Entkopplungsnachricht.</string>
     <string name="forget_without_notifying">Ohne Benachrichtigung vergessen</string>
+    <string name="forget_without_notifying_detail">Entkoppeln teilt dem Mac beim nächsten Kontakt mit, dieses Telefon zu entfernen. Vergessen entfernt es nur hier — der Mac behält die Kopplung, bis du sie dort ebenfalls entfernst.</string>
     <string name="cancel">Abbrechen</string>
     <string name="apps_title">Weiterleitungsregeln</string>
     <string name="apps_intro">Regeln gelten separat für jeden Android-Benutzer und jedes Arbeitsprofil. Laufende Benachrichtigungen bleiben standardmäßig aus.</string>

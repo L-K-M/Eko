@@ -86,8 +86,8 @@ Widening it is a deliberate commit.
 
 `gradle/actions/wrapper-validation` **first**, as a supply-chain gate against a tampered
 `gradle-wrapper.jar`, before anything executes the wrapper. Then Temurin JDK 17,
-`gradle/actions/setup-gradle` rooted at `android/`, and `./gradlew testDebugUnitTest
-lintDebug assembleDebug`. The debug APK is uploaded as a 14-day artifact.
+`gradle/actions/setup-gradle` rooted at `android/`, and `./gradlew :core:test
+testDebugUnitTest lintDebug assembleDebug`. The debug APK is uploaded as a 14-day artifact.
 
 The instrumented tests under `androidTest/` are **not** here. `DurabilityInstrumentedTest`
 is about Room surviving process death and power loss, which an emulator models only
@@ -112,7 +112,7 @@ Xcode 16.3 is not arbitrary — `macos/Package.swift` declares `swift-tools-vers
 ```sh
 python3 scripts/check-protocol.py                     # needs jsonschema + PyYAML
 python3 -m unittest discover -s tools/tests -v
-(cd android && ./gradlew testDebugUnitTest lintDebug assembleDebug)
+(cd android && ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug)
 (cd macos && ./Scripts/verify-macos.sh)               # macOS only
 ```
 

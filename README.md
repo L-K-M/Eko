@@ -4,16 +4,20 @@
 your phones forward their notifications over the local Wi-Fi network, the Mac shows them
 live, and 2FA/OTP messages get a one-click **Copy code** action.
 
+[![CI](https://github.com/L-K-M/Eko/actions/workflows/ci.yml/badge.svg)](https://github.com/L-K-M/Eko/actions/workflows/ci.yml)
+
+**Source version:** v<!-- version -->1.0.0<!-- /version --> (no packaged GitHub Release is currently published)
+
 > [!IMPORTANT]
 > LLM Disclosure: Eko is being built with substantial help from large language models,
 > with agent guidance kept in [`AGENTS.md`](AGENTS.md).
 
 > [!NOTE]
-> **Status: pre-scaffold (M0).** [`PLAN.md`](PLAN.md) is complete and is the source of
-> truth; the `android/`, `macos/`, `protocol/`, `docs/` and `tools/` projects it describes
-> do not exist yet. There is no build, no release, and no packaged download. See
-> [Repository automation](#repository-automation) for what is wired up today and
-> [CICD.md](CICD.md) for what lands when the projects do.
+> **Status: implemented, not yet released.** Both apps, the shared protocol artifacts
+> and the reference harness are in the tree and under CI; no signing keys are configured
+> yet, so nothing is published. [`PLAN.md`](PLAN.md) remains the source of truth for
+> scope and protocol semantics, [`CICD.md`](CICD.md) covers building and releasing, and
+> [`docs/`](docs/README.md) holds the operational guides.
 
 ---
 
@@ -65,6 +69,19 @@ mutually authenticated, encrypted connections on your own network. There is no E
 no backend, and no analytics. v1 is LAN-only. See [`SECURITY.md`](SECURITY.md) for the
 security baseline and how to report a vulnerability.
 
+## Building
+
+```sh
+scripts/build.sh            # every artifact this host can build, staged into dist/
+scripts/build.sh --check    # what it would build, without building it
+scripts/install-debug.sh    # debug APK onto a phone connected over adb
+```
+
+Each tree also has its own documented commands — `android/` via Gradle, [`macos/`](macos/README.md)
+via `Scripts/verify-macos.sh`, [`tools/`](tools/README.md) via `unittest` and the chaos
+harness. CI runs exactly those, so a green local run means a green CI run; see
+[`CICD.md`](CICD.md).
+
 ## Distribution
 
 - **macOS** — Developer ID signed and notarized, sandboxed from day one.
@@ -72,26 +89,35 @@ security baseline and how to report a vulnerability.
   design: sideloading frees the design from store policy, and CompanionDeviceManager is the
   friction-free path to unredacted OTPs either way.
 
+Neither platform's signing secrets are configured yet. Until they are, a tag still produces
+a release — an ad-hoc signed `.app` that Gatekeeper warns about, and an APK that is unsigned
+and therefore not installable. [`CICD.md`](CICD.md) lists the secrets that turn each into the
+real thing; the Android one matters most, because the signing certificate is also the upgrade
+identity.
+
 ## Repository automation
 
-What exists today:
-
+- [`ci.yml`](.github/workflows/ci.yml) — on every PR and push to `main`: the protocol
+  artifacts, the Python reference model and chaos harness, the Android build/lint/tests, and
+  the macOS verification gate.
+- [`release.yml`](.github/workflows/release.yml) — on a `v*` tag: re-proves the tagged
+  commit, checks the tag against both committed versions, builds and signs both artifacts,
+  and publishes them with SHA-256 sums.
 - [`zai-code-review.yml`](.github/workflows/zai-code-review.yml) — GLM 5.2 reviews
   non-draft pull requests from this repository when `ZAI_API_KEY` is set. It deliberately
   skips fork pull requests: `pull_request_target` has access to repository secrets.
-- Dependabot — weekly `github-actions` updates.
+- Dependabot — weekly `github-actions`, `gradle` and `swift` updates.
 - [`CLAUDE.md`](CLAUDE.md) — the shared pull-request review policy used across these repos.
-
-What lands with the first scaffolded project, and why it isn't here yet:
-[`CICD.md`](CICD.md).
 
 ## Documentation
 
 | File | What it holds |
 | --- | --- |
 | [`PLAN.md`](PLAN.md) | The technical plan — architecture, protocol, security, roadmap, sources |
-| [`AGENTS.md`](AGENTS.md) | Contributor/agent notes: status, architecture invariants, verification |
-| [`CICD.md`](CICD.md) | The build/test/release pipeline: what exists, what's planned |
+| [`AGENTS.md`](AGENTS.md) | Contributor/agent notes: build commands, architecture invariants, verification |
+| [`CICD.md`](CICD.md) | The build/test/release pipeline and the secrets it expects |
+| [`protocol/README.md`](protocol/README.md) | The wire spec and the schemas, vectors and OTP corpus both apps consume |
+| [`docs/README.md`](docs/README.md) | Operational guides: install/pair, diagnostics, manual QA, release checklists |
 | [`SECURITY.md`](SECURITY.md) | Security policy, scope, and vulnerability reporting |
 
 ## License

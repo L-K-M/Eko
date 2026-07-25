@@ -9,3 +9,20 @@ updates:
       # the fully open v5 major while accepting its minor and patch updates.
       - dependency-name: "gradle/actions"
         update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+
+  # Swift Package Manager resolves EkoCore's dependencies from macos/Package.swift.
+  # macos/project.yml pins GRDB and Yams a second time for the XcodeGen spec, and
+  # Dependabot does not know about that file — when a bump lands here, move the
+  # matching `exactVersion:` in project.yml with it or the generated project and
+  # the package disagree.
+  - package-ecosystem: swift
+    directory: /macos
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10

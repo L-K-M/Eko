@@ -205,7 +205,9 @@ build_app() {
 
   local config="Release"
   [[ "$PROFILE" == "debug" ]] && config="Debug"
-  local derived="$ROOT/macos/.build-cli"
+  # Under build/, which .gitignore already covers, and separate from macos/.build
+  # so SwiftPM's tree and xcodebuild's DerivedData don't share a directory.
+  local derived="$ROOT/build/macos-derived"
 
   if $CHECK; then
     echo "-- would run: macos/Scripts/generate-project.sh"

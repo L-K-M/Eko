@@ -167,9 +167,37 @@ class SerializedNotificationWriter internal constructor(
         }
     }
 
+    /**
+     * Graceful close: stop accepting commands, but let the consumer drain what is
+     * already queued.
+     *
+     * This is only half the contract. `channel.close()` tells `consume()` to finish
+     * the buffer and exit, but it returns immediately — so a caller that cancels the
+     * owning scope on the next line destroys the consumer mid-drain and silently
+     * discards every queued commit. Callers that are tearing the writer down must use
+     * [closeAndDrain].
+     */
     override fun close() {
         channel.close()
     }
+
+    /**
+     * Closes the channel and waits for the consumer to finish the buffered commands.
+     *
+     * Every queued command represents a notification `onNotificationPosted` has already
+     * accepted from the system, so dropping one breaks "persist durably at post time,
+     * before any send attempt" — and does so invisibly, because the disconnect-interval
+     * gap the listener records covers a window *after* those notifications were posted.
+     * Callers should bound this with `withTimeout` and treat a timeout as evidence of a
+     * capture gap.
+     */
+    suspend fun closeAndDrain() {
+        channel.close()
+        worker.join()
+    }
+
+    /** Commands accepted but not yet handed to the sink. Zero after a completed drain. */
+    val pending: Int get() = queueDepth.get()
 
     private data class OverflowEvidence(
         val barrierOrdinal: Long,

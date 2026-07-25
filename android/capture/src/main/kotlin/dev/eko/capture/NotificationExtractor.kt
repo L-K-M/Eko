@@ -97,14 +97,18 @@ class NotificationExtractor(private val context: Context) {
         context.packageManager.getApplicationLabel(info).toString()
     }.getOrDefault(sbn.packageName)
 
-    private fun redactionMarker(): String? {
-        val id = android.content.res.Resources.getSystem().getIdentifier(
-            "redacted_notification_message",
-            "string",
-            "android",
-        )
-        return if (id == 0) null else runCatching { android.content.res.Resources.getSystem().getString(id) }.getOrNull()
+    // The framework string this compares against cannot change while the process
+    // lives, but the lookup that finds it is a by-name walk of the framework resource
+    // table — an API the platform explicitly documents as slow and discourages — and it
+    // was running once per notification on the listener's main thread, and once per
+    // active notification during a full reconciliation. Resolve it once.
+    private val redactionMarkerValue: String? by lazy {
+        val system = android.content.res.Resources.getSystem()
+        val id = system.getIdentifier("redacted_notification_message", "string", "android")
+        if (id == 0) null else runCatching { system.getString(id) }.getOrNull()
     }
+
+    private fun redactionMarker(): String? = redactionMarkerValue
 
     private fun interruptionFilterName(filter: Int): String = when (filter) {
         NotificationListenerService.INTERRUPTION_FILTER_ALL -> "all"

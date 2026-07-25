@@ -14,7 +14,6 @@ import dev.eko.capture.NotificationListenerController
 import dev.eko.outbox.AppRuleEntity
 import dev.eko.outbox.AppWithRule
 import dev.eko.outbox.EventStoreProvider
-import dev.eko.outbox.MetadataEntity
 import dev.eko.outbox.StoreHealth
 import dev.eko.pairing.CdmAssociationController
 import dev.eko.pairing.ConfirmedPeer
@@ -29,12 +28,18 @@ import dev.eko.transport.PairingConnectionRequest
 import dev.eko.transport.PairingHandle
 import dev.eko.transport.PeerTransportState
 import dev.eko.transport.TransportRuntime
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -66,6 +71,7 @@ sealed interface PairingUiState {
     data class Failed(val detail: String) : PairingUiState
 }
 
+@OptIn(FlowPreview::class)
 class EkoViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val identityStore = IdentityStore.get(context)
@@ -82,49 +88,92 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
         SharingStarted.WhileSubscribed(5_000),
         IdentityState(),
     )
-    private val metadata = repository.observeMetadata().onStart { emit(repository.initialize()) }
-    val home: StateFlow<HomeState> = combine(identityStore.state, metadata, TransportRuntime.state) {
-            identity, metadata, transport ->
+    // metadata.lastAssignedSeq advances on every committed event, so this flow ticks at
+    // the capture rate. Sampling it keeps the queue-depth readout live without
+    // recomposing Home once per arriving notification — it is a count, not an animation.
+    private val highWaterSeq = repository.observeMetadata()
+        .onStart { emit(repository.initialize()) }
+        .map { it.lastAssignedSeq }
+        .distinctUntilChanged()
+        .sample(QUEUE_DEPTH_SAMPLE_MS)
+
+    val home: StateFlow<HomeState> = combine(
+        identityStore.state,
+        highWaterSeq,
+        TransportRuntime.state,
+        // Observed rather than read imperatively inside the transform. The old code
+        // called the suspending pairingRows() once *per peer* and then linearly searched
+        // the result for that one peer — an N+1 over the same table, re-run on every
+        // captured notification. pairing_cursor only changes on ack, so as a flow it
+        // emits orders of magnitude less often than the outbox does.
+        repository.observePairings(),
+    ) { identity, lastAssignedSeq, transport, cursors ->
+        val cursorsByPairing = cursors.associateBy { it.pairingId }
         HomeState(
             forwardingPaused = identity.forwardingPaused,
             peers = identity.confirmedPeers.sortedBy(ConfirmedPeer::name).map { peer ->
-                val cursor = runCatching { repository.pairingRows().firstOrNull { it.pairingId == peer.deviceId } }.getOrNull()
+                val cursor = cursorsByPairing[peer.deviceId]
                 val effective = cursor?.let { maxOf(it.ackedSeq + 1, it.serveFromSeq) }
-                val queued = if (effective == null || effective > metadata.lastAssignedSeq) 0 else metadata.lastAssignedSeq - effective + 1
+                val queued = if (effective == null || effective > lastAssignedSeq) 0 else lastAssignedSeq - effective + 1
                 HomePeer(peer, transport.peers[peer.deviceId] ?: PeerTransportState.Offline, queued)
             },
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
+    }
+        // repository.initialize() is exactly the call EkoApplication already treats as
+        // throwing, and it runs here inside the coroutine stateIn starts. viewModelScope
+        // installs no CoroutineExceptionHandler, so an unopenable store used to take the
+        // process down on launch — precisely when the user needs the Diagnostics screen
+        // that reports it. StoreHealth.durability already carries that state; keep the
+        // UI alive so it can be read.
+        .catch { emit(HomeState()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
-    val apps: StateFlow<List<AppWithRule>> = repository.observeApps().stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(5_000),
-        emptyList(),
-    )
+    val apps: StateFlow<List<AppWithRule>> = repository.observeApps()
+        .catch { emit(emptyList()) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            emptyList(),
+        )
     val captureHealth = CaptureDiagnostics.get(context).state
     val transport = TransportRuntime.state
     val storeHealth = StoreHealth.durability
 
+    private val associationController by lazy { CdmAssociationController(context) }
+
     init {
         refreshSystemChecks()
         viewModelScope.launch {
-            runCatching { CdmAssociationController(context).inventory() }
+            runCatching { associationController.inventory() }
         }
     }
 
+    /**
+     * Re-read the five system permission states.
+     *
+     * Every one of these is a binder round-trip — NotificationManagerService,
+     * DeviceIdleController, the location provider, the package manager — and the
+     * SharedPreferences read blocks on parsing XML the first time. This runs from the
+     * ViewModel's init, from `MainActivity.onResume` on *every* resume, and from three
+     * activity-result callbacks, which is to say: constantly, during onboarding, while
+     * the user bounces to Settings and back. Doing it on the main thread cost a dropped
+     * frame every time. Off the main thread, publishing the result at the end.
+     */
     fun refreshSystemChecks() {
-        val postAllowed = Build.VERSION.SDK_INT < 33 ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        mutableChecks.value = SystemChecks(
-            managedProfile = ManagedProfileGuard.isManagedProfile(context),
-            notificationAccess = NotificationListenerController.hasAccess(context),
-            postNotifications = postAllowed,
-            batteryExempt = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName),
-            locationEnabled = CdmAssociationController(context).isLocationEnabled(),
-            recentExitReason = context.getSharedPreferences("eko-process-health", android.content.Context.MODE_PRIVATE)
-                .takeIf { it.contains("last_exit_reason") }
-                ?.getInt("last_exit_reason", 0),
-        )
+        viewModelScope.launch(Dispatchers.IO) {
+            val postAllowed = Build.VERSION.SDK_INT < 33 ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+            mutableChecks.value = SystemChecks(
+                managedProfile = ManagedProfileGuard.isManagedProfile(context),
+                notificationAccess = NotificationListenerController.hasAccess(context),
+                postNotifications = postAllowed,
+                batteryExempt = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName),
+                locationEnabled = associationController.isLocationEnabled(),
+                recentExitReason = context.getSharedPreferences("eko-process-health", android.content.Context.MODE_PRIVATE)
+                    .takeIf { it.contains("last_exit_reason") }
+                    ?.getInt("last_exit_reason", 0),
+            )
+        }
     }
 
     fun startPairing(host: String, port: String, fingerprint: String?, token: String?, resumeAttemptId: String? = null) {
@@ -238,5 +287,9 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
         pairingExpiryJob?.cancel()
         pairingHandle?.close()
         super.onCleared()
+    }
+
+    private companion object {
+        const val QUEUE_DEPTH_SAMPLE_MS = 500L
     }
 }

@@ -3,7 +3,8 @@
 Eko mirrors notifications from Android phones to a native macOS menubar app.
 Read [PLAN.md](PLAN.md) before changing architecture or product behavior; it is
 the current source of truth for scope, protocol semantics, security, and the
-planned repository layout.
+planned repository layout. [README.md](README.md) is the product-level summary;
+[CICD.md](CICD.md) covers build, test and release automation.
 
 ## Current status
 
@@ -51,4 +52,9 @@ of the CI gate:
   `directory: /android` after the Gradle root exists.
 - Add `ci.yml`, `release.yml`, and local build/install/release scripts only
   after their real commands, artifact paths, application ID, version source,
-  and signing model are established.
+  and signing model are established. [CICD.md](CICD.md) is the blueprint for
+  each of those — the trigger that makes it addable, the family conventions it
+  must follow, and the config to use — so landing them is mechanical rather
+  than a fresh design.
+- `CLAUDE.md` carries the shared pull-request review policy used across these
+  repos.

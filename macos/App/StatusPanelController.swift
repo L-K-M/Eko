@@ -158,13 +158,6 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         panel.delegate = self
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
-        // A .titled NSPanel defaults to isOpaque = true with a windowBackgroundColor
-        // fill, and behind-window vibrancy cannot sample the desktop through an opaque
-        // window — so PanelRootView's .ultraThinMaterial was collapsing to a flat tinted
-        // grey. The whole translucency story of the panel depended on these three lines.
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
         // .closable gives a close button and .resizable on a titled window gives a zoom
         // button; combined with .fullSizeContentView they render directly over the
         // BrandMark and the wordmark in the 48pt header. Traffic lights on a menu-bar
@@ -174,9 +167,12 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         }
         panel.isMovableByWindowBackground = false
         panel.isFloatingPanel = true
-        // .floating, not .popUpMenu: .popUpMenu sits above modal alerts and above the
-        // Settings window this controller itself opens, so the panel could obscure the
-        // window the user just asked for.
+        // .floating, not .popUpMenu, for the pinned case. Unpinned, windowDidResignKey
+        // orders the panel out before Settings takes key, so the two never compete. But
+        // with "Keep panel open" on, that guard returns early and a .popUpMenu panel
+        // (level 101) stays above the Settings window (.normal, level 0) and above the
+        // app-modal NSSavePanel the diagnostics export puts up. .floating is also the
+        // conventional level for a menu-bar popover.
         panel.level = .floating
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]

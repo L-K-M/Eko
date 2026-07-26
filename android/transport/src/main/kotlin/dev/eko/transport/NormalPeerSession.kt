@@ -98,10 +98,10 @@ internal class NormalPeerSession(context: Context) {
             TransportRuntime.peer(peer.deviceId, PeerTransportState.Syncing(snapshot.events.size))
             val inbound = SessionInboundValidator(accepted.capabilities.toSet(), peer.deviceId, identity.deviceId)
             coroutineScope {
-                val outbound = OutboundActor(this, socket.outputStream, AtomicLong(accepted.cursor))
+                val outbound = OutboundActor(this, socket.outputStream, accepted.cursor)
                 try {
                     val syncId = UUID.randomUUID().toString()
-                    outbound.sendBatch(WireJson.backlog(snapshot, syncId), authorizedThrough = snapshot.highWater)
+                    outbound.sendFrames(WireJson.backlog(snapshot, syncId))
                     if (snapshot.events.isNotEmpty()) TransportRuntime.forwarded(peer.deviceId)
                     val connectedAtWall = System.currentTimeMillis()
                     TransportRuntime.peer(peer.deviceId, PeerTransportState.Connected(connectedAtWall, accepted.cursor))
@@ -135,7 +135,7 @@ internal class NormalPeerSession(context: Context) {
                             }
                             for (event in events) {
                                 if (event.seq > current.lastAssignedSeq) break
-                                outbound.send(WireJson.event(event, replayed = false), authorizedThrough = event.seq)
+                                outbound.send(WireJson.event(event, replayed = false), sequence = event.seq)
                                 TransportRuntime.forwarded(peer.deviceId)
                                 sentThrough = event.seq
                             }
@@ -169,7 +169,7 @@ internal class NormalPeerSession(context: Context) {
             when (val control = inbound.validate(message)) {
                 is InboundControl.Ack -> {
                     try {
-                        repository.acknowledge(peer.deviceId, control.seq, outbound.highestAuthorized.get())
+                        repository.acknowledge(peer.deviceId, control.seq, outbound.authorizedThrough())
                     } catch (invalid: dev.eko.outbox.InvalidAcknowledgementException) {
                         outbound.send(WireJson.error("invalid_ack"))
                         throw invalid

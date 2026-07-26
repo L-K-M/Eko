@@ -17,8 +17,9 @@ first hour) · **medium** (real, bounded) · **low** (polish, tech debt) · **id
 
 ## Ledger — addressed, in review
 
-None of these are merged yet. Repository CI could not run while they were opened (see
-[Working notes](#working-notes)), so every "verified" claim below is a local run.
+None of the PRs in the table below were merged at the time of writing. Repository CI could not
+run while they were opened (see [Working notes](#working-notes) — since restored), so every
+"verified" claim in the table is a local run. #25, further down, merged with green CI.
 
 | PR | What it closes |
 | --- | --- |
@@ -39,6 +40,64 @@ icon and window background but not the wider brand/design-token work ([D-01](#d-
 [D-02](#d-02)). #22 suspended the feed observation but did not add the missing index or stop
 the `device` table being dirtied per event ([P-01](#p-01)). #18 cached the redaction marker but
 not app labels, and left extraction on the listener's main thread ([P-02](#p-02)).
+
+### Merged 2026-07-26 — [#25](https://github.com/L-K-M/Eko/pull/25) app-review fixes, localization/icon bundling, CI revival
+
+The first PR in this ledger to merge with green CI (see the dated update in
+[Working notes](#working-notes)). What it closed:
+
+- **macOS resources never shipped**: `project.yml` used a target-level `resources:` key that
+  XcodeGen silently ignores, so the string catalog, asset catalog and app icon were absent
+  from every build — the root cause of the "raw localization keys" reports. Plus the
+  `Text(ternary)` literal-typing bypasses and the `String(describing:)` state dumps
+  (closes the diagnostics half of M-01; the gap-row half is largely closed — the schema's
+  three `gapReason` tokens are localized, capture-gap evidence strings still render verbatim).
+- **App icons** for both platforms now derived from `media-sources/icon.png` by a pure-Node
+  pipeline (macOS icon grid + Android adaptive layers; vector mark kept as the monochrome layer).
+- **macOS app lifecycle**: quit menu + main menu (⌘Q, edit shortcuts), panel
+  `isReleasedWhenClosed` use-after-free, Settings-opens-closes-panel key-ordering bug,
+  pairing success never dismissing the QR, Add phone from Settings doing nothing visible,
+  dismissible/self-clearing error strip (closes [M-02](#m-02)), banner-tap focus/filter bug,
+  stuck "code available" badge.
+- **macOS notifications**: `.sound` authorization requested, `willPresent` implemented with a
+  delivery-time pause gate (closes the `willPresent` half of [M-08](#m-08); provisional-upgrade
+  prompting still open), posted-event OTP dedupe honored (en-024), backlog banner respects
+  Pause banners, clipboard auto-clear preference respected on every copy path.
+- **macOS session core**: `confirmPairing` no longer deletes the completing attempt row (lost
+  `pair_result{confirmed}` permanently wedged pairing; §7.4 resume restored), `.paired` arm
+  accepts fresh attempts in pairing mode, zombie dials no longer clobber live UI state
+  (adjacent to [B-06](#b-06), which — the pre-fingerprint `claimedDeviceID` assignment — is
+  still open), clean-EOF socket leak fixed.
+- **Android runtime**: startup crash loop on the unopenable-store path, `withTimeout`
+  reconciliation expiry treated as job cancellation (15 s redial storm with no backoff),
+  `NOT_VPN` default making `TRANSPORT_VPN` unmatchable, ViewModel caching the Room instance
+  across generation resets, QR scanner camera bind racing dispose.
+- **Android UX**: camera-permission dead end explains itself (closes the camera half of
+  [A-01](#a-01); POST_NOTIFICATIONS half still open), CDM failures no longer labelled
+  "Pairing failed", stale discovery chips pruned and UDP hints expire, 500 ms placeholder
+  flash on cold start, diagnostics transport states/presence localized (closes the class-name
+  half of [A-04](#a-04)), `association_count` plurals.
+- **Release/CI**: app stapled before DMG packaging, unsigned-path release notes no longer claim
+  an unlaunchable build runs, CI builds the R8 release variant, `gradlew.bat` CRLF pinned,
+  `.idea/` untracked, `Package.resolved` ignored, `default.profraw` removed — and five layers of
+  never-executed breakage fixed (two type-checker timeouts, a test-target compile error, a wrong
+  prune-test expectation, the Xcode 16 swift-crypto PackageFrameworks bug).
+
+<a id="deferred-25"></a>
+
+### Deferred from the #25 review — still open
+
+Confirmed by the review's adversarial verify pass but deliberately not fixed in #25; reasons
+recorded here so a later round does not re-litigate them.
+
+| Item | Why deferred |
+| --- | --- |
+| **Developer ID release cannot launch**: `Eko.entitlements` grants `keychain-access-groups`, a restricted entitlement needing a provisioning profile, and the release pipeline supplies none — the fully signed, notarized DMG passes every gate and ships an app macOS kills at first launch. Needs a `MACOS_PROVISIONING_PROFILE`-style secret, `provisioningProfiles` in ExportOptions, a CICD.md row, and ideally a launch smoke test in the verify step. | Requires Apple-side setup (profile + CI secret); no commit can conjure it. #25 fixed the stapling order and the dishonest unsigned-path notes only. |
+| **SEP-less Intel Macs cannot run Eko**: `IdentityManager` hard-requires a Secure Enclave key; macOS 14/15-supported Intel machines without T2 (e.g. iMac19,x) and Intel VMs die at launch with a generic error. | Product decision: the security model deliberately forbids extractable software keys. Either narrow the support matrix or accept the documented extractability tradeoff — not a call to make in a bug-fix PR. |
+| **No receive backpressure** — [S-01](#s-01) / [P-06](#p-06) unchanged: the inbox buffers unbounded frames, reachable pre-confirmation. | Needs a designed high/low-water pause on `receiveNext()`; touching the transport hot path without runnable tests in the working environment was judged riskier than the deferral. |
+| **Connected unpair torn down by in-flight traffic**: after `beginUnpair` sets `revoked_pending`, any in-flight event fails `requireCurrentCursor` and the Mac kills the connection with a fatal protocol error before the phone can `unpair_ack` — defeating §14.1's same-connection two-phase exchange. Fix shape: drop normal frames without committing or acking while an unpair is pending, keep the socket for the ack. | `runNormalLoop` dispatch-semantics change; wants the protocol-vector treatment ([C-02](#c-02)) before it is touched. |
+| **Typed, localized pairing errors**: pairing failures render hardcoded English detail (`PairingQr`, `LanPairingClient`, `PairingCoordinator` messages) inside a localized wrapper — "Kopplung fehlgeschlagen: Pairing fingerprint must be 64 hexadecimal characters". Fix shape: sealed error reasons mapped to `pair_error_*` resources in both locales, generic fallback, raw text kept for the diagnostics log. | Cross-module refactor across pairing/transport; #25 fixed only the wrapper double-labelling and the CDM mislabel. |
+| **Heartbeat deadline not enforced under a blocked write path** — the write half of [B-10](#b-10): the 10 s pong deadline is armed only after `outbound.send` returns, and a peer that stops draining wedges the session until kernel TCP timeout. (#25 fixed the *other* half of the reconnect story — the `withTimeout` cancellation bug.) | Concurrency-sensitive change to the session hot path; same test-first argument as the unpair item. |
 
 ---
 
@@ -963,3 +1022,12 @@ rounded-square masks and at 48 dp before it shipped. Worth repeating for any ico
 Dependabot PRs that predate it — failed 3–5 seconds after creation with `runner_id: 0`, no steps
 executed and no log blob. That is a job never picked up by a runner, i.e. an account- or org-level
 Actions condition, not a workflow or code defect. Re-check before concluding anything from a red PR.
+
+**Update 2026-07-26: CI is back, and green.** Runners resumed picking up jobs during the #25 work,
+which surfaced (and #25 fixed) five layers of breakage no run had ever executed. One structural
+caveat became permanent: `verify-macos.sh` runs the test suite via `swift test` and the xcodebuild
+step as a **build**, because Xcode 16 test actions package SwiftPM products as dynamic
+PackageFrameworks and swift-crypto's `Crypto` module has no object code on macOS — its framework is
+created with no binary and `X509`'s framework deterministically fails to link. The two test targets
+share the same `Tests/EkoTests` sources, so coverage is unchanged; revisit app-hosted tests on a
+newer Xcode (rationale in `verify-macos.sh`).

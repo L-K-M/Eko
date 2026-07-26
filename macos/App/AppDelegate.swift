@@ -40,6 +40,11 @@ private final class DefaultsNotificationDeliveryPolicy: NotificationDeliveryPoli
     func allowsBanner(deviceID: String) -> Bool {
         !defaults.bool(forKey: "bannersPaused")
     }
+
+    func clipboardClearAfter() -> TimeInterval? {
+        // Same key and same unset-means-true default as AppModel.clipboardAutoClear.
+        (defaults.object(forKey: "clipboardAutoClear") as? Bool ?? true) ? 120 : nil
+    }
 }
 
 @MainActor
@@ -49,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installMainMenu()
         do {
             let runtime = try AppRuntime()
             self.runtime = runtime
@@ -66,6 +72,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         runtime?.stop()
+    }
+
+    // An accessory app shows no menu bar, but a main menu is still what routes
+    // ⌘Q (and standard edit shortcuts in text fields) while a window is key.
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(
+            title: String(localized: "app.quit", defaultValue: "Quit Eko"),
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        ))
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: String(localized: "menu.edit", defaultValue: "Edit"))
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+        NSApp.mainMenu = mainMenu
     }
 }
 

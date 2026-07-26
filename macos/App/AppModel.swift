@@ -172,7 +172,16 @@ final class AppModel: ObservableObject {
 
     func setListenerState(_ state: TLSListenerState) {
         listenerState = state
-        if case .ready(let port, _) = state { boundPort = port }
+        if case .ready(let port, _) = state {
+            boundPort = port
+            // A startup listener failure is the most common source of the error
+            // strip; once the listener recovers the strip is stale.
+            fatalError = nil
+        }
+    }
+
+    func clearError() {
+        fatalError = nil
     }
 
     func setBonjourState(_ state: BonjourPublicationState) {
@@ -197,6 +206,10 @@ final class AppModel: ObservableObject {
 
     func focus(deviceID: String, key: String) {
         route = .feed
+        // An active search or Codes filter can hide the very notification the
+        // user just clicked a banner for; reveal it unconditionally.
+        searchText = ""
+        codesOnly = false
         selectedDeviceID = deviceID
         if let notification = try? store.notifications(query: FeedQuery(deviceID: deviceID, limit: 500))
             .first(where: { $0.key == key }) {
@@ -381,7 +394,18 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             do {
                 for try await value in store.observeDevices() {
+                    let previouslyConfirmed = Set(self.devices.filter { $0.pairingState == .confirmed }.map(\.id))
                     self.devices = value
+                    // Pairing completes in EkoCore with no callback into the
+                    // app layer; a device turning confirmed while the QR is up
+                    // is that signal. Without this the panel sits on a dead QR
+                    // until the invitation expires.
+                    let confirmed = Set(value.filter { $0.pairingState == .confirmed }.map(\.id))
+                    if self.route == .pairing,
+                       self.pairingDisplay != nil,
+                       !confirmed.subtracting(previouslyConfirmed).isEmpty {
+                        self.endPairing()
+                    }
                 }
             } catch {
                 self.setFatalError(error)

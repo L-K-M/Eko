@@ -193,6 +193,22 @@
         }
       }
     },
+    "app.quit": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eko beenden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit Eko"
+          }
+        }
+      }
+    },
     "connection.connecting": {
       "localizations": {
         "de": {
@@ -689,6 +705,22 @@
         }
       }
     },
+    "error.dismiss": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fehler ausblenden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss error"
+          }
+        }
+      }
+    },
     "error.label": {
       "localizations": {
         "de": {
@@ -929,6 +961,54 @@
         }
       }
     },
+    "gap.reason.peer_cursor_regressed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Synchronisierungsposition wurde zurückgesetzt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sync position was reset"
+          }
+        }
+      }
+    },
+    "gap.reason.retention_age": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Telefon hat alten Verlauf gekürzt (Alters-Limit)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The phone trimmed old history (age limit)"
+          }
+        }
+      }
+    },
+    "gap.reason.retention_count": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Telefon hat alten Verlauf gekürzt (Anzahl-Limit)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The phone trimmed old history (count limit)"
+          }
+        }
+      }
+    },
     "gap.suspected": {
       "localizations": {
         "de": {
@@ -941,6 +1021,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phone may have missed notifications"
+          }
+        }
+      }
+    },
+    "menu.edit": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearbeiten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit"
           }
         }
       }

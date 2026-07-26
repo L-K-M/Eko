@@ -26,6 +26,14 @@ public protocol UserNotificationScheduling: Sendable {
 
 public protocol NotificationDeliveryPolicy: Sendable {
     func allowsBanner(deviceID: String) -> Bool
+    /// Seconds after which a code copied on the user's behalf is cleared from
+    /// the clipboard, or nil to leave it. Mirrors the panel's copy behavior so
+    /// the auto-clear preference applies to every copy path.
+    func clipboardClearAfter() -> TimeInterval?
+}
+
+public extension NotificationDeliveryPolicy {
+    func clipboardClearAfter() -> TimeInterval? { 120 }
 }
 
 public struct AllowAllNotificationDeliveryPolicy: NotificationDeliveryPolicy {
@@ -110,7 +118,7 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         if let code = outcome.otpCode,
            preference?.autoCopyOTP == true,
            !Self.isBankingStyle(outcome.body ?? "") {
-            await clipboard.copy(code)
+            await clipboard.copy(code, clearAfter: deliveryPolicy.clipboardClearAfter())
             try? store.markOTPCopied(deviceID: outcome.deviceID, code: code)
         }
         guard !outcome.dndSuppressed,
@@ -176,7 +184,7 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         Task {
             if response.actionIdentifier == Self.copyActionIdentifier,
                let code = try? store.currentOTP(deviceID: deviceID, generation: generation, notificationKey: key) {
-                await clipboard.copy(code)
+                await clipboard.copy(code, clearAfter: deliveryPolicy.clipboardClearAfter())
                 try? store.markOTPCopied(deviceID: deviceID, code: code)
             } else if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
                 await openPanel(deviceID, key)

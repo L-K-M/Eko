@@ -409,7 +409,11 @@ private struct GapRow: View {
             Image(systemName: gap.confidence == .definitive ? "exclamationmark.triangle.fill" : "questionmark.diamond.fill")
                 .foregroundStyle(gap.confidence == .definitive ? .orange : .yellow)
             VStack(alignment: .leading, spacing: 2) {
-                Text(gap.confidence == .definitive ? "gap.definitive" : "gap.suspected")
+                // A ternary of string literals types as String, not
+                // LocalizedStringKey, so the keys must be resolved explicitly.
+                Text(gap.confidence == .definitive
+                    ? String(localized: "gap.definitive", defaultValue: "History unavailable")
+                    : String(localized: "gap.suspected", defaultValue: "Phone may have missed notifications"))
                     .font(.caption.weight(.semibold))
                 Text("\(deviceName ?? String(gap.deviceID.prefix(8))) · \(gap.reason)")
                     .font(.caption2)
@@ -433,7 +437,11 @@ private struct EmptyFeedView: View {
                 systemImage: hasDevices ? "bell.slash" : "iphone.gen3.radiowaves.left.and.right"
             )
         } description: {
-            Text(hasDevices ? "feed.empty.detail" : "feed.no_devices.detail")
+            // A ternary of string literals types as String, not
+            // LocalizedStringKey, so the keys must be resolved explicitly.
+            Text(hasDevices
+                ? String(localized: "feed.empty.detail", defaultValue: "New notifications from your phones appear here.")
+                : String(localized: "feed.no_devices.detail", defaultValue: "Choose Add phone above and scan the QR code."))
         }
     }
 }

@@ -1,0 +1,4 @@
+<resources>
+    <!-- EkoTheme's DarkColors.background. Kept in step with ui/EkoTheme.kt. -->
+    <color name="eko_window_background">#101513</color>
+</resources>

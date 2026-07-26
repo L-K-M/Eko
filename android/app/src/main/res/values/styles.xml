@@ -1,6 +1,11 @@
 <resources>
+    <!-- windowBackground must match EkoTheme's Compose surface. Without it the platform
+         theme's own background paints for the first frames of every cold launch, which
+         in dark mode is Material's #303030 against a #101513 app: a full-screen mid-grey
+         flash that snaps to near-black once Compose lands. -->
     <style name="Theme.Eko" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@color/eko_window_background</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>

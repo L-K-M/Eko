@@ -462,12 +462,15 @@ final class EkoStoreTests: XCTestCase {
         clock.date = now.addingTimeInterval(8 * 86_400)
         try store.prune(retentionDays: 7, maximumNotificationsPerDevice: 5_000)
 
-        // Display history prunes, but the cursor never loses its coverage receipts.
+        // Display history prunes, but the cursor never loses its coverage:
+        // sequences 1-3 and 7 as payload-stripped event receipts, 4-6 via the
+        // retained gap_span (asserted below) — gap positions never had event
+        // rows to begin with.
         XCTAssertTrue(try store.notifications().isEmpty)
         XCTAssertEqual(try store.processedThrough(deviceID: hello.deviceID, generation: generation), 7)
-        XCTAssertEqual(try store.diagnostics().eventCount, 7)
+        XCTAssertEqual(try store.diagnostics().eventCount, 4)
         let receipts = try store.recentEvents(deviceID: hello.deviceID, limit: 20)
-        XCTAssertEqual(receipts.count, 7)
+        XCTAssertEqual(receipts.count, 4)
         XCTAssertTrue(receipts.allSatisfy { $0.payloadPruned && $0.payloadJSON.isEmpty })
         XCTAssertEqual(try store.gaps().filter { $0.confidence == .definitive }.count, 1)
 

@@ -870,13 +870,13 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Wählen Sie oben „Telefon hinzufügen“ und scannen Sie den QR-Code."
+            "value": "Koppeln Sie Ihr Android-Telefon, um dessen Benachrichtigungen hier zu spiegeln."
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose Add phone above and scan the QR code."
+            "value": "Pair your Android phone to mirror its notifications here."
           }
         }
       }
@@ -1293,6 +1293,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Pair a phone"
+          }
+        }
+      }
+    },
+    "pairing.token": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einmalcode"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-time code"
           }
         }
       }

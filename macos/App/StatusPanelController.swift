@@ -59,7 +59,6 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     }
 
     private func showStatusMenu() {
-        guard let button = statusItem.button else { return }
         let menu = NSMenu()
         let settingsItem = NSMenuItem(
             title: String(localized: "settings.open", defaultValue: "Open settings"),
@@ -76,7 +75,12 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         )
         quitItem.target = NSApp
         menu.addItem(quitItem)
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
+        // The reliable status-item presentation: attach the menu, synthesize a
+        // click so AppKit anchors and tracks it natively, then detach so the
+        // next plain click toggles the panel again.
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
     }
 
     @objc private func openSettingsFromMenu() {

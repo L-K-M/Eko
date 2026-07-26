@@ -49,7 +49,13 @@ object NotificationListenerController {
 
     fun settingsIntent(context: Context): Intent = if (Build.VERSION.SDK_INT >= 30) {
         Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).apply {
-            putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component(context))
+            // The extra's contract is the FLATTENED component string; passing
+            // the ComponentName Parcelable makes the detail screen finish
+            // immediately, bouncing the user straight back to the app.
+            putExtra(
+                Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                component(context).flattenToString(),
+            )
         }
     } else {
         Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)

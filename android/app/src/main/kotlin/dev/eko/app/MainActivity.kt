@@ -124,22 +124,31 @@ private fun EkoApp(viewModel: EkoViewModel) {
                 context.startActivity(controller.locationSettingsIntent())
             } else {
                 scope.launch {
-                    val events = if (ble) {
-                        controller.requestBle(EKO_BLE_SERVICE_UUID)
-                    } else {
-                        controller.requestWifiFallback()
-                    }
-                    events.collect { event ->
-                        when (event) {
-                            is AssociationEvent.Prompt -> associationLauncher.launch(
-                                IntentSenderRequest.Builder(event.intentSender).build(),
-                            )
-                            is AssociationEvent.Created -> viewModel.refreshSystemChecks()
-                            // Not a pairing failure — label it as the CDM
-                            // association problem it is.
-                            is AssociationEvent.Failed ->
-                                scannerError = cdmFailedTemplate.format(event.reason)
+                    // Nothing here may crash the composition scope; any
+                    // escape lands in the same dialog the Failed event uses.
+                    runCatching {
+                        val events = if (ble) {
+                            controller.requestBle(EKO_BLE_SERVICE_UUID)
+                        } else {
+                            controller.requestWifiFallback()
                         }
+                        events.collect { event ->
+                            when (event) {
+                                is AssociationEvent.Prompt -> associationLauncher.launch(
+                                    IntentSenderRequest.Builder(event.intentSender).build(),
+                                )
+                                is AssociationEvent.Created -> viewModel.refreshSystemChecks()
+                                // Not a pairing failure — label it as the CDM
+                                // association problem it is.
+                                is AssociationEvent.Failed ->
+                                    scannerError = cdmFailedTemplate.format(event.reason)
+                            }
+                        }
+                    }.onFailure { error ->
+                        // Cancellation is structured-concurrency control flow,
+                        // not an association failure.
+                        if (error is kotlin.coroutines.cancellation.CancellationException) throw error
+                        scannerError = cdmFailedTemplate.format(error.message ?: error.javaClass.simpleName)
                     }
                 }
             }

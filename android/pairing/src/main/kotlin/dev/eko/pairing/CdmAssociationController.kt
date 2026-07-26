@@ -128,21 +128,32 @@ class CdmAssociationController(
             trySend(AssociationEvent.Failed(reason))
             close()
         }
-        if (Build.VERSION.SDK_INT >= 33) {
-            val callback = Api33AssociationCallback(prompt, failure) { association ->
-                launch {
-                    identityStore.replaceAssociations(inventoryFromSystem())
-                    identityStore.ensureTrustAssociationDependencies()
-                    afterMutation()
-                    trySend(AssociationEvent.Created(association))
-                    close()
+        // associate() throws synchronously on real devices — a missing
+        // companion_device_setup feature declaration, a null service on
+        // hardware without CDM, Bluetooth restrictions — and an exception
+        // escaping callbackFlow crashed the collecting UI coroutine. Route
+        // every failure through the Failed event instead.
+        try {
+            if (Build.VERSION.SDK_INT >= 33) {
+                val callback = Api33AssociationCallback(prompt, failure) { association ->
+                    launch {
+                        identityStore.replaceAssociations(inventoryFromSystem())
+                        identityStore.ensureTrustAssociationDependencies()
+                        afterMutation()
+                        trySend(AssociationEvent.Created(association))
+                        close()
+                    }
                 }
+                Api33Cdm.associate(manager, request, appContext.mainExecutor, callback)
+            } else {
+                val callback = LegacyAssociationCallback(prompt, failure)
+                @Suppress("DEPRECATION")
+                manager.associate(request, callback, Handler(Looper.getMainLooper()))
             }
-            Api33Cdm.associate(manager, request, appContext.mainExecutor, callback)
-        } else {
-            val callback = LegacyAssociationCallback(prompt, failure)
-            @Suppress("DEPRECATION")
-            manager.associate(request, callback, Handler(Looper.getMainLooper()))
+        } catch (error: Throwable) {
+            // Cancellation is control flow, not an association failure.
+            if (error is kotlin.coroutines.cancellation.CancellationException) throw error
+            failure(error.message ?: error.javaClass.simpleName)
         }
         awaitClose { }
     }

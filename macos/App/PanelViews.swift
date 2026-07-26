@@ -170,7 +170,7 @@ struct FeedView: View {
                         }
                         notificationRows
                         if model.notifications.isEmpty {
-                            EmptyFeedView(hasDevices: !model.devices.isEmpty)
+                            EmptyFeedView(hasDevices: !model.devices.isEmpty) { model.beginPairing() }
                                 .padding(.top, 56)
                         }
                     }
@@ -464,6 +464,7 @@ private struct GapRow: View {
 
 private struct EmptyFeedView: View {
     let hasDevices: Bool
+    let addPhone: () -> Void
 
     var body: some View {
         ContentUnavailableView {
@@ -476,7 +477,14 @@ private struct EmptyFeedView: View {
             // LocalizedStringKey, so the keys must be resolved explicitly.
             Text(hasDevices
                 ? String(localized: "feed.empty.detail", defaultValue: "New notifications from your phones appear here.")
-                : String(localized: "feed.no_devices.detail", defaultValue: "Choose Add phone above and scan the QR code."))
+                : String(localized: "feed.no_devices.detail", defaultValue: "Pair your Android phone to mirror its notifications here."))
+        } actions: {
+            // The header's + is icon-only; the text used to point at it by
+            // name. Give the empty state its own labeled entry point instead.
+            if !hasDevices {
+                Button(String(localized: "pairing.add_phone", defaultValue: "Add phone"), action: addPhone)
+                    .buttonStyle(.borderedProminent)
+            }
         }
     }
 }
@@ -518,6 +526,12 @@ struct PairingView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         LabeledContent(String(localized: "pairing.address", defaultValue: "Address"), value: "\(display.host):\(display.port)")
                         LabeledContent(String(localized: "pairing.fingerprint", defaultValue: "Fingerprint"), value: String(display.fingerprint.prefix(16)) + "…")
+                        // The manual-entry path on the phone asks for this
+                        // token; until now it was never shown anywhere.
+                        LabeledContent(String(localized: "pairing.token", defaultValue: "One-time code")) {
+                            Text(display.token)
+                                .textSelection(.enabled)
+                        }
                         LabeledContent(String(localized: "pairing.expires", defaultValue: "Expires")) {
                             Text(display.expiresAt, style: .relative)
                         }

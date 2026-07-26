@@ -107,7 +107,10 @@
     <string name="redaction_broken">Sensitive text redaction detected. Repair the companion association, then rebind the listener.</string>
     <string name="run_repair">Run supported listener repair</string>
     <string name="association_health">Companion associations</string>
-    <string name="association_count">%1$d app-scoped association(s)</string>
+    <plurals name="association_count">
+        <item quantity="one">%1$d app-scoped association</item>
+        <item quantity="other">%1$d app-scoped associations</item>
+    </plurals>
     <string name="applied_receipts">Applied unpair receipts: %1$d</string>
     <string name="presence_state">Presence: %1$s</string>
     <string name="presence_toggle">Android 16 idle reliability</string>
@@ -120,4 +123,9 @@
     <string name="never">Never</string>
     <string name="yes">Yes</string>
     <string name="no">No</string>
+    <string name="camera_permission_needed">Camera access is required to scan the pairing QR code. Grant it in the app\u2019s system settings.</string>
+    <string name="cdm_failed">Companion association failed: %1$s</string>
+    <string name="presence_none">not observed yet</string>
+    <string name="presence_appeared">nearby</string>
+    <string name="presence_disappeared">out of range</string>
 </resources>

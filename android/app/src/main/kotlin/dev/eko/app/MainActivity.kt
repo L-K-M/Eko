@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.eko.app.ui.EkoTheme
 import dev.eko.app.ui.QrScanner
@@ -72,8 +73,19 @@ private fun EkoApp(viewModel: EkoViewModel) {
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         viewModel.refreshSystemChecks()
     }
+    // Resolved during composition (not context.getString in the callbacks) so
+    // the messages track locale/config changes — and to satisfy the
+    // LocalContextGetResourceValueCall lint check. The templates keep their
+    // %1$s placeholder until formatted at the call site.
+    val cameraPermissionMessage = stringResource(R.string.camera_permission_needed)
+    val pairErrorTemplate = stringResource(R.string.pair_error)
+    val cdmFailedTemplate = stringResource(R.string.cdm_failed)
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         scannerVisible = granted
+        // A permanently denied permission resolves instantly with no system
+        // dialog; without feedback the primary "Scan QR code" button just
+        // looks dead.
+        if (!granted) scannerError = cameraPermissionMessage
     }
 
     if (scannerVisible) {
@@ -89,7 +101,7 @@ private fun EkoApp(viewModel: EkoViewModel) {
                         payload.token,
                     )
                 } catch (error: Throwable) {
-                    scannerError = error.message
+                    scannerError = pairErrorTemplate.format(error.message ?: error.javaClass.simpleName)
                     scannerVisible = false
                 }
             },
@@ -123,7 +135,10 @@ private fun EkoApp(viewModel: EkoViewModel) {
                                 IntentSenderRequest.Builder(event.intentSender).build(),
                             )
                             is AssociationEvent.Created -> viewModel.refreshSystemChecks()
-                            is AssociationEvent.Failed -> scannerError = event.reason
+                            // Not a pairing failure — label it as the CDM
+                            // association problem it is.
+                            is AssociationEvent.Failed ->
+                                scannerError = cdmFailedTemplate.format(event.reason)
                         }
                     }
                 }

@@ -526,7 +526,7 @@ final class SessionManagerTests: XCTestCase {
         )
         let live = ScriptedTransport()
         let liveTask = Task { await manager.run(admission: .paired(deviceID: phone.deviceID), peerCertificateDER: phone.der, transport: live) }
-        live.enqueue(testHello(certificateDER: phone.der, epoch: 2))
+        live.enqueue(.hello(testHello(certificateDER: phone.der, epoch: 2)))
         enqueueEmptyBacklog(on: live)
         let condition22 = await waitUntil { sink.hasState(.online, for: phone.deviceID) }
 

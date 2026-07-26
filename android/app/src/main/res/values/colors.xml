@@ -1,5 +1,7 @@
 <resources>
-    <color name="eko_launcher_background">#075E54</color>
+    <!-- Behind the full-bleed launcher foreground; only revealed by launcher
+         parallax. Sampled from media-sources/icon.png's gradient. -->
+    <color name="eko_launcher_background">#5537EA</color>
     <!-- EkoTheme's LightColors.background. Kept in step with ui/EkoTheme.kt. -->
     <color name="eko_window_background">#F7F9F7</color>
 </resources>

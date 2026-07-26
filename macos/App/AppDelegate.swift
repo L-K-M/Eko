@@ -40,6 +40,13 @@ private final class DefaultsNotificationDeliveryPolicy: NotificationDeliveryPoli
     func allowsBanner(deviceID: String) -> Bool {
         !defaults.bool(forKey: "bannersPaused")
     }
+
+    func clipboardClearAfter() -> TimeInterval? {
+        // Same unset-means-true default as AppModel.clipboardAutoClear.
+        (defaults.object(forKey: ClipboardPolicyDefaults.autoClearKey) as? Bool ?? true)
+            ? ClipboardPolicyDefaults.clearAfter
+            : nil
+    }
 }
 
 @MainActor
@@ -49,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installMainMenu()
         do {
             let runtime = try AppRuntime()
             self.runtime = runtime
@@ -66,6 +74,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         runtime?.stop()
+    }
+
+    // An accessory app shows no menu bar, but a main menu is still what routes
+    // ⌘Q (and standard edit shortcuts in text fields) while a window is key.
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(NSMenuItem(
+            title: String(localized: "app.quit", defaultValue: "Quit Eko"),
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        ))
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: String(localized: "menu.edit", defaultValue: "Edit"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.cut", defaultValue: "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.copy", defaultValue: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.paste", defaultValue: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.select_all", defaultValue: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+        NSApp.mainMenu = mainMenu
     }
 }
 
@@ -154,6 +187,7 @@ final class AppRuntime {
             }
         )
         model.attach(sessionManager: sessions)
+        model.openPanel = { panelOpenBroker.open() }
         let authorizer = StorePeerAuthorizer(store: store, pairingMode: pairingMode)
         listener = TLSListener(
             identity: identity,

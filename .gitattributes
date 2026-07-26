@@ -1,6 +1,10 @@
 # Normalize text files across Android, macOS, and protocol tooling.
 * text=auto eol=lf
 
+# cmd.exe misparses batch labels in LF-only files, and the Gradle wrapper's
+# gradlew.bat depends on labels — keep Windows line endings there.
+*.bat text eol=crlf
+
 *.md text eol=lf
 *.sh text eol=lf
 *.py text eol=lf

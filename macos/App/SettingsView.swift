@@ -241,9 +241,9 @@ private struct DiagnosticsSettingsView: View {
                     .buttonStyle(.borderedProminent)
             }
             HStack(spacing: 10) {
-                StateCard(title: String(localized: "diagnostics.listener", defaultValue: "TLS listener"), value: String(describing: model.listenerState))
-                StateCard(title: String(localized: "diagnostics.bonjour", defaultValue: "Bonjour"), value: String(describing: model.bonjourState))
-                StateCard(title: String(localized: "diagnostics.bluetooth", defaultValue: "Bluetooth"), value: String(describing: model.bluetoothState))
+                StateCard(title: String(localized: "diagnostics.listener", defaultValue: "TLS listener"), value: listenerLabel(model.listenerState))
+                StateCard(title: String(localized: "diagnostics.bonjour", defaultValue: "Bonjour"), value: bonjourLabel(model.bonjourState))
+                StateCard(title: String(localized: "diagnostics.bluetooth", defaultValue: "Bluetooth"), value: bluetoothLabel(model.bluetoothState))
             }
             Toggle("diagnostics.include_content", isOn: $model.includeContentInDiagnostics)
             Text("diagnostics.content_warning")
@@ -263,6 +263,48 @@ private struct DiagnosticsSettingsView: View {
             }
         }
         .onAppear { model.refreshDiagnostics() }
+    }
+
+    // Raw String(describing:) enum dumps like "ready(port: 48808, usedFallback:
+    // false)" are neither readable nor localizable; failure details remain
+    // visible in the event list below.
+    private func listenerLabel(_ state: TLSListenerState) -> String {
+        switch state {
+        case .stopped: return String(localized: "diagnostics.state.stopped", defaultValue: "Stopped")
+        case .starting: return String(localized: "diagnostics.state.starting", defaultValue: "Starting")
+        case .ready(let port, let usedFallback):
+            let base = String.localizedStringWithFormat(
+                String(localized: "diagnostics.listener.ready", defaultValue: "Listening on port %d"),
+                Int(port)
+            )
+            return usedFallback
+                ? base + " " + String(localized: "diagnostics.listener.fallback", defaultValue: "(fallback port)")
+                : base
+        case .waiting: return String(localized: "diagnostics.state.waiting", defaultValue: "Waiting for network")
+        case .failed: return String(localized: "diagnostics.state.failed", defaultValue: "Failed")
+        }
+    }
+
+    private func bonjourLabel(_ state: BonjourPublicationState) -> String {
+        switch state {
+        case .stopped: return String(localized: "diagnostics.state.stopped", defaultValue: "Stopped")
+        case .publishing: return String(localized: "diagnostics.bonjour.publishing", defaultValue: "Publishing")
+        case .published: return String(localized: "diagnostics.bonjour.published", defaultValue: "Published")
+        case .policyDenied: return String(localized: "diagnostics.bonjour.policy_denied", defaultValue: "Local Network access denied")
+        case .failed: return String(localized: "diagnostics.state.failed", defaultValue: "Failed")
+        }
+    }
+
+    private func bluetoothLabel(_ state: BLEAdvertisingState) -> String {
+        switch state {
+        case .stopped: return String(localized: "diagnostics.state.stopped", defaultValue: "Stopped")
+        case .starting: return String(localized: "diagnostics.state.starting", defaultValue: "Starting")
+        case .advertising: return String(localized: "diagnostics.bluetooth.advertising", defaultValue: "Advertising")
+        case .poweredOff: return String(localized: "diagnostics.bluetooth.powered_off", defaultValue: "Bluetooth is off")
+        case .unauthorized: return String(localized: "diagnostics.bluetooth.unauthorized", defaultValue: "Not authorized")
+        case .unsupported: return String(localized: "diagnostics.bluetooth.unsupported", defaultValue: "Not supported")
+        case .failed: return String(localized: "diagnostics.state.failed", defaultValue: "Failed")
+        }
     }
 }
 

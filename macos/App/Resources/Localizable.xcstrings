@@ -17,6 +17,22 @@
         }
       }
     },
+    "action.cancel": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abbrechen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        }
+      }
+    },
     "action.confirm": {
       "localizations": {
         "de": {
@@ -77,6 +93,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dismiss on phone"
+          }
+        }
+      }
+    },
+    "action.forget": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vergessen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forget"
           }
         }
       }
@@ -157,6 +189,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Eko"
+          }
+        }
+      }
+    },
+    "app.quit": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eko beenden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit Eko"
           }
         }
       }
@@ -273,6 +321,70 @@
         }
       }
     },
+    "device.forget.message": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ wird sofort vergessen, ohne das Telefon zu benachrichtigen. Verlauf und ausstehende Entkopplungsbestätigung werden gelöscht; das Telefon muss neu gekoppelt werden."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ will be forgotten immediately without notifying the phone. Pairing history and the pending unpair receipt are deleted; the phone must pair again from scratch."
+          }
+        }
+      }
+    },
+    "device.forget.title": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ohne Benachrichtigung vergessen?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forget without notifying?"
+          }
+        }
+      }
+    },
+    "device.revoked": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widerrufen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoked"
+          }
+        }
+      }
+    },
+    "device.unpair_pending": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entkopplung ausstehend — Spiegelung ist deaktiviert. Erneut koppeln über „Telefon hinzufügen“."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpair pending — notification mirroring is off. Re-pair via Add phone."
+          }
+        }
+      }
+    },
     "diagnostics.bluetooth": {
       "localizations": {
         "de": {
@@ -289,6 +401,70 @@
         }
       }
     },
+    "diagnostics.bluetooth.advertising": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Advertising"
+          }
+        }
+      }
+    },
+    "diagnostics.bluetooth.powered_off": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bluetooth ist aus"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bluetooth is off"
+          }
+        }
+      }
+    },
+    "diagnostics.bluetooth.unauthorized": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht berechtigt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not authorized"
+          }
+        }
+      }
+    },
+    "diagnostics.bluetooth.unsupported": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht unterstützt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not supported"
+          }
+        }
+      }
+    },
     "diagnostics.bonjour": {
       "localizations": {
         "de": {
@@ -301,6 +477,54 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bonjour"
+          }
+        }
+      }
+    },
+    "diagnostics.bonjour.policy_denied": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zugriff auf lokales Netzwerk verweigert"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Network access denied"
+          }
+        }
+      }
+    },
+    "diagnostics.bonjour.published": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Veröffentlicht"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Published"
+          }
+        }
+      }
+    },
+    "diagnostics.bonjour.publishing": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird veröffentlicht"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publishing"
           }
         }
       }
@@ -369,6 +593,38 @@
         }
       }
     },
+    "diagnostics.listener.fallback": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(Ausweichport)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(fallback port)"
+          }
+        }
+      }
+    },
+    "diagnostics.listener.ready": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lauscht auf Port %d"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listening on port %d"
+          }
+        }
+      }
+    },
     "diagnostics.refresh": {
       "localizations": {
         "de": {
@@ -381,6 +637,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Refresh"
+          }
+        }
+      }
+    },
+    "diagnostics.state.failed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fehlgeschlagen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed"
+          }
+        }
+      }
+    },
+    "diagnostics.state.starting": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Startet"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting"
+          }
+        }
+      }
+    },
+    "diagnostics.state.stopped": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gestoppt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped"
+          }
+        }
+      }
+    },
+    "diagnostics.state.waiting": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wartet auf Netzwerk"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for network"
+          }
+        }
+      }
+    },
+    "error.dismiss": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fehler ausblenden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss error"
           }
         }
       }
@@ -481,22 +817,6 @@
         }
       }
     },
-    "feed.group_device": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nach Telefon gruppieren"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Group by phone"
-          }
-        }
-      }
-    },
     "feed.empty.detail": {
       "localizations": {
         "de": {
@@ -509,6 +829,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "New notifications from your phones appear here."
+          }
+        }
+      }
+    },
+    "feed.group_device": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nach Telefon gruppieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Group by phone"
           }
         }
       }
@@ -625,6 +961,54 @@
         }
       }
     },
+    "gap.reason.peer_cursor_regressed": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Synchronisierungsposition wurde zurückgesetzt"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The sync position was reset"
+          }
+        }
+      }
+    },
+    "gap.reason.retention_age": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Telefon hat alten Verlauf gekürzt (Alters-Limit)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The phone trimmed old history (age limit)"
+          }
+        }
+      }
+    },
+    "gap.reason.retention_count": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Telefon hat alten Verlauf gekürzt (Anzahl-Limit)"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The phone trimmed old history (count limit)"
+          }
+        }
+      }
+    },
     "gap.suspected": {
       "localizations": {
         "de": {
@@ -637,6 +1021,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "Phone may have missed notifications"
+          }
+        }
+      }
+    },
+    "menu.copy": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        }
+      }
+    },
+    "menu.cut": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ausschneiden"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cut"
+          }
+        }
+      }
+    },
+    "menu.edit": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bearbeiten"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit"
+          }
+        }
+      }
+    },
+    "menu.paste": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einsetzen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paste"
+          }
+        }
+      }
+    },
+    "menu.select_all": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alles auswählen"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select All"
           }
         }
       }
@@ -1137,70 +1601,6 @@
         }
       }
     },
-    "settings.pause_banners": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Banner pausieren"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pause banners"
-          }
-        }
-      }
-    },
-    "settings.pause_banners.hint": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Benachrichtigungen treffen weiterhin im Fenster ein"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notifications continue to arrive in the panel"
-          }
-        }
-      }
-    },
-    "settings.port_restart": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Portänderung wird beim nächsten Start angewendet. Falls der Port belegt ist, wählt Eko automatisch einen freien Port."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The port change applies at the next launch. If it is busy, Eko automatically chooses an available port."
-          }
-        }
-      }
-    },
-    "settings.preferred_port": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bevorzugter Port"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preferred port"
-          }
-        }
-      }
-    },
     "settings.login_approval": {
       "localizations": {
         "de": {
@@ -1325,6 +1725,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open settings"
+          }
+        }
+      }
+    },
+    "settings.pause_banners": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Banner pausieren"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause banners"
+          }
+        }
+      }
+    },
+    "settings.pause_banners.hint": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Benachrichtigungen treffen weiterhin im Fenster ein"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications continue to arrive in the panel"
+          }
+        }
+      }
+    },
+    "settings.port_restart": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Portänderung wird beim nächsten Start angewendet. Falls der Port belegt ist, wählt Eko automatisch einen freien Port."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The port change applies at the next launch. If it is busy, Eko automatically chooses an available port."
+          }
+        }
+      }
+    },
+    "settings.preferred_port": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevorzugter Port"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferred port"
           }
         }
       }
@@ -1533,102 +1997,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Eko notifications"
-          }
-        }
-      }
-    },
-    "action.cancel": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abbrechen"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cancel"
-          }
-        }
-      }
-    },
-    "action.forget": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vergessen"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Forget"
-          }
-        }
-      }
-    },
-    "device.forget.title": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ohne Benachrichtigung vergessen?"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Forget without notifying?"
-          }
-        }
-      }
-    },
-    "device.forget.message": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ wird sofort vergessen, ohne das Telefon zu benachrichtigen. Verlauf und ausstehende Entkopplungsbestätigung werden gelöscht; das Telefon muss neu gekoppelt werden."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ will be forgotten immediately without notifying the phone. Pairing history and the pending unpair receipt are deleted; the phone must pair again from scratch."
-          }
-        }
-      }
-    },
-    "device.revoked": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Widerrufen"
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Revoked"
-          }
-        }
-      }
-    },
-    "device.unpair_pending": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Entkopplung ausstehend — Spiegelung ist deaktiviert. Erneut koppeln über „Telefon hinzufügen“."
-          }
-        },
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unpair pending — notification mirroring is off. Re-pair via Add phone."
           }
         }
       }

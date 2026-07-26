@@ -33,8 +33,11 @@ targets:
       - path: App
         excludes:
           - Resources
-    resources:
+      # XcodeGen has no target-level `resources:` key — resource files must be
+      # sources entries with buildPhase: resources, or they silently never make
+      # it into the bundle (no app icon, LocalizedStringKey lookups render raw).
       - path: App/Resources
+        buildPhase: resources
     dependencies:
       - package: EkoCorePackage
         product: EkoCore

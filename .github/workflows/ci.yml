@@ -103,8 +103,11 @@ jobs:
       # job reports green while never executing any of :core's nine test classes,
       # including SharedProtocolVectorsTest (the shared wire-format vectors) and
       # ExactDerTrustManagerTest (certificate pinning).
+      # assembleRelease is included so R8/resource-shrinker breakage (keep
+      # rules, lintVitalRelease) surfaces on every PR instead of for the first
+      # time on a tagged release.
       - name: Test, lint, and assemble
-        run: ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug
+        run: ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug assembleRelease
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
@@ -134,8 +137,10 @@ jobs:
 
       # The repo's own gate, unmodified: regenerate the project from
       # project.yml, lint the plist and entitlements, run the package tests,
-      # then the app-hosted project tests. Running the documented local command
-      # rather than a CI-only reimplementation is the point — the two can't drift.
-      - name: Verify (generate, lint, package tests, project tests)
+      # then build the app from the generated project (see verify-macos.sh for
+      # why the Xcode step builds rather than re-running the identical suite).
+      # Running the documented local command rather than a CI-only
+      # reimplementation is the point — the two can't drift.
+      - name: Verify (generate, lint, package tests, app build)
         run: ./Scripts/verify-macos.sh
         working-directory: macos

@@ -15,7 +15,7 @@ struct PanelRootView: View {
             PanelHeader(model: model, openSettings: openSettings)
             Divider().opacity(0.6)
             if let error = model.fatalError {
-                ErrorStrip(message: error)
+                ErrorStrip(message: error) { model.clearError() }
             }
             Group {
                 switch model.route {
@@ -133,16 +133,25 @@ private struct DeviceChip: View {
 
 private struct ErrorStrip: View {
     let message: String
+    let dismiss: () -> Void
 
     var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle.fill")
-            .font(.caption)
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(Color.red.opacity(0.88))
-            .accessibilityLabel(String(localized: "error.label", defaultValue: "Error") + ": " + message)
+        HStack(spacing: 8) {
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(String(localized: "error.label", defaultValue: "Error") + ": " + message)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "error.dismiss", defaultValue: "Dismiss error"))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.red.opacity(0.88))
     }
 }
 
@@ -168,7 +177,18 @@ struct FeedView: View {
                     .padding(10)
                 }
                 .onChange(of: model.focusedNotificationID) { _, value in
-                    if let value { withAnimation { proxy.scrollTo(value, anchor: .center) } }
+                    if let value, model.notifications.contains(where: { $0.id == value }) {
+                        withAnimation { proxy.scrollTo(value, anchor: .center) }
+                        model.focusedNotificationID = nil
+                    }
+                }
+                // focus() clears filters, so the target row often only exists
+                // after the feed reloads — retry the scroll when data arrives.
+                .onChange(of: model.notifications) { _, value in
+                    if let id = model.focusedNotificationID, value.contains(where: { $0.id == id }) {
+                        withAnimation { proxy.scrollTo(id, anchor: .center) }
+                        model.focusedNotificationID = nil
+                    }
                 }
             }
         }
@@ -409,9 +429,13 @@ private struct GapRow: View {
             Image(systemName: gap.confidence == .definitive ? "exclamationmark.triangle.fill" : "questionmark.diamond.fill")
                 .foregroundStyle(gap.confidence == .definitive ? .orange : .yellow)
             VStack(alignment: .leading, spacing: 2) {
-                Text(gap.confidence == .definitive ? "gap.definitive" : "gap.suspected")
+                // A ternary of string literals types as String, not
+                // LocalizedStringKey, so the keys must be resolved explicitly.
+                Text(gap.confidence == .definitive
+                    ? String(localized: "gap.definitive", defaultValue: "History unavailable")
+                    : String(localized: "gap.suspected", defaultValue: "Phone may have missed notifications"))
                     .font(.caption.weight(.semibold))
-                Text("\(deviceName ?? String(gap.deviceID.prefix(8))) · \(gap.reason)")
+                Text("\(deviceName ?? String(gap.deviceID.prefix(8))) · \(Self.localizedReason(gap.reason))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -420,6 +444,21 @@ private struct GapRow: View {
         .padding(9)
         .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 9))
         .accessibilityElement(children: .combine)
+    }
+
+    // gap.reason carries the protocol's machine tokens (common.schema.json
+    // gapReason enum); unknown tokens fall through verbatim.
+    private static func localizedReason(_ reason: String) -> String {
+        switch reason {
+        case "retention_count":
+            return String(localized: "gap.reason.retention_count", defaultValue: "The phone trimmed old history (count limit)")
+        case "retention_age":
+            return String(localized: "gap.reason.retention_age", defaultValue: "The phone trimmed old history (age limit)")
+        case "peer_cursor_regressed":
+            return String(localized: "gap.reason.peer_cursor_regressed", defaultValue: "The sync position was reset")
+        default:
+            return reason
+        }
     }
 }
 
@@ -433,7 +472,11 @@ private struct EmptyFeedView: View {
                 systemImage: hasDevices ? "bell.slash" : "iphone.gen3.radiowaves.left.and.right"
             )
         } description: {
-            Text(hasDevices ? "feed.empty.detail" : "feed.no_devices.detail")
+            // A ternary of string literals types as String, not
+            // LocalizedStringKey, so the keys must be resolved explicitly.
+            Text(hasDevices
+                ? String(localized: "feed.empty.detail", defaultValue: "New notifications from your phones appear here.")
+                : String(localized: "feed.no_devices.detail", defaultValue: "Choose Add phone above and scan the QR code."))
         }
     }
 }

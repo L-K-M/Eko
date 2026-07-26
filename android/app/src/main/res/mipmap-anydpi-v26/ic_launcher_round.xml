@@ -1,8 +1,12 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/eko_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <!-- Full-bleed raster derived from media-sources/icon.png by
+         macos/Scripts/generate_app_icons.js. The launcher mask reveals the
+         middle ~72dp of the 108dp layer, so the phone stays in the safe zone
+         and the sound waves intentionally bleed off the edge. -->
+    <foreground android:drawable="@mipmap/ic_launcher_fg" />
     <!-- Android 13+ themed icons. Without this layer Eko is one of the few icons on the
          home screen that refuses to tint. The system replaces the drawable's colour, so
-         the foreground doubles as the monochrome silhouette. -->
+         the vector mark doubles as the monochrome silhouette. -->
     <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>

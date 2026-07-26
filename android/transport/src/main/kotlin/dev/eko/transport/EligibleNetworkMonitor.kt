@@ -31,6 +31,11 @@ class EligibleNetworkMonitor(context: Context) : Closeable {
             .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
             .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
             .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+            // Every NetworkRequest carries NOT_VPN by default, which makes the
+            // TRANSPORT_VPN line above unmatchable — a VPN coming up after
+            // service start was never observed and awaitNetwork() hung forever
+            // on phones reaching the Mac through a VPN.
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .build()
         connectivity.registerNetworkCallback(request, callback)
         refresh()

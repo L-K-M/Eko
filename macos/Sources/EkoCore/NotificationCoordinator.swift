@@ -26,6 +26,14 @@ public protocol UserNotificationScheduling: Sendable {
 
 public protocol NotificationDeliveryPolicy: Sendable {
     func allowsBanner(deviceID: String) -> Bool
+    /// Seconds after which a code copied on the user's behalf is cleared from
+    /// the clipboard, or nil to leave it. Mirrors the panel's copy behavior so
+    /// the auto-clear preference applies to every copy path.
+    func clipboardClearAfter() -> TimeInterval?
+}
+
+public extension NotificationDeliveryPolicy {
+    func clipboardClearAfter() -> TimeInterval? { 120 }
 }
 
 public struct AllowAllNotificationDeliveryPolicy: NotificationDeliveryPolicy {
@@ -41,7 +49,9 @@ public final class SystemUserNotificationScheduler: UserNotificationScheduling, 
     }
 
     public func requestProvisionalAuthorization() async throws -> Bool {
-        try await center.requestAuthorization(options: [.alert, .badge, .provisional])
+        // .sound must be requested or per-app sound preferences can never
+        // play: UNUserNotificationCenter ignores content.sound without it.
+        try await center.requestAuthorization(options: [.alert, .badge, .sound, .provisional])
     }
 
     public func install(categories: Set<UNNotificationCategory>) {
@@ -110,13 +120,20 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         if let code = outcome.otpCode,
            preference?.autoCopyOTP == true,
            !Self.isBankingStyle(outcome.body ?? "") {
-            await clipboard.copy(code)
+            await clipboard.copy(code, clearAfter: deliveryPolicy.clipboardClearAfter())
             try? store.markOTPCopied(deviceID: outcome.deviceID, code: code)
         }
+        // For code-bearing notifications the store computes cross-key/time
+        // dedupe (otpBannerEligible); honoring it only for .updated events let
+        // every re-sent code on a fresh notification key banner again
+        // (otp-corpus en-024). Codeless posted notifications banner as before.
+        let bannerEligible = outcome.otpCode == nil
+            ? outcome.kind == .posted
+            : (outcome.kind == .posted || outcome.kind == .updated) && outcome.otpBannerEligible
         guard !outcome.dndSuppressed,
               deliveryPolicy.allowsBanner(deviceID: outcome.deviceID),
               (preference?.bannerMode ?? .normal) == .normal,
-              (outcome.kind == .posted || outcome.otpBannerEligible) else { return }
+              bannerEligible else { return }
         let content = UNMutableNotificationContent()
         let app = outcome.appLabel ?? deviceName
         content.title = "\(app) · \(deviceName)"
@@ -142,6 +159,8 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
     }
 
     public func postBacklogSummary(_ summary: BacklogSummary) async {
+        // The reconnect summary is a banner like any other; honor Pause banners.
+        guard deliveryPolicy.allowsBanner(deviceID: summary.deviceID) else { return }
         let content = UNMutableNotificationContent()
         content.title = strings.backlogTitle(summary.deviceName)
         content.body = strings.backlogBody(summary.notificationCount, summary.otpCount)
@@ -163,6 +182,27 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
 
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Without this, notifications are suppressed whenever Eko is the
+        // active app — which it frequently is exactly when codes arrive,
+        // since opening the panel or Settings activates the app.
+        //
+        // Re-check the banner gate at delivery time: a notification scheduled
+        // just before the user paused banners is still in the system queue,
+        // and presenting it would contradict the setting. It stays in the
+        // notification list either way.
+        if let deviceID = notification.request.content.userInfo["device_id"] as? String,
+           !deliveryPolicy.allowsBanner(deviceID: deviceID) {
+            completionHandler([.list])
+            return
+        }
+        completionHandler([.banner, .list, .sound])
+    }
+
+    public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
@@ -176,7 +216,7 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         Task {
             if response.actionIdentifier == Self.copyActionIdentifier,
                let code = try? store.currentOTP(deviceID: deviceID, generation: generation, notificationKey: key) {
-                await clipboard.copy(code)
+                await clipboard.copy(code, clearAfter: deliveryPolicy.clipboardClearAfter())
                 try? store.markOTPCopied(deviceID: deviceID, code: code)
             } else if response.actionIdentifier == UNNotificationDefaultActionIdentifier {
                 await openPanel(deviceID, key)

@@ -39,10 +39,11 @@ class MacDiscovery(context: Context) : Closeable {
             resolveNext()
         }
         override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-            val lostAt = System.currentTimeMillis()
-            mutable.value = mutable.value.map { device ->
-                if (device.serviceName == serviceInfo.serviceName) device.copy(lastSeenWall = lostAt - LOST_DEBOUNCE_MS) else device
-            }
+            // Remove outright: the age filter only runs when another service
+            // resolves, so a merely back-dated entry lingered in the pairing
+            // UI indefinitely, offering a tappable chip for a Mac that is
+            // gone. A flapping service is re-added by its next resolve.
+            mutable.value = mutable.value.filterNot { it.serviceName == serviceInfo.serviceName }
         }
         override fun onDiscoveryStopped(serviceType: String) = Unit
         override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) = close()

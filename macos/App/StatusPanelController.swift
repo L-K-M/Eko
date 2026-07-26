@@ -15,6 +15,7 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     private let panel: KeyablePanel
     private let settingsController: SettingsWindowController
     private var cancellables: Set<AnyCancellable> = []
+    private var codeExpiryRefresh: Task<Void, Never>?
 
     init(model: AppModel, pairingBroker: PairingApprovalBroker) {
         self.model = model
@@ -42,6 +43,13 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     }
 
     @objc private func togglePanel() {
+        // Right-click gets the housekeeping menu. Without it the app is
+        // unquittable: activation policy is .accessory (no Dock icon) and a
+        // menu-bar-only app has no visible main menu.
+        if NSApp.currentEvent.map({ $0.type == .rightMouseUp || $0.modifierFlags.contains(.control) }) == true {
+            showStatusMenu()
+            return
+        }
         if panel.isVisible {
             panel.orderOut(nil)
             model.panelVisibilityChanged(false)
@@ -50,11 +58,36 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func showStatusMenu() {
+        guard let button = statusItem.button else { return }
+        let menu = NSMenu()
+        let settingsItem = NSMenuItem(
+            title: String(localized: "settings.open", defaultValue: "Open settings"),
+            action: #selector(openSettingsFromMenu),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+        menu.addItem(.separator())
+        let quitItem = NSMenuItem(
+            title: String(localized: "app.quit", defaultValue: "Quit Eko"),
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        quitItem.target = NSApp
+        menu.addItem(quitItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.maxY + 4), in: button)
+    }
+
+    @objc private func openSettingsFromMenu() {
+        settingsController.show()
+    }
+
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
         button.target = self
         button.action = #selector(togglePanel)
-        button.sendAction(on: [.leftMouseUp])
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.image = statusImage(symbol: "iphone.radiowaves.left.and.right")
         button.imagePosition = .imageOnly
         button.toolTip = String(localized: "status.tooltip", defaultValue: "Eko notifications")
@@ -63,6 +96,10 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
 
     private func configurePanel() {
         panel.delegate = self
+        // NSWindow releases itself on close by default; this panel is closable,
+        // strongly held, and reshown on every status-item click, so the default
+        // is a use-after-free on the click after the close button.
+        panel.isReleasedWhenClosed = false
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = false
@@ -115,6 +152,21 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
             button.toolTip = String(localized: "status.tooltip", defaultValue: "Eko notifications")
         }
         button.setAccessibilityValue(button.toolTip)
+
+        // The code badge is time-based, but this method only runs on model
+        // changes — without a scheduled refresh the icon sticks on "code
+        // available" after the 60-second window lapses.
+        codeExpiryRefresh?.cancel()
+        codeExpiryRefresh = nil
+        if hasCode,
+           let newest = model.notifications.compactMap({ $0.otpCode != nil ? $0.receivedAt : nil }).max() {
+            let delay = newest.addingTimeInterval(60).timeIntervalSinceNow
+            codeExpiryRefresh = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(max(1, delay)))
+                guard !Task.isCancelled else { return }
+                self?.updateStatusItem()
+            }
+        }
     }
 
     private func statusImage(symbol: String) -> NSImage? {
@@ -139,9 +191,16 @@ final class StatusPanelController: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard !model.panelPinned, settingsController.window?.isKeyWindow != true else { return }
-        panel.orderOut(nil)
-        model.panelVisibilityChanged(false)
+        // AppKit resigns the old key window before the new one becomes key, so
+        // checking synchronously always sees the settings window as not-key and
+        // closes the panel whenever settings opens. Decide one runloop later,
+        // when NSApp.keyWindow reflects the destination.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.model.panelPinned else { return }
+            guard !self.panel.isKeyWindow, NSApp.keyWindow !== self.settingsController.window else { return }
+            self.panel.orderOut(nil)
+            self.model.panelVisibilityChanged(false)
+        }
     }
 
     func windowWillClose(_ notification: Notification) {

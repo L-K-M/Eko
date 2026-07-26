@@ -428,7 +428,8 @@ public final class EkoStore: @unchecked Sendable {
         certificateDER: Data,
         initialCursor: Int64,
         negotiatedProtocol: Int,
-        endpoint: String?
+        endpoint: String?,
+        completedAttemptID: String? = nil
     ) throws -> Device {
         let fingerprint = EkoCrypto.fingerprint(of: certificateDER)
         guard fingerprint == hello.deviceID, let generation = hello.outboxGeneration,
@@ -444,8 +445,19 @@ public final class EkoStore: @unchecked Sendable {
             }
             // An explicitly confirmed new pairing supersedes every revocation receipt and
             // pending pair attempt for this certificate, atomically with the pin commit.
+            // The attempt that is completing right now must survive: pair_result{confirmed}
+            // is sent only after this transaction, and if that frame is lost the phone
+            // resumes under the same attempt_id (protocol.md §7.4) — deleting its row
+            // here made every resume land in `unauthorized` and wedged pairing.
             try db.execute(sql: "DELETE FROM unpair_tombstone WHERE device_id = ?", arguments: [fingerprint])
-            try db.execute(sql: "DELETE FROM pairing_attempt WHERE device_id = ?", arguments: [fingerprint])
+            if let completedAttemptID {
+                try db.execute(
+                    sql: "DELETE FROM pairing_attempt WHERE device_id = ? AND attempt_id != ?",
+                    arguments: [fingerprint, completedAttemptID]
+                )
+            } else {
+                try db.execute(sql: "DELETE FROM pairing_attempt WHERE device_id = ?", arguments: [fingerprint])
+            }
             try db.execute(
                 sql: """
                     INSERT INTO device (
@@ -1905,34 +1917,39 @@ public final class EkoStore: @unchecked Sendable {
         )
     }
 
+    // Early returns, not one chained && expression: Xcode 16.3's type checker
+    // times out on the long chains ("unable to type-check this expression in
+    // reasonable time").
     private static func durablyEquivalent(_ lhs: EventMessage, _ rhs: EventMessage) -> Bool {
-        lhs.sequence == rhs.sequence
-            && lhs.stateSequence == rhs.stateSequence
-            && lhs.event == rhs.event
-            && lhs.key == rhs.key
-            && lhs.postedAt == rhs.postedAt
-            && lhs.user == rhs.user
-            && lhs.contentHash == rhs.contentHash
-            && lhs.app == rhs.app
-            && lhs.notification == rhs.notification
-            && lhs.dnd == rhs.dnd
-            && lhs.flags.reconciled == rhs.flags.reconciled
-            && lhs.truncatedFields == rhs.truncatedFields
-            && lhs.removeReason == rhs.removeReason
-            && lhs.confidence == rhs.confidence
-            && lhs.interval == rhs.interval
-            && lhs.evidence == rhs.evidence
-            && lhs.details == rhs.details
+        if lhs.sequence != rhs.sequence { return false }
+        if lhs.stateSequence != rhs.stateSequence { return false }
+        if lhs.event != rhs.event { return false }
+        if lhs.key != rhs.key { return false }
+        if lhs.postedAt != rhs.postedAt { return false }
+        if lhs.user != rhs.user { return false }
+        if lhs.contentHash != rhs.contentHash { return false }
+        if lhs.app != rhs.app { return false }
+        if lhs.notification != rhs.notification { return false }
+        if lhs.dnd != rhs.dnd { return false }
+        if lhs.flags.reconciled != rhs.flags.reconciled { return false }
+        if lhs.truncatedFields != rhs.truncatedFields { return false }
+        if lhs.removeReason != rhs.removeReason { return false }
+        if lhs.confidence != rhs.confidence { return false }
+        if lhs.interval != rhs.interval { return false }
+        if lhs.evidence != rhs.evidence { return false }
+        if lhs.details != rhs.details { return false }
+        return true
     }
 
     private static func sameNotificationState(_ lhs: EventMessage, _ rhs: EventMessage) -> Bool {
-        lhs.key == rhs.key
-            && lhs.postedAt == rhs.postedAt
-            && lhs.user == rhs.user
-            && lhs.contentHash == rhs.contentHash
-            && lhs.app == rhs.app
-            && lhs.notification == rhs.notification
-            && lhs.dnd == rhs.dnd
-            && lhs.truncatedFields == rhs.truncatedFields
+        if lhs.key != rhs.key { return false }
+        if lhs.postedAt != rhs.postedAt { return false }
+        if lhs.user != rhs.user { return false }
+        if lhs.contentHash != rhs.contentHash { return false }
+        if lhs.app != rhs.app { return false }
+        if lhs.notification != rhs.notification { return false }
+        if lhs.dnd != rhs.dnd { return false }
+        if lhs.truncatedFields != rhs.truncatedFields { return false }
+        return true
     }
 }

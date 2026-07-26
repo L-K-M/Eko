@@ -127,8 +127,15 @@ public actor SessionManager {
                 )
 
             case (.paired(let admittedID), .pair) where admittedID == hello.deviceID:
-                guard let attemptID = hello.attemptID,
-                      try store.pairingAttempt(id: attemptID) != nil else {
+                // Resume of a persisted attempt, or — mirroring the .revoked
+                // arm — a fresh attempt while the user has pairing mode open.
+                // Without the latter, a phone whose attempt expired after a
+                // lost pair_result could never restart pairing (§7.4).
+                guard let attemptID = hello.attemptID else {
+                    throw EkoCoreError.unauthorized
+                }
+                let resumable = try store.pairingAttempt(id: attemptID) != nil
+                guard resumable || pairingMode.acceptsNewPairingAttempts else {
                     throw EkoCoreError.unauthorized
                 }
                 try await runPairing(
@@ -191,7 +198,13 @@ public actor SessionManager {
             await sendError(for: error, transport: transport)
             await transport.close()
             if let claimedDeviceID {
-                await sink.connectionStateChanged(deviceID: claimedDeviceID, state: .failed(error.localizedDescription))
+                // A rejected stale/zombie dial (e.g. superseded epoch) must not
+                // clobber the live session's state in the UI; finishSession is
+                // already transport-gated, this emission was not.
+                let live = activeSessions[claimedDeviceID]
+                if live == nil || live?.transport.id == transport.id {
+                    await sink.connectionStateChanged(deviceID: claimedDeviceID, state: .failed(error.localizedDescription))
+                }
                 await finishSession(deviceID: claimedDeviceID, transportID: transport.id)
             }
         }
@@ -785,7 +798,8 @@ public actor SessionManager {
             certificateDER: peerCertificateDER,
             initialCursor: initialCursor,
             negotiatedProtocol: negotiatedProtocol,
-            endpoint: transport.remoteEndpointDescription
+            endpoint: transport.remoteEndpointDescription,
+            completedAttemptID: attemptID
         )
         try await transport.send(.pairResult(PairResultMessage(
             attemptID: attemptID,

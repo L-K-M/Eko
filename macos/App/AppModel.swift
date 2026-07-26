@@ -4,6 +4,14 @@ import EkoCore
 import Foundation
 import UniformTypeIdentifiers
 
+/// Shared between AppModel and DefaultsNotificationDeliveryPolicy so the
+/// UserDefaults key and the auto-clear interval cannot drift between the
+/// panel's copy path and EkoCore's auto-copy/banner-copy paths.
+enum ClipboardPolicyDefaults {
+    static let autoClearKey = "clipboardAutoClear"
+    static let clearAfter: TimeInterval = 120
+}
+
 enum PanelRoute: String, CaseIterable, Identifiable {
     case feed
     case pairing
@@ -111,6 +119,10 @@ final class AppModel: ObservableObject {
     let identity: DeviceIdentity
     let pairingMode: PairingModeController
     let pairingBroker: PairingApprovalBroker
+    /// Surfaces the status-bar panel. Pairing state lives in the panel, so
+    /// entry points outside it (the Settings window's Add phone button) must
+    /// bring the panel on screen or nothing visibly happens.
+    var openPanel: () -> Void = {}
 
     private let clipboard: ClipboardController
     private let loginService: any LaunchAtLoginControlling
@@ -125,7 +137,7 @@ final class AppModel: ObservableObject {
     private var pairingExpiryTask: Task<Void, Never>?
 
     private enum Keys {
-        static let clipboardAutoClear = "clipboardAutoClear"
+        static let clipboardAutoClear = ClipboardPolicyDefaults.autoClearKey
         static let retentionDays = "retentionDays"
         static let retentionCount = "retentionCount"
         static let listenerPort = "listenerPort"
@@ -168,7 +180,16 @@ final class AppModel: ObservableObject {
 
     func setListenerState(_ state: TLSListenerState) {
         listenerState = state
-        if case .ready(let port, _) = state { boundPort = port }
+        if case .ready(let port, _) = state {
+            boundPort = port
+            // A startup listener failure is the most common source of the error
+            // strip; once the listener recovers the strip is stale.
+            fatalError = nil
+        }
+    }
+
+    func clearError() {
+        fatalError = nil
     }
 
     func setBonjourState(_ state: BonjourPublicationState) {
@@ -193,6 +214,10 @@ final class AppModel: ObservableObject {
 
     func focus(deviceID: String, key: String) {
         route = .feed
+        // An active search or Codes filter can hide the very notification the
+        // user just clicked a banner for; reveal it unconditionally.
+        searchText = ""
+        codesOnly = false
         selectedDeviceID = deviceID
         if let notification = try? store.notifications(query: FeedQuery(deviceID: deviceID, limit: 500))
             .first(where: { $0.key == key }) {
@@ -201,6 +226,7 @@ final class AppModel: ObservableObject {
     }
 
     func beginPairing() {
+        openPanel()
         guard let port = boundPort else {
             setFatalError(EkoCoreError.transportClosed)
             return
@@ -248,7 +274,7 @@ final class AppModel: ObservableObject {
     }
 
     func copyCode(_ code: String, deviceID: String) {
-        clipboard.copy(code, clearAfter: clipboardAutoClear ? 120 : nil)
+        clipboard.copy(code, clearAfter: clipboardAutoClear ? ClipboardPolicyDefaults.clearAfter : nil)
         try? store.markOTPCopied(deviceID: deviceID, code: code)
     }
 
@@ -376,7 +402,18 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             do {
                 for try await value in store.observeDevices() {
+                    let previouslyConfirmed = Set(self.devices.filter { $0.pairingState == .confirmed }.map(\.id))
                     self.devices = value
+                    // Pairing completes in EkoCore with no callback into the
+                    // app layer; a device turning confirmed while the QR is up
+                    // is that signal. Without this the panel sits on a dead QR
+                    // until the invitation expires.
+                    let confirmed = Set(value.filter { $0.pairingState == .confirmed }.map(\.id))
+                    if self.route == .pairing,
+                       self.pairingDisplay != nil,
+                       !confirmed.subtracting(previouslyConfirmed).isEmpty {
+                        self.endPairing()
+                    }
                 }
             } catch {
                 self.setFatalError(error)

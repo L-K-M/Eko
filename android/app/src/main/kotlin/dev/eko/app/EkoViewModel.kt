@@ -37,10 +37,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
 
 data class SystemChecks(
@@ -75,7 +80,11 @@ sealed interface PairingUiState {
 class EkoViewModel(application: Application) : AndroidViewModel(application) {
     private val context = application.applicationContext
     private val identityStore = IdentityStore.get(context)
-    private val repository = EventStoreProvider.repository(context)
+    // A getter, not a cached val: a generation reset closes and replaces the
+    // Room instance (EventStoreProvider.closeAndDelete), and a ViewModel that
+    // kept the old reference served dead flows and crashed on the next write.
+    // RoomCaptureSink resolves per operation for the same reason.
+    private val repository get() = EventStoreProvider.repository(context)
     private val mutableChecks = MutableStateFlow(SystemChecks())
     val checks: StateFlow<SystemChecks> = mutableChecks
     private val mutablePairing = MutableStateFlow<PairingUiState>(PairingUiState.Idle)
@@ -91,11 +100,17 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
     // metadata.lastAssignedSeq advances on every committed event, so this flow ticks at
     // the capture rate. Sampling it keeps the queue-depth readout live without
     // recomposing Home once per arriving notification — it is a count, not an animation.
-    private val highWaterSeq = repository.observeMetadata()
+    // flow { emitAll(...) } so every (re)subscription — stateIn restarts after
+    // WhileSubscribed timeouts — resolves the repository current at that moment.
+    private val highWaterSeq = flow { emitAll(repository.observeMetadata()) }
         .onStart { emit(repository.initialize()) }
         .map { it.lastAssignedSeq }
         .distinctUntilChanged()
-        .sample(QUEUE_DEPTH_SAMPLE_MS)
+        // sample() alone holds back the very first value for a full window,
+        // leaving Home on placeholder state ("No Macs are paired yet", switch
+        // in the wrong position) for 500 ms on every cold start. Let the first
+        // value through immediately and sample only the tail.
+        .let { seq -> merge(seq.take(1), seq.drop(1).sample(QUEUE_DEPTH_SAMPLE_MS)) }
 
     val home: StateFlow<HomeState> = combine(
         identityStore.state,
@@ -106,7 +121,7 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
         // the result for that one peer — an N+1 over the same table, re-run on every
         // captured notification. pairing_cursor only changes on ack, so as a flow it
         // emits orders of magnitude less often than the outbox does.
-        repository.observePairings(),
+        flow { emitAll(repository.observePairings()) },
     ) { identity, lastAssignedSeq, transport, cursors ->
         val cursorsByPairing = cursors.associateBy { it.pairingId }
         HomeState(
@@ -128,7 +143,7 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
         .catch { emit(HomeState()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState())
 
-    val apps: StateFlow<List<AppWithRule>> = repository.observeApps()
+    val apps: StateFlow<List<AppWithRule>> = flow { emitAll(repository.observeApps()) }
         .catch { emit(emptyList()) }
         .stateIn(
             viewModelScope,
@@ -254,8 +269,14 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateRule(app: AppWithRule, enabled: Boolean = app.enabled, ongoing: Boolean = app.includeOngoing, otp: Boolean = app.otpHint) {
         viewModelScope.launch {
-            repository.updateAppRule(AppRuleEntity(app.packageName, app.userId, enabled, ongoing, otp))
-            if (enabled) NotificationListenerController.reconcileActive()
+            // A closed store (mid generation-reset) must not crash the process
+            // on a settings toggle; the health card already reports the state.
+            runCatching {
+                repository.updateAppRule(AppRuleEntity(app.packageName, app.userId, enabled, ongoing, otp))
+                if (enabled) NotificationListenerController.reconcileActive()
+            }.onFailure { error ->
+                TransportRuntime.log("App rule update failed: ${error.javaClass.simpleName}")
+            }
         }
     }
 

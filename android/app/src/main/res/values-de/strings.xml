@@ -107,7 +107,10 @@
     <string name="redaction_broken">Schwärzung sensibler Texte erkannt. Begleitgeräte-Verknüpfung reparieren und den Dienst neu binden.</string>
     <string name="run_repair">Unterstützte Dienstreparatur starten</string>
     <string name="association_health">Begleitgeräte-Verknüpfungen</string>
-    <string name="association_count">%1$d appweite Verknüpfung(en)</string>
+    <plurals name="association_count">
+        <item quantity="one">%1$d appweite Verknüpfung</item>
+        <item quantity="other">%1$d appweite Verknüpfungen</item>
+    </plurals>
     <string name="applied_receipts">Gespeicherte Entkopplungsbestätigungen: %1$d</string>
     <string name="presence_state">Präsenz: %1$s</string>
     <string name="presence_toggle">Android-16-Zuverlässigkeit im Ruhezustand</string>
@@ -120,4 +123,9 @@
     <string name="never">Nie</string>
     <string name="yes">Ja</string>
     <string name="no">Nein</string>
+    <string name="camera_permission_needed">Zum Scannen des Kopplungs-QR-Codes wird Kamerazugriff benötigt. Erlauben Sie ihn in den System-Einstellungen der App.</string>
+    <string name="cdm_failed">Geräteverknüpfung fehlgeschlagen: %1$s</string>
+    <string name="presence_none">noch nicht beobachtet</string>
+    <string name="presence_appeared">in der Nähe</string>
+    <string name="presence_disappeared">außer Reichweite</string>
 </resources>

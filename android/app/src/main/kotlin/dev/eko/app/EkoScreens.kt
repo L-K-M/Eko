@@ -234,7 +234,11 @@ private fun OnboardingScreen(
         AlertDialog(
             onDismissRequest = clearScannerError,
             confirmButton = { TextButton(onClick = clearScannerError) { Text(stringResource(android.R.string.ok)) } },
-            title = { Text(stringResource(R.string.pair_error, error)) },
+            // Pre-formatted by the caller: scan failures arrive wrapped in
+            // pair_error, CDM failures in cdm_failed, permission guidance
+            // plain — wrapping again here mislabeled everything as
+            // "Pairing failed:".
+            title = { Text(error) },
         )
     }
     when (pairing) {
@@ -593,18 +597,24 @@ private fun HomeScreen(home: HomeState, viewModel: EkoViewModel, modifier: Modif
     }
 }
 
+// Shared by the Home status badge and the Diagnostics peer list — the latter
+// used to print `state::class.simpleName`, which is untranslated in debug and
+// R8-obfuscated gibberish in release builds.
+@Composable
+private fun transportStateLabel(status: PeerTransportState): String = when (status) {
+    is PeerTransportState.Connected -> stringResource(R.string.status_connected)
+    is PeerTransportState.Syncing -> stringResource(R.string.status_syncing, status.eventCount)
+    is PeerTransportState.Reconnecting -> stringResource(R.string.status_reconnecting, status.nextDelayMillis / 1_000.0)
+    PeerTransportState.WaitingForNetwork -> stringResource(R.string.status_waiting_network)
+    PeerTransportState.Paused -> stringResource(R.string.status_paused)
+    PeerTransportState.Offline -> stringResource(R.string.status_offline)
+    // An arbitrary-length exception message does not belong in a status badge.
+    is PeerTransportState.Failed -> stringResource(R.string.status_failed, status.reason.take(FAILURE_REASON_CHARS))
+}
+
 @Composable
 private fun TransportStatus(status: PeerTransportState) {
-    val text = when (status) {
-        is PeerTransportState.Connected -> stringResource(R.string.status_connected)
-        is PeerTransportState.Syncing -> stringResource(R.string.status_syncing, status.eventCount)
-        is PeerTransportState.Reconnecting -> stringResource(R.string.status_reconnecting, status.nextDelayMillis / 1_000.0)
-        PeerTransportState.WaitingForNetwork -> stringResource(R.string.status_waiting_network)
-        PeerTransportState.Paused -> stringResource(R.string.status_paused)
-        PeerTransportState.Offline -> stringResource(R.string.status_offline)
-        // An arbitrary-length exception message does not belong in a status badge.
-        is PeerTransportState.Failed -> stringResource(R.string.status_failed, status.reason.take(FAILURE_REASON_CHARS))
-    }
+    val text = transportStateLabel(status)
     val icon = when (status) {
         is PeerTransportState.Connected -> Icons.Outlined.CheckCircle
         PeerTransportState.Paused -> Icons.Outlined.PauseCircle
@@ -721,9 +731,9 @@ private fun DiagnosticsScreen(
         }
         item {
             DiagnosticCard(stringResource(R.string.association_health)) {
-                Text(stringResource(R.string.association_count, identity.associations.size))
+                Text(pluralStringResource(R.plurals.association_count, identity.associations.size, identity.associations.size))
                 Text(stringResource(R.string.applied_receipts, identity.appliedUnpairReceipts.size))
-                Text(stringResource(R.string.presence_state, presence.event))
+                Text(stringResource(R.string.presence_state, presenceLabel(presence)))
                 identity.associations.forEach { association ->
                     Text("#${association.id} ${association.displayName ?: association.address.orEmpty()}", fontFamily = FontFamily.Monospace)
                     if (Build.VERSION.SDK_INT >= 31) {
@@ -745,7 +755,7 @@ private fun DiagnosticsScreen(
                 Text(stringResource(if (transport.serviceRunning) R.string.transport_running else R.string.transport_stopped))
                 recentExitReason?.let { Text(stringResource(R.string.recent_exit_reason, it.toString())) }
                 transport.peers.forEach { (id, state) ->
-                    Text("${id.take(12)}: ${state::class.simpleName}")
+                    Text("${id.take(12)}: ${transportStateLabel(state)}")
                     Text(stringResource(R.string.last_forward, relativeTime(transport.lastForwardWall[id] ?: 0, now)))
                 }
             }
@@ -795,6 +805,16 @@ private fun relativeTime(wall: Long, now: Long): String = if (wall <= 0) {
     stringResource(R.string.never)
 } else {
     DateUtils.getRelativeTimeSpanString(wall, now, DateUtils.SECOND_IN_MILLIS).toString()
+}
+
+// presence.event carries internal tokens ("none", "appeared", "disappeared",
+// or "presence:<n>" from the API-36 callback); showing them verbatim left
+// untranslated identifiers on the Diagnostics screen.
+@Composable
+private fun presenceLabel(presence: CompanionPresence): String = when {
+    presence.event == "none" -> stringResource(R.string.presence_none)
+    presence.event == "appeared" || presence.present -> stringResource(R.string.presence_appeared)
+    else -> stringResource(R.string.presence_disappeared)
 }
 
 private fun oemGuideResource(manufacturer: String): Int = when (manufacturer.lowercase()) {

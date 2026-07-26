@@ -27,7 +27,7 @@ scripts/install-debug.sh                              # debug APK onto a connect
 
 python3 scripts/check-protocol.py                     # schemas, vectors, corpus (needs jsonschema + PyYAML)
 python3 -m unittest discover -s tools/tests -v        # reference model
-(cd android && ./gradlew testDebugUnitTest lintDebug assembleDebug)
+(cd android && ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug)
 (cd macos && ./Scripts/verify-macos.sh)               # macOS only; generate, lint, swift test, xcodebuild test
 ```
 

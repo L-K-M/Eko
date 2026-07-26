@@ -145,6 +145,9 @@ private fun EkoApp(viewModel: EkoViewModel) {
                             }
                         }
                     }.onFailure { error ->
+                        // Cancellation is structured-concurrency control flow,
+                        // not an association failure.
+                        if (error is kotlin.coroutines.cancellation.CancellationException) throw error
                         scannerError = cdmFailedTemplate.format(error.message ?: error.javaClass.simpleName)
                     }
                 }

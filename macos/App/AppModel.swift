@@ -494,8 +494,11 @@ final class AppModel: ObservableObject {
             ) == 0 else { continue }
             addresses.append((String(cString: interface.ifa_name), String(cString: host)))
         }
-        // Tunnels and peer-to-peer links are not what the phone can dial.
+        // Tunnels and peer-to-peer links are not what the phone can dial, and
+        // a link-local 169.254/16 address (interface up with no DHCP lease)
+        // is not routable from the phone either.
         addresses.removeAll { $0.name.hasPrefix("utun") || $0.name.hasPrefix("awdl") || $0.name.hasPrefix("llw") || $0.name.hasPrefix("bridge") }
+        addresses.removeAll { $0.ip.hasPrefix("169.254.") }
         let preferred = addresses.first { $0.name == "en0" }
             ?? addresses.first { $0.name.hasPrefix("en") }
             ?? addresses.first

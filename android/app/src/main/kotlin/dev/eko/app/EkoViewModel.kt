@@ -223,13 +223,15 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
     // error during system call") for the most common, most fixable failures.
     // Map those to actionable localized guidance; anything unrecognized keeps
     // its original message for diagnosability.
+    // Order matters: ConnectException and NoRouteToHostException both extend
+    // SocketException, so the never-reached arms must come before the broad one.
     private fun pairingFailureDetail(error: Throwable): String = when (error) {
-        is javax.net.ssl.SSLException, is java.io.EOFException, is java.net.SocketException ->
-            context.getString(R.string.pair_error_connection)
         is java.net.UnknownHostException ->
             context.getString(R.string.pair_error_unknown_host)
         is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.NoRouteToHostException ->
             context.getString(R.string.pair_error_unreachable)
+        is javax.net.ssl.SSLException, is java.io.EOFException, is java.net.SocketException ->
+            context.getString(R.string.pair_error_connection)
         else -> error.message ?: error.javaClass.simpleName
     }
 

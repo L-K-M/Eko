@@ -214,9 +214,23 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
                 watchPairingExpiry(handle)
                 mutablePairing.value = PairingUiState.Verify(handle.peerName, handle.verificationCode, handle.attemptId)
             } catch (error: Throwable) {
-                mutablePairing.value = PairingUiState.Failed(error.message ?: error.javaClass.simpleName)
+                mutablePairing.value = PairingUiState.Failed(pairingFailureDetail(error))
             }
         }
+    }
+
+    // The transport surfaces raw platform text ("Read error: ssl=0x…: I/O
+    // error during system call") for the most common, most fixable failures.
+    // Map those to actionable localized guidance; anything unrecognized keeps
+    // its original message for diagnosability.
+    private fun pairingFailureDetail(error: Throwable): String = when (error) {
+        is javax.net.ssl.SSLException, is java.io.EOFException, is java.net.SocketException ->
+            context.getString(R.string.pair_error_connection)
+        is java.net.UnknownHostException ->
+            context.getString(R.string.pair_error_unknown_host)
+        is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.NoRouteToHostException ->
+            context.getString(R.string.pair_error_unreachable)
+        else -> error.message ?: error.javaClass.simpleName
     }
 
     private fun watchPairingExpiry(handle: PairingHandle) {
@@ -248,7 +262,7 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
                     else -> PairingUiState.Idle
                 }
             } catch (error: Throwable) {
-                mutablePairing.value = PairingUiState.Failed(error.message ?: error.javaClass.simpleName)
+                mutablePairing.value = PairingUiState.Failed(pairingFailureDetail(error))
             }
         }
     }

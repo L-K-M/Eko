@@ -233,7 +233,7 @@ final class AppModel: ObservableObject {
         }
         do {
             let invitation = try pairingMode.activate()
-            let host = Self.localHostName
+            let host = Self.localIPv4Address() ?? Self.localHostName
             let object: [String: Any] = [
                 "host": host,
                 "port": Int(port),
@@ -467,5 +467,38 @@ final class AppModel: ObservableObject {
     private static var localHostName: String {
         let raw = Host.current().name ?? ProcessInfo.processInfo.hostName
         return raw.contains(".") ? raw : raw + ".local"
+    }
+
+    /// Android cannot resolve `<name>.local`: plain hostname lookups there use
+    /// unicast DNS only, so a QR carrying the Bonjour hostname fails with
+    /// "unknown host" on the phone. Prefer the LAN IPv4 address — the same
+    /// thing the phone's own discovery resolves the Mac to.
+    static func localIPv4Address() -> String? {
+        var interfaceList: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaceList) == 0, let first = interfaceList else { return nil }
+        defer { freeifaddrs(interfaceList) }
+        var addresses: [(name: String, ip: String)] = []
+        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let interface = pointer.pointee
+            guard let addressPointer = interface.ifa_addr,
+                  addressPointer.pointee.sa_family == UInt8(AF_INET) else { continue }
+            let flags = Int32(interface.ifa_flags)
+            guard flags & IFF_UP != 0, flags & IFF_RUNNING != 0, flags & IFF_LOOPBACK == 0 else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(
+                addressPointer,
+                socklen_t(addressPointer.pointee.sa_len),
+                &host, socklen_t(host.count),
+                nil, 0,
+                NI_NUMERICHOST
+            ) == 0 else { continue }
+            addresses.append((String(cString: interface.ifa_name), String(cString: host)))
+        }
+        // Tunnels and peer-to-peer links are not what the phone can dial.
+        addresses.removeAll { $0.name.hasPrefix("utun") || $0.name.hasPrefix("awdl") || $0.name.hasPrefix("llw") || $0.name.hasPrefix("bridge") }
+        let preferred = addresses.first { $0.name == "en0" }
+            ?? addresses.first { $0.name.hasPrefix("en") }
+            ?? addresses.first
+        return preferred?.ip
     }
 }

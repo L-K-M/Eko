@@ -338,6 +338,7 @@ private fun OnboardingScreen(
                     onValueChange = { token = it.take(512) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(stringResource(R.string.token_label)) },
+                    supportingText = { Text(stringResource(R.string.token_hint)) },
                     singleLine = true,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

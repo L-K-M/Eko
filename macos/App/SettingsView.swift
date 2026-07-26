@@ -1,3 +1,4 @@
+import AppKit
 import EkoCore
 import SwiftUI
 
@@ -55,6 +56,13 @@ private struct GeneralSettingsView: View {
                 }
                 Stepper(value: $model.retentionCount, in: 100...50_000, step: 100) {
                     LabeledContent(String(localized: "settings.retention_count", defaultValue: "Per phone"), value: model.retentionCount.formatted())
+                }
+            }
+            // A menu-bar app with no Dock icon needs a discoverable quit; the
+            // status-item context menu alone is easy to miss.
+            Section {
+                Button(String(localized: "app.quit", defaultValue: "Quit Eko")) {
+                    NSApp.terminate(nil)
                 }
             }
             Section("settings.network") {

@@ -49,7 +49,9 @@ public final class SystemUserNotificationScheduler: UserNotificationScheduling, 
     }
 
     public func requestProvisionalAuthorization() async throws -> Bool {
-        try await center.requestAuthorization(options: [.alert, .badge, .provisional])
+        // .sound must be requested or per-app sound preferences can never
+        // play: UNUserNotificationCenter ignores content.sound without it.
+        try await center.requestAuthorization(options: [.alert, .badge, .sound, .provisional])
     }
 
     public func install(categories: Set<UNNotificationCategory>) {
@@ -121,10 +123,17 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
             await clipboard.copy(code, clearAfter: deliveryPolicy.clipboardClearAfter())
             try? store.markOTPCopied(deviceID: outcome.deviceID, code: code)
         }
+        // For code-bearing notifications the store computes cross-key/time
+        // dedupe (otpBannerEligible); honoring it only for .updated events let
+        // every re-sent code on a fresh notification key banner again
+        // (otp-corpus en-024). Codeless posted notifications banner as before.
+        let bannerEligible = outcome.otpCode == nil
+            ? outcome.kind == .posted
+            : (outcome.kind == .posted || outcome.kind == .updated) && outcome.otpBannerEligible
         guard !outcome.dndSuppressed,
               deliveryPolicy.allowsBanner(deviceID: outcome.deviceID),
               (preference?.bannerMode ?? .normal) == .normal,
-              (outcome.kind == .posted || outcome.otpBannerEligible) else { return }
+              bannerEligible else { return }
         let content = UNMutableNotificationContent()
         let app = outcome.appLabel ?? deviceName
         content.title = "\(app) · \(deviceName)"
@@ -150,6 +159,8 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
     }
 
     public func postBacklogSummary(_ summary: BacklogSummary) async {
+        // The reconnect summary is a banner like any other; honor Pause banners.
+        guard deliveryPolicy.allowsBanner(deviceID: summary.deviceID) else { return }
         let content = UNMutableNotificationContent()
         content.title = strings.backlogTitle(summary.deviceName)
         content.body = strings.backlogBody(summary.notificationCount, summary.otpCount)
@@ -167,6 +178,17 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
 
     public func removeDelivered(deviceID: String, key: String) {
         scheduler.removeDelivered(identifiers: [Self.identifier(deviceID: deviceID, key: key)])
+    }
+
+    public func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Without this, notifications are suppressed whenever Eko is the
+        // active app — which it frequently is exactly when codes arrive,
+        // since opening the panel or Settings activates the app.
+        completionHandler([.banner, .list, .sound])
     }
 
     public func userNotificationCenter(

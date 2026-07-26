@@ -154,6 +154,9 @@ public final class NWFrameTransport: SessionTransport, @unchecked Sendable {
                 do {
                     try self.decoder.finish()
                     self.inbox.finish(error: nil)
+                    // A clean peer EOF is the one exit that skipped cancel(),
+                    // leaving the socket in CLOSE_WAIT until deallocation.
+                    self.connection.cancel()
                 } catch {
                     self.inbox.finish(error: error)
                     self.connection.cancel()

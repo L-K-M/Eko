@@ -428,7 +428,8 @@ public final class EkoStore: @unchecked Sendable {
         certificateDER: Data,
         initialCursor: Int64,
         negotiatedProtocol: Int,
-        endpoint: String?
+        endpoint: String?,
+        completedAttemptID: String? = nil
     ) throws -> Device {
         let fingerprint = EkoCrypto.fingerprint(of: certificateDER)
         guard fingerprint == hello.deviceID, let generation = hello.outboxGeneration,
@@ -444,8 +445,19 @@ public final class EkoStore: @unchecked Sendable {
             }
             // An explicitly confirmed new pairing supersedes every revocation receipt and
             // pending pair attempt for this certificate, atomically with the pin commit.
+            // The attempt that is completing right now must survive: pair_result{confirmed}
+            // is sent only after this transaction, and if that frame is lost the phone
+            // resumes under the same attempt_id (protocol.md §7.4) — deleting its row
+            // here made every resume land in `unauthorized` and wedged pairing.
             try db.execute(sql: "DELETE FROM unpair_tombstone WHERE device_id = ?", arguments: [fingerprint])
-            try db.execute(sql: "DELETE FROM pairing_attempt WHERE device_id = ?", arguments: [fingerprint])
+            if let completedAttemptID {
+                try db.execute(
+                    sql: "DELETE FROM pairing_attempt WHERE device_id = ? AND attempt_id != ?",
+                    arguments: [fingerprint, completedAttemptID]
+                )
+            } else {
+                try db.execute(sql: "DELETE FROM pairing_attempt WHERE device_id = ?", arguments: [fingerprint])
+            }
             try db.execute(
                 sql: """
                     INSERT INTO device (

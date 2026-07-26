@@ -74,7 +74,13 @@ function decodePNG(buffer) {
   const idat = [];
   let offset = 8;
   while (offset < buffer.length) {
+    if (offset + 8 > buffer.length) {
+      throw new Error(`${sourcePath}: truncated PNG chunk header at offset ${offset}`);
+    }
     const length = buffer.readUInt32BE(offset);
+    if (offset + 12 + length > buffer.length) {
+      throw new Error(`${sourcePath}: truncated PNG chunk at offset ${offset}`);
+    }
     const type = buffer.toString("ascii", offset + 4, offset + 8);
     const data = buffer.subarray(offset + 8, offset + 8 + length);
     if (type === "IHDR") {

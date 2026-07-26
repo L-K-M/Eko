@@ -4,6 +4,14 @@ import EkoCore
 import Foundation
 import UniformTypeIdentifiers
 
+/// Shared between AppModel and DefaultsNotificationDeliveryPolicy so the
+/// UserDefaults key and the auto-clear interval cannot drift between the
+/// panel's copy path and EkoCore's auto-copy/banner-copy paths.
+enum ClipboardPolicyDefaults {
+    static let autoClearKey = "clipboardAutoClear"
+    static let clearAfter: TimeInterval = 120
+}
+
 enum PanelRoute: String, CaseIterable, Identifiable {
     case feed
     case pairing
@@ -129,7 +137,7 @@ final class AppModel: ObservableObject {
     private var pairingExpiryTask: Task<Void, Never>?
 
     private enum Keys {
-        static let clipboardAutoClear = "clipboardAutoClear"
+        static let clipboardAutoClear = ClipboardPolicyDefaults.autoClearKey
         static let retentionDays = "retentionDays"
         static let retentionCount = "retentionCount"
         static let listenerPort = "listenerPort"
@@ -266,7 +274,7 @@ final class AppModel: ObservableObject {
     }
 
     func copyCode(_ code: String, deviceID: String) {
-        clipboard.copy(code, clearAfter: clipboardAutoClear ? 120 : nil)
+        clipboard.copy(code, clearAfter: clipboardAutoClear ? ClipboardPolicyDefaults.clearAfter : nil)
         try? store.markOTPCopied(deviceID: deviceID, code: code)
     }
 

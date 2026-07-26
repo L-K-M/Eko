@@ -42,8 +42,10 @@ private final class DefaultsNotificationDeliveryPolicy: NotificationDeliveryPoli
     }
 
     func clipboardClearAfter() -> TimeInterval? {
-        // Same key and same unset-means-true default as AppModel.clipboardAutoClear.
-        (defaults.object(forKey: "clipboardAutoClear") as? Bool ?? true) ? 120 : nil
+        // Same unset-means-true default as AppModel.clipboardAutoClear.
+        (defaults.object(forKey: ClipboardPolicyDefaults.autoClearKey) as? Bool ?? true)
+            ? ClipboardPolicyDefaults.clearAfter
+            : nil
     }
 }
 
@@ -90,10 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let editMenuItem = NSMenuItem()
         let editMenu = NSMenu(title: String(localized: "menu.edit", defaultValue: "Edit"))
-        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
-        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
-        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
-        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.cut", defaultValue: "Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.copy", defaultValue: "Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.paste", defaultValue: "Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: String(localized: "menu.select_all", defaultValue: "Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
         NSApp.mainMenu = mainMenu

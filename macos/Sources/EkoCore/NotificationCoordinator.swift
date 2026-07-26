@@ -188,6 +188,16 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         // Without this, notifications are suppressed whenever Eko is the
         // active app — which it frequently is exactly when codes arrive,
         // since opening the panel or Settings activates the app.
+        //
+        // Re-check the banner gate at delivery time: a notification scheduled
+        // just before the user paused banners is still in the system queue,
+        // and presenting it would contradict the setting. It stays in the
+        // notification list either way.
+        if let deviceID = notification.request.content.userInfo["device_id"] as? String,
+           !deliveryPolicy.allowsBanner(deviceID: deviceID) {
+            completionHandler([.list])
+            return
+        }
         completionHandler([.banner, .list, .sound])
     }
 

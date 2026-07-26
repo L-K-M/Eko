@@ -1,6 +1,10 @@
 # SwiftPM build artifacts
 .build/
 .swiftpm/
+# Written by `swift test` on first resolution; Package.swift pins exact
+# versions, so the lockfile would only add per-machine churn — and untracked,
+# un-ignored it dirtied the tree and blocked release.sh's clean-tree gate.
+Package.resolved
 
 # Xcode build artifacts
 DerivedData/

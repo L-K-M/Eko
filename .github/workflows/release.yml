@@ -430,6 +430,19 @@ jobs:
             --sign - "$APP"
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
 
+      # The app must be notarized and stapled BEFORE it is copied into the
+      # read-only DMG — stapling afterwards only reaches the loose copy, and
+      # users who drag the app out of the DMG and first-launch offline would
+      # hit a Gatekeeper warning for the missing ticket.
+      - name: Notarize and staple the app
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          set -euo pipefail
+          NOTARIZE_ZIP="$RUNNER_TEMP/notarize-app.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$NOTARIZE_ZIP"
+          xcrun notarytool submit "$NOTARIZE_ZIP" --keychain-profile "$KEYCHAIN_PROFILE" --wait
+          xcrun stapler staple "$APP_PATH"
+
       - name: Package the disk image
         run: |
           set -euo pipefail
@@ -451,14 +464,14 @@ jobs:
           echo "DIST=$DIST" >> "$GITHUB_ENV"
           echo "DMG=$DMG" >> "$GITHUB_ENV"
 
-      - name: Notarize and staple
+      - name: Notarize and staple the disk image
         if: steps.signing.outputs.signed == 'true'
         run: |
           set -euo pipefail
+          # The app inside was stapled before packaging; the DMG gets its own
+          # ticket. Stapling changes bytes — which is why the checksums are
+          # computed after this step, never before.
           xcrun notarytool submit "$DMG" --keychain-profile "$KEYCHAIN_PROFILE" --wait
-          xcrun stapler staple "$APP_PATH"
-          # The DMG is stapled too, and stapling changes bytes — which is why the
-          # checksums are computed after this step, never before.
           xcrun stapler staple "$DMG"
 
       - name: Verify the signed bundle
@@ -515,18 +528,16 @@ jobs:
           EOF
           else
             cat > "$NOTES" <<'EOF'
-          ### macOS — unsigned
+          ### macOS — unsigned (does not run)
 
-          This build is **not** signed with a Developer ID or notarized, so macOS
-          Gatekeeper will warn on first launch. To open it:
-
-          - **Right-click** (or Control-click) the app → **Open** → **Open**, or
-          - run `xattr -dr com.apple.quarantine "/Applications/Eko.app"`
-
-          Move it to `/Applications` *before* granting notification, Local
-          Network and Bluetooth access: macOS keys those grants to the app's code
-          signature and path. An ad-hoc signature is also not a stable identity
-          across releases, so each update asks for them again.
+          This build was produced without signing secrets and is a
+          **reproducibility artifact, not a runnable app**. It carries only an
+          ad-hoc signature, and Eko stores its identity key in the Data
+          Protection Keychain, which an ad-hoc-signed app cannot access
+          (`errSecMissingEntitlement`) — the app shows "Eko could not start"
+          and exits, even after bypassing Gatekeeper. Use a signed release, or
+          build and install locally with `scripts/build.sh --install`, which
+          signs with an Apple Development identity and provisioning profile.
           EOF
           fi
           echo "path=$NOTES" >> "$GITHUB_OUTPUT"

@@ -8,7 +8,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FF075E54"
+        android:fillColor="#FF5537EA"
         android:pathData="M0,0h108v108H0z" />
     <group
         android:scaleX="0.6594"

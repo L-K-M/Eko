@@ -439,11 +439,15 @@ public enum ProtocolCodec {
             content.title, content.text, content.bigText, content.subText, content.infoText,
             content.summaryText, content.groupKey,
         ].compactMap { $0 }
-        let aggregate = strings.reduce(0) { $0 + $1.utf8.count }
-            + (content.textLines ?? []).reduce(0) { $0 + $1.utf8.count }
-            + (content.messages ?? []).reduce(0) {
-                $0 + ($1.sender?.utf8.count ?? 0) + $1.text.utf8.count
-            }
+        // Distinct statements, not one chained expression: the combined
+        // reduce-plus-reduce-plus-reduce blows the type checker's budget
+        // ("unable to type-check this expression in reasonable time").
+        let stringBytes = strings.reduce(0) { $0 + $1.utf8.count }
+        let textLineBytes = (content.textLines ?? []).reduce(0) { $0 + $1.utf8.count }
+        let messageBytes = (content.messages ?? []).reduce(0) {
+            $0 + ($1.sender?.utf8.count ?? 0) + $1.text.utf8.count
+        }
+        let aggregate = stringBytes + textLineBytes + messageBytes
         guard aggregate <= 524_288 else {
             throw EkoCoreError.protocolViolation("notification body exceeds aggregate limit")
         }

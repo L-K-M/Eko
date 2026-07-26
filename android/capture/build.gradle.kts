@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
@@ -17,15 +19,20 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions.jvmTarget = "17"
     testOptions.unitTests.isIncludeAndroidResources = true
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
+    }
 }
 
 dependencies {
     implementation(project(":core"))
     implementation(project(":outbox"))
-    implementation("androidx.core:core-ktx:1.19.0")
-    implementation("androidx.core:core:1.19.0")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core:1.17.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation("junit:junit:4.13.2")

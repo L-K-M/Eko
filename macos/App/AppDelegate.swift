@@ -183,6 +183,9 @@ final class AppRuntime {
     func start() {
         bluetooth.start()
         pathObserver.start()
+        let store = self.store
+        let model = self.model
+        let diagnostics = self.diagnostics
         Task {
             do {
                 try await notificationCoordinator.configure()
@@ -201,9 +204,6 @@ final class AppRuntime {
                 await diagnostics.record(.error, category: "listener", message: error.localizedDescription)
             }
         }
-        let store = self.store
-        let model = self.model
-        let diagnostics = self.diagnostics
         backgroundPruner.schedule { completion in
             Task {
                 do {

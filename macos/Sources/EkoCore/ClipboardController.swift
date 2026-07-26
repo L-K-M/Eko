@@ -38,9 +38,13 @@ public final class ClipboardController {
     private let clock: any EkoClock
     private var clearTask: Task<Void, Never>?
 
-    public init(pasteboard: any PasteboardWriting = SystemPasteboardWriter(), clock: any EkoClock = SystemEkoClock()) {
+    public init(pasteboard: any PasteboardWriting, clock: any EkoClock) {
         self.pasteboard = pasteboard
         self.clock = clock
+    }
+
+    public convenience init() {
+        self.init(pasteboard: SystemPasteboardWriter(), clock: SystemEkoClock())
     }
 
     public func copy(_ value: String, clearAfter: TimeInterval? = 120) {

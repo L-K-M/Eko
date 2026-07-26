@@ -498,7 +498,7 @@ public actor SessionManager {
             certificateDER: peerCertificateDER,
             epoch: hello.connectionEpoch
         )
-        let localNonce = resumed?.localNonce ?? (try EkoCrypto.randomBytes(count: 32))
+        let localNonce = try (resumed?.localNonce ?? EkoCrypto.randomBytes(count: 32))
         let localCommitment = try PairingSAS.commitment(
             attemptID: attemptID,
             certificateDER: localIdentity.certificateDER,
@@ -651,9 +651,14 @@ public actor SessionManager {
             qrPreauthenticated: persisted.qrPreauthenticated,
             expiresAt: expiry
         )
-        let localConfirmed = persisted.localConfirmed
-            || (!requiresExplicitUserConfirmation && persisted.qrPreauthenticated)
-            || (await pairingApproval(pending))
+        let localConfirmed: Bool
+        if persisted.localConfirmed {
+            localConfirmed = true
+        } else if !requiresExplicitUserConfirmation && persisted.qrPreauthenticated {
+            localConfirmed = true
+        } else {
+            localConfirmed = await pairingApproval(pending)
+        }
         if expiry <= clock.now() {
             try store.deletePairingAttempt(id: attemptID)
             throw EkoCoreError.pairingExpired

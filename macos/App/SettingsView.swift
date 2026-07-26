@@ -75,6 +75,7 @@ private struct GeneralSettingsView: View {
 private struct DevicesSettingsView: View {
     @ObservedObject var model: AppModel
     @State private var devicePendingForget: Device?
+    @State private var showForgetDialog = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -127,6 +128,7 @@ private struct DevicesSettingsView: View {
                         if device.pairingState == .revokedPending {
                             Button(String(localized: "action.forget", defaultValue: "Forget…"), role: .destructive) {
                                 devicePendingForget = device
+                                showForgetDialog = true
                             }
                             .accessibilityLabel(String(localized: "action.forget", defaultValue: "Forget") + " " + device.name)
                         }
@@ -137,8 +139,9 @@ private struct DevicesSettingsView: View {
         }
         .confirmationDialog(
             String(localized: "device.forget.title", defaultValue: "Forget without notifying?"),
-            presenting: $devicePendingForget,
-            titleVisibility: .visible
+            isPresented: $showForgetDialog,
+            titleVisibility: .visible,
+            presenting: devicePendingForget
         ) { device in
             Button(String(localized: "action.forget", defaultValue: "Forget"), role: .destructive) {
                 model.forgetWithoutNotifying(device)

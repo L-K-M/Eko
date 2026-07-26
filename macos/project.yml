@@ -11,7 +11,7 @@ packages:
     path: .
   GRDB:
     url: https://github.com/groue/GRDB.swift.git
-    exactVersion: 7.7.0
+    exactVersion: 7.11.1
   Yams:
     url: https://github.com/jpsim/Yams.git
     exactVersion: 6.2.2

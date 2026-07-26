@@ -495,10 +495,11 @@ final class AppModel: ObservableObject {
             ) == 0 else { continue }
             addresses.append((String(cString: interface.ifa_name), String(cString: host)))
         }
-        // Tunnels and peer-to-peer links are not what the phone can dial, and
-        // a link-local 169.254/16 address (interface up with no DHCP lease)
-        // is not routable from the phone either.
-        addresses.removeAll { $0.name.hasPrefix("utun") || $0.name.hasPrefix("awdl") || $0.name.hasPrefix("llw") || $0.name.hasPrefix("bridge") }
+        // Tunnels, VPNs and peer-to-peer links are not what the phone can
+        // dial, and a link-local 169.254/16 address (interface up with no
+        // DHCP lease) is not routable from the phone either.
+        let virtualPrefixes = ["utun", "awdl", "llw", "bridge", "ipsec", "ppp", "gif", "stf", "tap"]
+        addresses.removeAll { address in virtualPrefixes.contains { address.name.hasPrefix($0) } }
         addresses.removeAll { $0.ip.hasPrefix("169.254.") }
         // Ask the system which interface actually carries the default route
         // before falling back to name heuristics — on a desktop with built-in

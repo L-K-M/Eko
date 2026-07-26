@@ -235,15 +235,31 @@ build_app() {
     record "app: FAILED (xcodegen)"; return 1
   fi
 
-  # CODE_SIGNING_ALLOWED=NO then an explicit ad-hoc signature: a local build
-  # needs no certificate, but an unsigned bundle will not launch at all on
-  # Apple Silicon. Developer ID signing is release.yml's job.
+  # Plain `build` (and CI) use the certificate-free ad-hoc path: CODE_SIGNING
+  # off, then an explicit ad-hoc signature so the bundle launches on Apple
+  # Silicon. Developer ID signing for release is release.yml's job.
+  #
+  # `--install` is different: the app is sandboxed and stores its identity key in
+  # the Data Protection Keychain, which an ad-hoc signature cannot access
+  # (errSecMissingEntitlement) and which refuses to launch with a keychain
+  # access-group entitlement but no provisioning profile. So a local install is
+  # built with Apple Development automatic signing and a provisioning profile.
+  # Override the team with EKO_DEVELOPMENT_TEAM.
+  local dev_team="${EKO_DEVELOPMENT_TEAM:-RY935S6RFA}"
+  local -a sign_args
+  if $INSTALL; then
+    sign_args=(CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$dev_team"
+               CODE_SIGN_IDENTITY="Apple Development" -allowProvisioningUpdates)
+  else
+    sign_args=(CODE_SIGNING_ALLOWED=NO)
+  fi
+
   echo "-- xcodebuild ($config)"
   if ! ( cd macos && xcodebuild build \
         -project Eko.xcodeproj -scheme Eko -configuration "$config" \
         -derivedDataPath "$derived" \
         -destination 'generic/platform=macOS' \
-        CODE_SIGNING_ALLOWED=NO ); then
+        "${sign_args[@]}" ); then
     echo "!! app: xcodebuild failed" >&2
     record "app: FAILED (xcodebuild)"; return 1
   fi
@@ -254,11 +270,15 @@ build_app() {
     echo "!! app: built Eko.app not found under $derived" >&2
     record "app: FAILED (product not found)"; return 1
   fi
-  codesign --force --options runtime \
-    --entitlements macos/Config/Eko.entitlements --sign - "$built" || {
-    echo "!! app: ad-hoc signing failed" >&2
-    record "app: FAILED (codesign)"; return 1
-  }
+  # Ad-hoc re-sign only on the certificate-free path; the --install path is
+  # already signed by xcodebuild and overwriting it would strip the profile.
+  if ! $INSTALL; then
+    codesign --force --options runtime \
+      --entitlements macos/Config/Eko.entitlements --sign - "$built" || {
+      echo "!! app: ad-hoc signing failed" >&2
+      record "app: FAILED (codesign)"; return 1
+    }
+  fi
 
   stage "$built" "Eko.app"
   record "app: built ($config) -> dist/Eko.app"
@@ -270,11 +290,10 @@ build_app() {
     if ditto "$built" "/Applications/Eko.app"; then
       INSTALLED="/Applications/Eko.app"
       record "app: installed -> /Applications/Eko.app"
-      # An ad-hoc signature's cdhash changes on every build, so every install
-      # is a new app to TCC: notification, Local Network and Bluetooth grants
-      # lapse. Expected locally; say so rather than letting it look like a bug.
-      echo "!! note: ad-hoc signed — notification/Local Network/Bluetooth grants"
-      echo "   will be requested again after each rebuild."
+      # --install builds with a stable Apple Development identity, so the cdhash
+      # is stable across rebuilds and TCC grants (notifications, Local Network,
+      # Bluetooth) persist. This is the local-run path; release uses Developer ID.
+      echo "-- signed with Apple Development identity; grants persist across rebuilds."
     else
       record "app: install FAILED (ditto)"; return 1
     fi

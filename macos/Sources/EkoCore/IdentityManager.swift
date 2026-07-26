@@ -86,7 +86,6 @@ public final class KeychainIdentityManager: IdentityProviding, @unchecked Sendab
     private func createPrivateKey() throws -> SecKey {
         let privateAttributes: [CFString: Any] = [
             kSecAttrIsPermanent: true,
-            kSecAttrIsExtractable: false,
             kSecAttrApplicationTag: keyTag,
             kSecAttrLabel: "Eko identity private key",
             kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
@@ -96,6 +95,13 @@ public final class KeychainIdentityManager: IdentityProviding, @unchecked Sendab
             kSecAttrKeyType: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits: 256,
             kSecPrivateKeyAttrs: privateAttributes,
+            // Secure Enclave: the only way to obtain a genuinely non-exportable
+            // P-256 key on macOS. A software key in the Data Protection Keychain
+            // ignores kSecAttrIsExtractable and comes back extractable, which the
+            // security model (non-exportable identity key) forbids. SEP keys are
+            // non-extractable by construction. Available on every macOS 14 Mac
+            // (Apple Silicon and T2-class Intel).
+            kSecAttrTokenID: kSecAttrTokenIDSecureEnclave,
             kSecUseDataProtectionKeychain: true,
         ]
         var error: Unmanaged<CFError>?

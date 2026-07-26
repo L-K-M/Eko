@@ -29,23 +29,41 @@ class EkoApplication : Application() {
         applicationScope.launch {
             val identityStore = IdentityStore.get(this@EkoApplication)
             EventStoreResetter.resumeIfNeeded(this@EkoApplication, identityStore)
-            try {
+            val storeReady = try {
                 EventStoreProvider.repository(this@EkoApplication).initialize()
+                true
             } catch (error: SQLiteException) {
                 if (EventStoreFailurePolicy.requiresReset(error)) {
                     EventStoreResetter.reset(this@EkoApplication, identityStore)
+                    true
                 } else {
                     TransportRuntime.log(
                         "Event store unavailable without verified corruption; keeping data: ${error.javaClass.simpleName}",
                     )
+                    false
                 }
             }
-            PairingCoordinator(this@EkoApplication).reconcileCrossStore()
-            recordProcessExitEvidence(identityStore)
-            val identity = identityStore.read()
-            IdentityStore.setHasKnownPeer(this@EkoApplication, identity.hasConnectionWork)
-            if (!identity.forwardingPaused && identity.hasConnectionWork) {
-                ConnectionService.requestStart(this@EkoApplication)
+            // Nothing below may crash this scope: it has no exception handler,
+            // so a rethrown store failure was a launch crash loop that made the
+            // Diagnostics screen — the one place that explains the failure —
+            // unreachable. Store-dependent steps are skipped while the store is
+            // down; identity reads live in DataStore and still run.
+            if (storeReady) {
+                runCatching {
+                    PairingCoordinator(this@EkoApplication).reconcileCrossStore()
+                    recordProcessExitEvidence(identityStore)
+                }.onFailure { error ->
+                    TransportRuntime.log("Startup reconciliation failed: ${error.javaClass.simpleName}")
+                }
+            }
+            runCatching {
+                val identity = identityStore.read()
+                IdentityStore.setHasKnownPeer(this@EkoApplication, identity.hasConnectionWork)
+                if (storeReady && !identity.forwardingPaused && identity.hasConnectionWork) {
+                    ConnectionService.requestStart(this@EkoApplication)
+                }
+            }.onFailure { error ->
+                TransportRuntime.log("Startup identity read failed: ${error.javaClass.simpleName}")
             }
         }
     }

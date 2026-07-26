@@ -90,7 +90,15 @@ fun QrScanner(
     BackHandler { onClose() }
 
     DisposableEffect(lifecycleOwner) {
+        // The provider future can resolve after this composable is gone (first
+        // camera init takes hundreds of ms; a successful scan unmounts
+        // instantly), and the pending listener would then bind the camera to
+        // the still-resumed Activity with no UI — privacy light on until the
+        // Activity stops. Both the listener and onDispose run on the main
+        // executor, so the flag needs no further synchronization.
+        val disposed = AtomicBoolean(false)
         providerFuture.addListener({
+            if (disposed.get()) return@addListener
             val provider = providerFuture.get()
             val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
             val analysis = ImageAnalysis.Builder()
@@ -121,7 +129,16 @@ fun QrScanner(
             }
         }, ContextCompat.getMainExecutor(context))
         onDispose {
-            if (providerFuture.isDone) runCatching { providerFuture.get().unbindAll() }
+            disposed.set(true)
+            if (providerFuture.isDone) {
+                runCatching { providerFuture.get().unbindAll() }
+            } else {
+                // Late resolution: unbind whatever a racing bind attached.
+                providerFuture.addListener(
+                    { runCatching { providerFuture.get().unbindAll() } },
+                    ContextCompat.getMainExecutor(context),
+                )
+            }
             scanner.close()
             executor.shutdown()
         }

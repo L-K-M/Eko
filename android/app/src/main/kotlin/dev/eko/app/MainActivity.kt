@@ -74,6 +74,10 @@ private fun EkoApp(viewModel: EkoViewModel) {
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         scannerVisible = granted
+        // A permanently denied permission resolves instantly with no system
+        // dialog; without feedback the primary "Scan QR code" button just
+        // looks dead.
+        if (!granted) scannerError = context.getString(R.string.camera_permission_needed)
     }
 
     if (scannerVisible) {
@@ -89,7 +93,10 @@ private fun EkoApp(viewModel: EkoViewModel) {
                         payload.token,
                     )
                 } catch (error: Throwable) {
-                    scannerError = error.message
+                    scannerError = context.getString(
+                        R.string.pair_error,
+                        error.message ?: error.javaClass.simpleName,
+                    )
                     scannerVisible = false
                 }
             },
@@ -123,7 +130,10 @@ private fun EkoApp(viewModel: EkoViewModel) {
                                 IntentSenderRequest.Builder(event.intentSender).build(),
                             )
                             is AssociationEvent.Created -> viewModel.refreshSystemChecks()
-                            is AssociationEvent.Failed -> scannerError = event.reason
+                            // Not a pairing failure — label it as the CDM
+                            // association problem it is.
+                            is AssociationEvent.Failed ->
+                                scannerError = context.getString(R.string.cdm_failed, event.reason)
                         }
                     }
                 }

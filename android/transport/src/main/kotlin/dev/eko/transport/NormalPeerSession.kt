@@ -29,7 +29,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 
 internal class NormalPeerSession(context: Context) {
@@ -68,9 +68,16 @@ internal class NormalPeerSession(context: Context) {
             socket.soTimeout = 0
 
             if (NotificationListenerController.hasAccess(appContext)) {
-                withTimeout(RECONCILIATION_TIMEOUT_MS) {
+                // Not withTimeout: TimeoutCancellationException IS-A
+                // CancellationException, so runPeer's rethrow-cancellation
+                // catch treated the expiry as job cancellation — the peer job
+                // died and restarted with a fresh backoff, hammering the Mac
+                // with a full TLS handshake every ~15 s and never showing a
+                // Failed state. A plain exception takes the normal failure
+                // branch: Failed status plus growing backoff.
+                withTimeoutOrNull(RECONCILIATION_TIMEOUT_MS) {
                     NotificationListenerController.reconciled.filter { it }.first()
-                }
+                } ?: throw ProtocolException("Listener reconciliation timed out")
             }
             val snapshot = try {
                 repository.backlog(peer.deviceId, accepted.cursor)

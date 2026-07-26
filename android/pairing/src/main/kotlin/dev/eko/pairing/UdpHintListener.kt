@@ -60,7 +60,11 @@ class UdpHintListener : Closeable {
                                 lastPacketByHost.remove(lastPacketByHost.keys.first())
                             }
                         }
+                        // Drop hints that stopped announcing: entries were only
+                        // ever replaced by fingerprint, so a Mac that changed
+                        // address or left advertised a stale endpoint forever.
                         mutable.value = (mutable.value.filterNot { it.fingerprint == hint.fingerprint } + hint)
+                            .filter { now - it.seenAtWall <= HINT_TTL_MS }
                             .sortedBy(UdpMacHint::name)
                     }
                 } catch (_: SocketTimeoutException) {
@@ -111,6 +115,7 @@ class UdpHintListener : Closeable {
         const val MAX_PACKET_BYTES = 1_024
         const val MIN_PACKET_INTERVAL_MS = 500L
         const val MAX_PEERS = 42
+        const val HINT_TTL_MS = 15_000L
         val FINGERPRINT = Regex("^[0-9a-f]{64}$")
     }
 }

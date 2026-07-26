@@ -8,6 +8,7 @@ import dev.eko.core.NotificationContent
 import dev.eko.outbox.CaptureCommit
 import dev.eko.outbox.NotificationSnapshot
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -83,6 +84,38 @@ class SerializedNotificationWriterTest {
 
         assertFalse(committed)
         assertEquals(listOf("posted:after"), sink.calls.filterNot { it.startsWith("gap:") })
+    }
+
+    @Test
+    fun `closeAndDrain waits for every accepted command before it returns`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sink = RecordingSink(gate)
+        val writer = SerializedNotificationWriter(
+            scope = this,
+            sink = sink,
+            diagnostics = CaptureDiagnostics.get(context),
+            capacity = 8,
+        )
+
+        assertTrue(writer.post(snapshot("one")))
+        assertTrue(writer.post(snapshot("two")))
+        assertTrue(writer.post(snapshot("three")))
+        runCurrent()
+
+        // The sink is blocked on the gate, so nothing has committed yet. This is the
+        // state onDestroy used to tear down through: close() then scope.cancel().
+        assertEquals(emptyList<String>(), sink.calls)
+
+        val drain = async { writer.closeAndDrain() }
+        runCurrent()
+        assertFalse("closeAndDrain must not return while commands are still queued", drain.isCompleted)
+
+        gate.complete(Unit)
+        drain.await()
+
+        assertEquals(listOf("posted:one", "posted:two", "posted:three"), sink.calls)
+        assertEquals(0, writer.pending)
     }
 
     private fun snapshot(key: String) = NotificationSnapshot(

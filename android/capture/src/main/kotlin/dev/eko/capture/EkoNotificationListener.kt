@@ -8,8 +8,11 @@ import dev.eko.core.NotificationSanitizer
 import dev.eko.outbox.NotificationSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal fun collectReconciliationSnapshots(
     activeNotifications: () -> Array<StatusBarNotification>,
@@ -35,6 +38,13 @@ class EkoNotificationListener : NotificationListenerService() {
     private lateinit var diagnostics: CaptureDiagnostics
     private val mainHandler = Handler(Looper.getMainLooper())
     private var reconciliationRetries = 0
+
+    // One instance, held for the process. `mainHandler.post(::enqueueReconciliation)`
+    // SAM-converts to a fresh Runnable on every evaluation, and removeCallbacks matches
+    // by reference identity — so posting and removing via `::enqueueReconciliation`
+    // removed nothing, and retries kept firing against a destroyed service. Android Lint
+    // flags exactly this as ImplicitSamInstance.
+    private val reconcileRunnable = Runnable { enqueueReconciliation() }
 
     override fun onCreate() {
         super.onCreate()
@@ -93,6 +103,11 @@ class EkoNotificationListener : NotificationListenerService() {
     private companion object {
         const val MAX_RECONCILIATION_RETRIES = 3
         const val RECONCILIATION_RETRY_MS = 5_000L
+
+        // onDestroy runs on the main thread, so this is a hard ceiling on how long a
+        // rebind can block: long enough for a handful of synchronous=FULL commits,
+        // far short of the service ANR budget.
+        const val DRAIN_TIMEOUT_MS = 1_500L
     }
 
     internal fun cancelFromPeer(key: String) {
@@ -100,15 +115,48 @@ class EkoNotificationListener : NotificationListenerService() {
     }
 
     internal fun reconcileFromApp() {
-        mainHandler.post(::enqueueReconciliation)
+        mainHandler.post(reconcileRunnable)
     }
 
     override fun onDestroy() {
         NotificationListenerController.onDisconnected(this)
-        mainHandler.removeCallbacks(::enqueueReconciliation)
-        writer.close()
+        mainHandler.removeCallbacks(reconcileRunnable)
+        drainWriter()
         scope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Let the writer finish what it already accepted before the scope that owns its
+     * consumer is cancelled.
+     *
+     * `writer.close()` is a graceful close whose contract is that the consumer keeps
+     * draining; `scope.cancel()` on the next line broke that contract, discarding every
+     * buffered [CaptureCommand] and rolling back the one mid-transaction. Those
+     * notifications had already been accepted from the system, so the loss violated
+     * "persist durably at post time, before any send attempt" — and it was invisible,
+     * because `onListenerDisconnected` records a gap covering the disconnect interval
+     * while the dropped commands were posted *before* it.
+     *
+     * Teardown is common: `supportedRebind()` (the repair flow, HealthWorker, unpair),
+     * MY_PACKAGE_REPLACED on app update, the user toggling notification access.
+     *
+     * Bounded, because onDestroy runs on the main thread and a wedged database must not
+     * turn a rebind into an ANR. A drain that does not finish in time is itself capture
+     * evidence, so it is recorded as one — the disconnect marker makes the next
+     * onListenerConnected commit a suspected gap, which is the machinery that already
+     * exists for "the listener was not capturing during this window".
+     */
+    private fun drainWriter() {
+        val startedWall = System.currentTimeMillis()
+        val drained = runBlocking(NonCancellable) {
+            withTimeoutOrNull(DRAIN_TIMEOUT_MS) { writer.closeAndDrain() } != null
+        }
+        if (drained && writer.pending == 0) return
+        diagnostics.overflow()
+        // Do not overwrite an earlier mark: onListenerDisconnected usually ran first,
+        // and its timestamp bounds a strictly larger, more honest window.
+        if (diagnostics.disconnectedAt() <= 0) diagnostics.markDisconnectedAt(startedWall)
     }
 
     private fun recordRedaction(extracted: ExtractedNotification) {
@@ -130,7 +178,7 @@ class EkoNotificationListener : NotificationListenerService() {
             diagnostics.reconciliationFailed()
             if (reconciliationRetries < MAX_RECONCILIATION_RETRIES) {
                 reconciliationRetries += 1
-                mainHandler.postDelayed(::enqueueReconciliation, RECONCILIATION_RETRY_MS)
+                mainHandler.postDelayed(reconcileRunnable, RECONCILIATION_RETRY_MS)
             }
             return
         }

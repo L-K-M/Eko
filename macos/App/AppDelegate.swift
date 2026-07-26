@@ -154,6 +154,7 @@ final class AppRuntime {
             }
         )
         model.attach(sessionManager: sessions)
+        model.openPanel = { panelOpenBroker.open() }
         let authorizer = StorePeerAuthorizer(store: store, pairingMode: pairingMode)
         listener = TLSListener(
             identity: identity,

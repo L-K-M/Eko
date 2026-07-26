@@ -111,6 +111,10 @@ final class AppModel: ObservableObject {
     let identity: DeviceIdentity
     let pairingMode: PairingModeController
     let pairingBroker: PairingApprovalBroker
+    /// Surfaces the status-bar panel. Pairing state lives in the panel, so
+    /// entry points outside it (the Settings window's Add phone button) must
+    /// bring the panel on screen or nothing visibly happens.
+    var openPanel: () -> Void = {}
 
     private let clipboard: ClipboardController
     private let loginService: any LaunchAtLoginControlling
@@ -201,6 +205,7 @@ final class AppModel: ObservableObject {
     }
 
     func beginPairing() {
+        openPanel()
         guard let port = boundPort else {
             setFatalError(EkoCoreError.transportClosed)
             return

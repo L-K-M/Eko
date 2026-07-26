@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -96,8 +96,15 @@ jobs:
         with:
           build-root-directory: android
 
+      # :core:test is named explicitly and must stay that way. :core applies
+      # org.jetbrains.kotlin.jvm, not com.android.library, so it has neither
+      # testDebugUnitTest nor lintDebug — its task is `test`. Gradle runs a
+      # task-name request only in the projects that have it, so without this the
+      # job reports green while never executing any of :core's nine test classes,
+      # including SharedProtocolVectorsTest (the shared wire-format vectors) and
+      # ExactDerTrustManagerTest (certificate pinning).
       - name: Test, lint, and assemble
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug
+        run: ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v7

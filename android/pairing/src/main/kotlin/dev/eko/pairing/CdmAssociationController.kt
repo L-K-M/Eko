@@ -151,6 +151,8 @@ class CdmAssociationController(
                 manager.associate(request, callback, Handler(Looper.getMainLooper()))
             }
         } catch (error: Throwable) {
+            // Cancellation is control flow, not an association failure.
+            if (error is kotlin.coroutines.cancellation.CancellationException) throw error
             failure(error.message ?: error.javaClass.simpleName)
         }
         awaitClose { }

@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import EkoCore
 import Foundation
+import SystemConfiguration
 import UniformTypeIdentifiers
 
 /// Shared between AppModel and DefaultsNotificationDeliveryPolicy so the
@@ -499,9 +500,21 @@ final class AppModel: ObservableObject {
         // is not routable from the phone either.
         addresses.removeAll { $0.name.hasPrefix("utun") || $0.name.hasPrefix("awdl") || $0.name.hasPrefix("llw") || $0.name.hasPrefix("bridge") }
         addresses.removeAll { $0.ip.hasPrefix("169.254.") }
-        let preferred = addresses.first { $0.name == "en0" }
+        // Ask the system which interface actually carries the default route
+        // before falling back to name heuristics — on a desktop with built-in
+        // Ethernet, Wi-Fi is en1 and hard-coding en0 picks the wrong side.
+        let primary = primaryIPv4InterfaceName()
+        let preferred = addresses.first { $0.name == primary }
+            ?? addresses.first { $0.name == "en0" }
             ?? addresses.first { $0.name.hasPrefix("en") }
             ?? addresses.first
         return preferred?.ip
+    }
+
+    private static func primaryIPv4InterfaceName() -> String? {
+        guard let value = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any] else {
+            return nil
+        }
+        return value["PrimaryInterface"] as? String
     }
 }

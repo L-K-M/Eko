@@ -224,7 +224,10 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
     // Map those to actionable localized guidance; anything unrecognized keeps
     // its original message for diagnosability.
     // Order matters: ConnectException and NoRouteToHostException both extend
-    // SocketException, so the never-reached arms must come before the broad one.
+    // SocketException, so they must be matched before that broad arm.
+    // SocketTimeoutException is not a SocketException (it extends
+    // InterruptedIOException) — it is grouped with them purely for the same
+    // "can't reach the Mac" guidance.
     private fun pairingFailureDetail(error: Throwable): String = when (error) {
         is java.net.UnknownHostException ->
             context.getString(R.string.pair_error_unknown_host)

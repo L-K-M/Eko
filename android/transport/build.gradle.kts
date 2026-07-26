@@ -36,7 +36,7 @@ dependencies {
     implementation(project(":pairing"))
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.conscrypt:conscrypt-android:2.6.1")
 
     testImplementation("junit:junit:4.13.2")

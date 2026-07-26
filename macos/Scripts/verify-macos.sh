@@ -12,26 +12,23 @@ fi
 "$SCRIPT_DIR/generate-project.sh"
 plutil -lint "$PROJECT_DIR/Config/Info.plist" "$PROJECT_DIR/Config/Eko.entitlements"
 swift test --package-path "$PROJECT_DIR"
-# Xcode 16's build system can race SwiftPM package-product frameworks when
-# building tests: a product framework links against a sibling product whose
-# PackageFrameworks/ binary has not been produced yet ("clang: error: no such
-# file or directory: .../PackageFrameworks/Crypto_..."). The dependency graph
-# is complete on a retry because the first pass leaves the missing framework
-# behind, so build for testing with one retry, then test without rebuilding.
-build_for_testing() {
-  xcodebuild \
-    -project "$PROJECT_DIR/Eko.xcodeproj" \
-    -scheme Eko \
-    -configuration Debug \
-    -destination "platform=macOS" \
-    CODE_SIGNING_ALLOWED=NO \
-    build-for-testing
-}
-build_for_testing || build_for_testing
+# The full test suite already ran above via `swift test` — the package's
+# EkoTests target and the Xcode project's EkoTests target share the same
+# Tests/EkoTests sources. The xcodebuild step therefore only needs to prove
+# the generated project builds the app.
+#
+# It deliberately runs `build`, not `test`: Xcode 16's test actions package
+# SwiftPM products as dynamic PackageFrameworks, and swift-crypto's Crypto
+# module is a CryptoKit re-export shim with no object code on macOS — Xcode
+# creates its framework bundle but emits no binary, and X509's framework
+# deterministically fails to link against it ("clang: error: no such file
+# ... PackageFrameworks/Crypto_..."). Plain builds link packages statically
+# and do not hit this. Revisit app-hosted tests when Xcode handles empty
+# package products in PackageFrameworks.
 xcodebuild \
   -project "$PROJECT_DIR/Eko.xcodeproj" \
   -scheme Eko \
   -configuration Debug \
   -destination "platform=macOS" \
   CODE_SIGNING_ALLOWED=NO \
-  test-without-building
+  build

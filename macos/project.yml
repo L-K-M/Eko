@@ -15,12 +15,6 @@ packages:
   Yams:
     url: https://github.com/jpsim/Yams.git
     exactVersion: 6.2.2
-  # Same identity/range as the local package's dependency. Referenced here only
-  # so EkoTests can name the Crypto product explicitly (see below).
-  Crypto:
-    url: https://github.com/apple/swift-crypto.git
-    minVersion: 3.12.3
-    maxVersion: 5.0.0
 settings:
   base:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
@@ -73,13 +67,6 @@ targets:
         product: GRDB
       - package: Yams
         product: Yams
-      # Workaround for an Xcode 16 build-graph bug in test builds (packages
-      # become dynamic PackageFrameworks): the Crypto product framework is
-      # never scheduled, so X509's framework fails to link ("clang: error: no
-      # such file ... PackageFrameworks/Crypto_..."). Naming the product as an
-      # explicit dependency forces the build system to produce it.
-      - package: Crypto
-        product: Crypto
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.eko.mac.tests

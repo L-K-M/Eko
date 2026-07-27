@@ -246,7 +246,7 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
     ) -> Bool {
         [title, body, appLabel, appPackage].compactMap { $0 }.contains { text in
             let normalized = text.precomposedStringWithCanonicalMapping
-            bankingStylePattern.firstMatch(
+            return bankingStylePattern.firstMatch(
                 in: normalized,
                 range: NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
             ) != nil

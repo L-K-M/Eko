@@ -10,6 +10,8 @@ import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import kotlinx.serialization.json.JsonObject
 
+private const val MAX_JSON_NESTING_DEPTH = 64
+
 data class Frame(val type: Int, val payload: ByteArray)
 
 object FrameCodec {
@@ -95,16 +97,20 @@ private class JsonSyntaxScanner(private val source: String) {
 
     fun validate() {
         skipWhitespace()
-        parseValue()
+        parseValue(depth = 0)
         skipWhitespace()
         if (index != source.length) fail("Trailing JSON content")
     }
 
-    private fun parseValue() {
+    private fun parseValue(depth: Int) {
+        // Depth counts enclosing containers, matching the Mac validator.
+        if (depth > MAX_JSON_NESTING_DEPTH) {
+            throw ProtocolException("JSON nesting exceeds $MAX_JSON_NESTING_DEPTH levels")
+        }
         skipWhitespace()
         when (source.getOrNull(index)) {
-            '{' -> parseObject()
-            '[' -> parseArray()
+            '{' -> parseObject(depth + 1)
+            '[' -> parseArray(depth + 1)
             '"' -> parseString()
             't' -> consumeLiteral("true")
             'f' -> consumeLiteral("false")
@@ -114,7 +120,7 @@ private class JsonSyntaxScanner(private val source: String) {
         }
     }
 
-    private fun parseObject() {
+    private fun parseObject(depth: Int) {
         index++
         skipWhitespace()
         if (consumeIf('}')) return
@@ -126,19 +132,19 @@ private class JsonSyntaxScanner(private val source: String) {
             if (!keys.add(key)) throw ProtocolException("Duplicate JSON key '$key'")
             skipWhitespace()
             requireChar(':')
-            parseValue()
+            parseValue(depth)
             skipWhitespace()
             if (consumeIf('}')) return
             requireChar(',')
         }
     }
 
-    private fun parseArray() {
+    private fun parseArray(depth: Int) {
         index++
         skipWhitespace()
         if (consumeIf(']')) return
         while (true) {
-            parseValue()
+            parseValue(depth)
             skipWhitespace()
             if (consumeIf(']')) return
             requireChar(',')

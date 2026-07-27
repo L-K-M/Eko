@@ -117,6 +117,72 @@ final class MessageInboxTests: XCTestCase {
         XCTAssertNil(eof)
     }
 
+    func testProducerPausesAtHighWaterAndResumesAfterDrain() async throws {
+        // Capacity 8: high-water at 4 queued messages, low-water at 2.
+        let inbox = MessageInbox(maximumQueuedMessages: 8, maximumQueuedBytes: 10_000)
+        let resumes = ResumeCounter()
+        inbox.setOnResume { resumes.increment() }
+
+        XCTAssertTrue(try inbox.yield(ping(1), encodedByteCount: 1))
+        XCTAssertTrue(try inbox.yield(ping(2), encodedByteCount: 1))
+        XCTAssertTrue(try inbox.yield(ping(3), encodedByteCount: 1))
+        XCTAssertFalse(try inbox.yield(ping(4), encodedByteCount: 1), "fourth message crosses high water")
+
+        _ = try await inbox.next()
+        XCTAssertEqual(resumes.value, 0, "still above low water")
+        _ = try await inbox.next()
+        XCTAssertEqual(resumes.value, 1, "resume fires exactly once at low water")
+        _ = try await inbox.next()
+        XCTAssertEqual(resumes.value, 1, "no repeat resume while unpaused")
+
+        XCTAssertTrue(try inbox.yield(ping(5), encodedByteCount: 1))
+        XCTAssertTrue(try inbox.yield(ping(6), encodedByteCount: 1))
+        XCTAssertFalse(try inbox.yield(ping(7), encodedByteCount: 1), "refilling to high water pauses again")
+        _ = try await inbox.next()
+        _ = try await inbox.next()
+        _ = try await inbox.next()
+        XCTAssertEqual(resumes.value, 2, "each pause earns one resume")
+    }
+
+    func testByteHighWaterAlsoPausesProducer() async throws {
+        // Byte budget 100: high-water at 50 queued bytes, low-water at 25.
+        let inbox = MessageInbox(maximumQueuedMessages: 100, maximumQueuedBytes: 100)
+        let resumes = ResumeCounter()
+        inbox.setOnResume { resumes.increment() }
+
+        XCTAssertFalse(try inbox.yield(ping(1), encodedByteCount: 60), "single large frame crosses byte high water")
+        _ = try await inbox.next()
+        XCTAssertEqual(resumes.value, 1)
+    }
+
+    func testDirectWaiterHandoffNeverPauses() async throws {
+        // Capacity 4 keeps the single-message queued fallback below high water
+        // too, so the assertion cannot flake on waiter-registration timing.
+        let inbox = MessageInbox(maximumQueuedMessages: 4, maximumQueuedBytes: 400)
+        async let received = inbox.next()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(try inbox.yield(ping(1), encodedByteCount: 99), "handoff to a waiter bypasses the queue")
+        let message = try await received
+        XCTAssertEqual(message, ping(1))
+    }
+
+    private final class ResumeCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+
+        func increment() {
+            lock.lock()
+            count += 1
+            lock.unlock()
+        }
+    }
+
     private func ping(_ value: Int64) -> WireMessage {
         .ping(PingMessage(
             pingID: "12345678-1234-4abc-8def-1234567890ab",

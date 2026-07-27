@@ -96,6 +96,17 @@ public struct PersistedPairingAttempt: Equatable, Sendable {
 }
 
 public final class EkoStore: @unchecked Sendable {
+    private enum GenerationSelection: Equatable {
+        case unchanged
+        case changed
+        case retired
+    }
+
+    private enum PairingConfirmation {
+        case confirmed(Device)
+        case retiredGeneration
+    }
+
     public static let migrationIdentifiers = [
         "001_initial_event_store",
         "002_search_otp_and_preferences",
@@ -438,10 +449,21 @@ public final class EkoStore: @unchecked Sendable {
         }
         let capabilities = try Self.encodeCapabilities(hello.capabilities)
         let now = millisecondsSinceEpoch(clock.now())
-        return try pool.write { db in
-            if let row = try Row.fetchOne(db, sql: "SELECT pinned_cert_der FROM device WHERE id = ?", arguments: [fingerprint]) {
+        let confirmation = try pool.write { db -> PairingConfirmation in
+            let existingRow = try Row.fetchOne(db, sql: "SELECT * FROM device WHERE id = ?", arguments: [fingerprint])
+            if let row = existingRow {
                 let existing: Data = row["pinned_cert_der"]
                 guard EkoCrypto.constantTimeEqual(existing, certificateDER) else { throw EkoCoreError.unauthorized }
+                let oldGeneration: String? = row["current_generation"]
+                if try Self.selectGeneration(
+                    db,
+                    deviceID: fingerprint,
+                    oldGeneration: oldGeneration,
+                    newGeneration: generation,
+                    transitionedAt: now
+                ) == .retired {
+                    return .retiredGeneration
+                }
             }
             // An explicitly confirmed new pairing supersedes every revocation receipt and
             // pending pair attempt for this certificate, atomically with the pin commit.
@@ -500,7 +522,11 @@ public final class EkoStore: @unchecked Sendable {
             guard let row = try Row.fetchOne(db, sql: "SELECT * FROM device WHERE id = ?", arguments: [fingerprint]) else {
                 throw EkoCoreError.storage("paired device was not persisted")
             }
-            return try Self.decodeDevice(row)
+            return .confirmed(try Self.decodeDevice(row))
+        }
+        switch confirmation {
+        case .confirmed(let device): return device
+        case .retiredGeneration: throw EkoCoreError.retiredGeneration
         }
     }
 
@@ -554,37 +580,18 @@ public final class EkoStore: @unchecked Sendable {
             )
 
             let oldGeneration: String? = row["current_generation"]
-            if oldGeneration != generation {
-                let isRetired = try Bool.fetchOne(
-                    db,
-                    sql: "SELECT EXISTS(SELECT 1 FROM retired_generation WHERE device_id = ? AND outbox_gen = ?)",
-                    arguments: [fingerprint, generation]
-                ) == true
-                if isRetired {
-                    return .retiredGeneration
-                }
-            }
+            let generationSelection = try Self.selectGeneration(
+                db,
+                deviceID: fingerprint,
+                oldGeneration: oldGeneration,
+                newGeneration: generation,
+                transitionedAt: now
+            )
+            if generationSelection == .retired { return .retiredGeneration }
 
-            var generationChanged = false
+            let generationChanged = generationSelection == .changed
             var cursor: Int64 = row["processed_through_seq"]
-            if oldGeneration != generation {
-                if let oldGeneration {
-                    try db.execute(
-                        sql: "INSERT OR IGNORE INTO retired_generation(device_id, outbox_gen, retired_at_ms) VALUES (?, ?, ?)",
-                        arguments: [fingerprint, oldGeneration, now]
-                    )
-                    try db.execute(
-                        sql: "UPDATE notification SET is_active = 0 WHERE device_id = ? AND outbox_gen = ?",
-                        arguments: [fingerprint, oldGeneration]
-                    )
-                }
-                try db.execute(
-                    sql: "INSERT INTO generation_transition(device_id, old_generation, new_generation, transitioned_at_ms) VALUES (?, ?, ?, ?)",
-                    arguments: [fingerprint, oldGeneration, generation, now]
-                )
-                cursor = 0
-                generationChanged = true
-            }
+            if generationChanged { cursor = 0 }
 
             try db.execute(
                 sql: """
@@ -1390,7 +1397,7 @@ public final class EkoStore: @unchecked Sendable {
             if deleteHistory {
                 try db.execute(
                     sql: """
-                        UPDATE device SET pairing_state = 'revoked_pending', current_generation = NULL,
+                        UPDATE device SET pairing_state = 'revoked_pending',
                             processed_through_seq = 0, initial_cursor = 0, capabilities_json = '[]'
                         WHERE id = ?
                         """,
@@ -1433,7 +1440,7 @@ public final class EkoStore: @unchecked Sendable {
             try Self.deleteNotificationData(db, deviceID: deviceID)
             try db.execute(
                 sql: """
-                    UPDATE device SET pairing_state = 'revoked_pending', current_generation = NULL,
+                    UPDATE device SET pairing_state = 'revoked_pending',
                         processed_through_seq = 0, initial_cursor = 0, capabilities_json = '[]'
                     WHERE id = ?
                     """,
@@ -1631,6 +1638,71 @@ public final class EkoStore: @unchecked Sendable {
         try db.execute(sql: "DELETE FROM gap_span WHERE device_id = ?", arguments: [deviceID])
         try db.execute(sql: "DELETE FROM notification WHERE device_id = ?", arguments: [deviceID])
         try db.execute(sql: "DELETE FROM otp WHERE device_id = ?", arguments: [deviceID])
+    }
+
+    private static func selectGeneration(
+        _ db: Database,
+        deviceID: String,
+        oldGeneration: String?,
+        newGeneration: String,
+        transitionedAt: Int64
+    ) throws -> GenerationSelection {
+        guard oldGeneration != newGeneration else { return .unchanged }
+        let isRetired = try Bool.fetchOne(
+            db,
+            sql: "SELECT EXISTS(SELECT 1 FROM retired_generation WHERE device_id = ? AND outbox_gen = ?)",
+            arguments: [deviceID, newGeneration]
+        ) ?? false
+        guard !isRetired else { return .retired }
+
+        let wasPreviouslySeen = try Bool.fetchOne(
+            db,
+            sql: """
+                SELECT
+                    EXISTS(SELECT 1 FROM event WHERE device_id = ? AND outbox_gen = ?)
+                    OR EXISTS(SELECT 1 FROM gap_span WHERE device_id = ? AND outbox_gen = ?)
+                    OR EXISTS(SELECT 1 FROM notification WHERE device_id = ? AND outbox_gen = ?)
+                    OR EXISTS(SELECT 1 FROM otp WHERE device_id = ? AND outbox_gen = ?)
+                    OR EXISTS(
+                        SELECT 1 FROM generation_transition
+                        WHERE device_id = ? AND (old_generation = ? OR new_generation = ?)
+                    )
+                """,
+            arguments: [
+                deviceID, newGeneration,
+                deviceID, newGeneration,
+                deviceID, newGeneration,
+                deviceID, newGeneration,
+                deviceID, newGeneration, newGeneration,
+            ]
+        ) ?? false
+        if wasPreviouslySeen {
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO retired_generation(device_id, outbox_gen, retired_at_ms) VALUES (?, ?, ?)",
+                arguments: [deviceID, newGeneration, transitionedAt]
+            )
+            try db.execute(
+                sql: "UPDATE notification SET is_active = 0 WHERE device_id = ? AND outbox_gen = ?",
+                arguments: [deviceID, newGeneration]
+            )
+            return .retired
+        }
+
+        if let oldGeneration {
+            try db.execute(
+                sql: "INSERT OR IGNORE INTO retired_generation(device_id, outbox_gen, retired_at_ms) VALUES (?, ?, ?)",
+                arguments: [deviceID, oldGeneration, transitionedAt]
+            )
+        }
+        try db.execute(
+            sql: "UPDATE notification SET is_active = 0 WHERE device_id = ? AND is_active = 1",
+            arguments: [deviceID]
+        )
+        try db.execute(
+            sql: "INSERT INTO generation_transition(device_id, old_generation, new_generation, transitioned_at_ms) VALUES (?, ?, ?, ?)",
+            arguments: [deviceID, oldGeneration, newGeneration, transitionedAt]
+        )
+        return .changed
     }
 
     private static func upsertPairingAttempt(_ db: Database, attempt: PersistedPairingAttempt, expiresAt: Date) throws {

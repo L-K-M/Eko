@@ -1,13 +1,13 @@
 # Eko — analysis and open work
 
 The standing list of what is wrong with Eko, what is missing from it, and what would make it
-good. It is the merge of the review in [`opus.md`](opus.md) with what has since been acted on:
-anything addressed is recorded in the ledger below and struck from the body, so the body is
-always *remaining* work.
+good. It merges the point-in-time review in [`opus.md`](opus.md), the follow-up review at
+`aa2a9fb`, and the work proposed or merged since those reviews.
 
-`opus.md` is kept as the point-in-time review, with its evidence and its argument. This file is
-the working document. When something lands, move it from the body to the ledger rather than
-deleting it — the ledger is how the next person knows a question was already answered.
+The ledger distinguishes merged changes from open implementation PRs. The current review roadmap is
+the authoritative status index: **IN REVIEW** means a fix exists on an open branch but is not behavior
+on `main` (the 2026-07-27 batch has since merged; statuses below reflect that). The older numbered body retains the reviews' evidence and rationale; its source line numbers
+are historical navigation aids, and the roadmap controls wherever status or scope differs.
 
 Severity bands: **critical** (data loss, hangs, unusable) · **high** (a user hits it in the
 first hour) · **medium** (real, bounded) · **low** (polish, tech debt) · **idea** (opinion).
@@ -15,31 +15,32 @@ first hour) · **medium** (real, bounded) · **low** (polish, tech debt) · **id
 
 ---
 
-## Ledger — addressed, in review
+## Ledger — merged and in review
 
-None of the PRs in the table below were merged at the time of writing. Repository CI could not
-run while they were opened (see [Working notes](#working-notes) — since restored), so every
-"verified" claim in the table is a local run. #25, further down, merged with green CI.
+The first table predates restored repository CI: #17-#23 were opened while Actions could not run, so
+their original verification claims are local. #17-#20 and #23 later merged; #21 and #22 were closed as
+superseded on 2026-07-27, their surviving pieces tracked under SOL-29 and SOL-32. #25 and #26 merged with green CI. The current-review PRs #27-#37 are
+recorded separately below and each runs the full repository gate.
 
-| PR | What it closes |
-| --- | --- |
-| [#17](https://github.com/L-K-M/Eko/pull/17) Android transport hot path | Non-atomic `TransportRuntime.update`; foreground-service notification re-posted per mirrored event; reconnect backoff reset on every mDNS sighting; `startForeground` failure crashing the process; `Mac(s)` → `<plurals>`; dead `SDK_INT < 26` guard |
-| [#18](https://github.com/L-K-M/Eko/pull/18) Capture durability | Queued commits discarded when the listener is torn down (**the notification-loss bug**); `removeCallbacks(::enqueueReconciliation)` removing nothing, and the phantom Diagnostics counters it produced; per-notification `Resources.getIdentifier` for the redaction marker |
-| [#19](https://github.com/L-K-M/Eko/pull/19) ViewModel hot path | N+1 `pairingRows()` per peer per captured notification; Home recomputing at the capture rate; uncaught store failure killing the app on launch; five binder round-trips on the main thread per resume |
-| [#20](https://github.com/L-K-M/Eko/pull/20) Android UI | Landing on the setup checklist every launch; the invisible QR reticle, missing `BackHandler` and missing insets; nothing surviving rotation; the Mac name starved to one glyph per line; fake-button status chip; unlabelled switch rows; unpair dialog overflow and inverted hierarchy; frozen diagnostics timestamps; dark-mode launch flash; off-centre launcher icon with no monochrome layer |
-| [#21](https://github.com/L-K-M/Eko/pull/21) macOS menu & chrome | **No main menu** — app could not be quit, ⌘C/⌘V/⌘Q dead; traffic lights over the logo; `.popUpMenu` above Settings *when the panel is pinned*; status-item redraw storm; the "code available" badge that never expired; no Escape, no highlight, no right-click menu. (An opacity change was reverted — see [Verification outcome](#verification-outcome).) |
-| [#22](https://github.com/L-K-M/Eko/pull/22) macOS panel performance | **A synchronous main-thread DB read per committed event**; `focus` blocking the panel on a 500-row query; three `pool.write`s on the main actor behind a 5 s busy timeout; the feed observation running while the panel is hidden; the one-shot diagnostics content toggle that wasn't |
-| [#23](https://github.com/L-K-M/Eko/pull/23) CI | `:core`'s nine test classes never ran — including the shared protocol vectors and the pinning test |
+| PR | Status | Implemented scope |
+| --- | --- | --- |
+| [#17](https://github.com/L-K-M/Eko/pull/17) Android transport hot path | **MERGED** | Non-atomic `TransportRuntime.update`; foreground-service notification re-posted per mirrored event; reconnect backoff reset on every mDNS sighting; `startForeground` failure crashing the process; `Mac(s)` → `<plurals>`; dead `SDK_INT < 26` guard |
+| [#18](https://github.com/L-K-M/Eko/pull/18) Capture durability | **MERGED** | Queued commits discarded when the listener is torn down (**the notification-loss bug**); `removeCallbacks(::enqueueReconciliation)` removing nothing, and the phantom Diagnostics counters it produced; per-notification `Resources.getIdentifier` for the redaction marker |
+| [#19](https://github.com/L-K-M/Eko/pull/19) ViewModel hot path | **MERGED** | N+1 `pairingRows()` per peer per captured notification; Home recomputing at the capture rate; uncaught store failure killing the app on launch; five binder round-trips on the main thread per resume |
+| [#20](https://github.com/L-K-M/Eko/pull/20) Android UI | **MERGED** | Landing on the setup checklist every launch; the invisible QR reticle, missing `BackHandler` and missing insets; nothing surviving rotation; the Mac name starved to one glyph per line; fake-button status chip; unlabelled switch rows; unpair dialog overflow and inverted hierarchy; frozen diagnostics timestamps; dark-mode launch flash; off-centre launcher icon with no monochrome layer |
+| [#21](https://github.com/L-K-M/Eko/pull/21) macOS menu & chrome | **CLOSED — superseded** | Historical proposal. Menu/quit, right-click and badge-expiry work were superseded by #25. Selectively rebase only surviving panel-level, Escape/highlight and status-throttling/image-cache changes; do not merge wholesale. |
+| [#22](https://github.com/L-K-M/Eko/pull/22) macOS panel performance | **CLOSED — superseded** | Proposed asynchronous ingest/focus writes, hidden-panel observation suspension and one-export diagnostics consent. Selectively rebase useful pieces; none are current `main` behavior. |
+| [#23](https://github.com/L-K-M/Eko/pull/23) CI | **MERGED** | `:core`'s nine test classes never ran — including the shared protocol vectors and the pinning test |
 
 Also resolved independently, on `main` in [#4](https://github.com/L-K-M/Eko/pull/4): CI and
 release workflows exist; `scripts/check-protocol.py` validates schemas and embedded scenario
 frames; Dependabot covers Gradle and Swift; README/AGENTS no longer claim pre-scaffold status.
 
-**Partially addressed — the remainder is still open below.** #20 fixed the Android launcher
-icon and window background but not the wider brand/design-token work ([D-01](#d-01),
-[D-02](#d-02)). #22 suspended the feed observation but did not add the missing index or stop
-the `device` table being dirtied per event ([P-01](#p-01)). #18 cached the redaction marker but
-not app labels, and left extraction on the listener's main thread ([P-02](#p-02)).
+**Partially addressed — the remainder is still open below.** #20 fixed the Android launcher icon and
+window background but not the wider brand/design-token work ([D-01](#d-01), [D-02](#d-02)). #18
+cached the redaction marker but not app labels, and left extraction on the listener's main thread
+([P-02](#p-02)). Surviving #21/#22 proposals are not on `main`; their selective-rebase work is tracked
+under SOL-18, SOL-29 and SOL-32.
 
 ### Merged 2026-07-26 — [#25](https://github.com/L-K-M/Eko/pull/25) app-review fixes, localization/icon bundling, CI revival
 
@@ -79,7 +80,7 @@ The first PR in this ledger to merge with green CI (see the dated update in
   half of [A-04](#a-04)), `association_count` plurals.
 - **Release/CI**: app stapled before DMG packaging, unsigned-path release notes no longer claim
   an unlaunchable build runs, CI builds the R8 release variant, `gradlew.bat` CRLF pinned,
-  `.idea/` untracked, `Package.resolved` ignored, `default.profraw` removed — and five layers of
+  `Package.resolved` ignored, `default.profraw` removed — and five layers of
   never-executed breakage fixed (two type-checker timeouts, a test-target compile error, a wrong
   prune-test expectation, the Xcode 16 swift-crypto PackageFrameworks bug).
 
@@ -94,10 +95,156 @@ recorded here so a later round does not re-litigate them.
 | --- | --- |
 | **Developer ID release cannot launch**: `Eko.entitlements` grants `keychain-access-groups`, a restricted entitlement needing a provisioning profile, and the release pipeline supplies none — the fully signed, notarized DMG passes every gate and ships an app macOS kills at first launch. Needs a `MACOS_PROVISIONING_PROFILE`-style secret, `provisioningProfiles` in ExportOptions, a CICD.md row, and ideally a launch smoke test in the verify step. | Requires Apple-side setup (profile + CI secret); no commit can conjure it. #25 fixed the stapling order and the dishonest unsigned-path notes only. |
 | **SEP-less Intel Macs cannot run Eko**: `IdentityManager` hard-requires a Secure Enclave key; macOS 14/15-supported Intel machines without T2 (e.g. iMac19,x) and Intel VMs die at launch with a generic error. | Product decision: the security model deliberately forbids extractable software keys. Either narrow the support matrix or accept the documented extractability tradeoff — not a call to make in a bug-fix PR. |
-| **No receive backpressure** — [S-01](#s-01) / [P-06](#p-06) unchanged: the inbox buffers unbounded frames, reachable pre-confirmation. | Needs a designed high/low-water pause on `receiveNext()`; touching the transport hot path without runnable tests in the working environment was judged riskier than the deferral. |
 | **Connected unpair torn down by in-flight traffic**: after `beginUnpair` sets `revoked_pending`, any in-flight event fails `requireCurrentCursor` and the Mac kills the connection with a fatal protocol error before the phone can `unpair_ack` — defeating §14.1's same-connection two-phase exchange. Fix shape: drop normal frames without committing or acking while an unpair is pending, keep the socket for the ack. | `runNormalLoop` dispatch-semantics change; wants the protocol-vector treatment ([C-02](#c-02)) before it is touched. |
 | **Typed, localized pairing errors**: pairing failures render hardcoded English detail (`PairingQr`, `LanPairingClient`, `PairingCoordinator` messages) inside a localized wrapper — "Kopplung fehlgeschlagen: Pairing fingerprint must be 64 hexadecimal characters". Fix shape: sealed error reasons mapped to `pair_error_*` resources in both locales, generic fallback, raw text kept for the diagnostics log. | Cross-module refactor across pairing/transport; #25 fixed only the wrapper double-labelling and the CDM mislabel. |
 | **Heartbeat deadline not enforced under a blocked write path** — the write half of [B-10](#b-10): the 10 s pong deadline is armed only after `outbound.send` returns, and a peer that stops draining wedges the session until kernel TCP timeout. (#25 fixed the *other* half of the reconnect story — the `withTimeout` cancellation bug.) | Concurrency-sensitive change to the session hot path; same test-first argument as the unpair item. |
+
+### Current review implementation PRs — 2026-07-27
+
+The follow-up review rechecked this document against `main` at `aa2a9fb` after #26. Its bounded
+fixes were kept one issue per branch and PR; broad state-machine changes, policy choices, external
+signing/settings work and hardware evidence remain in the roadmap below.
+
+| PR | Status | Review item | Branch implementation |
+| --- | --- | --- | --- |
+| [#26](https://github.com/L-K-M/Eko/pull/26) | **MERGED** | field fixes before the review baseline | `.local` QR fallback, CDM feature/exception crashes, notification-access bounce, common pairing-error cleanup, manual-token visibility, empty-feed Add Phone and Quit discovery |
+| [#27](https://github.com/L-K-M/Eko/pull/27) | **MERGED** | SOL-01 | ACK authorization advances only after each event/gap frame is successfully written, with contiguous per-device coverage and blocked/failed-write tests |
+| [#28](https://github.com/L-K-M/Eko/pull/28) | **MERGED** | SOL-18 (redaction scope) | diagnostics export DTOs exclude certificates, addresses and raw identity models; identifiers are per-export aliases, free-form events are redacted, writes are serialized, and canary tests enforce the default contract |
+| [#29](https://github.com/L-K-M/Eko/pull/29) | **MERGED** | SOL-62 | DMG creation uses a staging directory containing `Eko.app`, verifies and mounts the image, checks its executable, retries detach, and signs/notarizes/verifies the outer DMG |
+| [#30](https://github.com/L-K-M/Eko/pull/30) | **MERGED** | SOL-17 | Mac inbound buffering is a 256-message/16 MiB ring with O(1) dequeue, deterministic resource-exhaustion closure and cancellation/EOF tests |
+| [#31](https://github.com/L-K-M/Eko/pull/31) | **MERGED** | SOL-02 | pairing and normal admission share one generation transition transaction; every prior namespace still represented by durable evidence is retired and unpair preserves the anti-rollback boundary |
+| [#32](https://github.com/L-K-M/Eko/pull/32) | **MERGED** | SOL-60 (BLE scope) | Android and macOS consume one shared BLE service UUID vector; Android's CDM filter now matches the Mac advertisement |
+| [#33](https://github.com/L-K-M/Eko/pull/33) | **MERGED** | SOL-42 | localized Mac unpair confirmation names the phone, explains offline history loss/re-pairing, prevents duplicate/stale actions and atomically rejects unpairing an already-revoked device |
+| [#34](https://github.com/L-K-M/Eko/pull/34) | **MERGED** | SOL-16 (nesting scope) | Android's strict JSON scanner matches the Mac's 64-level recursion bound; object, array and 10,000-level attack tests run before JSON tree construction |
+| [#35](https://github.com/L-K-M/Eko/pull/35) | **MERGED** | SOL-27 | banking/TAN auto-copy checks title, body, app label and package using one retained, Unicode-normalized, bounded-cost matcher with compound/package tests |
+| [#36](https://github.com/L-K-M/Eko/pull/36) | **MERGED** | SOL-67 (Swift Crypto scope) | `swift-crypto` is pinned to the tested exact 4.5.1 release rather than a moving major-version range |
+| [#37](https://github.com/L-K-M/Eko/pull/37) | **MERGED** | SOL-68 (staging scope) | `build.sh` propagates destination creation/removal/copy failures and records success only after the artifact reaches `dist/` |
+
+All eleven implementation PRs merged on 2026-07-27 after an adversarial review pass with green CI
+on every branch. Two required intervention before merging: #30 was blocked in review — its hard cap
+with an always-re-arming receive loop would have terminated legitimate 2 000-event backlog replays —
+and was revised in place with high/low-water backpressure (pause the receive loop at half the caps,
+resume at a quarter, caps retained as an attack backstop, best-effort error frame on exhaustion);
+#31 was conflict-resolved against the already-merged #33. #31's review recorded follow-ups: the new
+pairing-time `stale_generation` rejection fires after SAS confirmation with no phone-side recovery
+path (B-19), and protocol.md §7 plus the generation-transition vectors do not yet document the
+pairing-phase rejection. Branch gates do not replace tag-only release or physical BLE verification.
+
+### Current review roadmap
+
+This is the authoritative index from the `aa2a9fb` re-review plus the PR state observed on 2026-07-27.
+It supersedes stale impact claims and line numbers in the older numbered body while retaining that
+body's rationale where the findings overlap. **IN REVIEW** is not resolved-on-`main`; it identifies the
+open PR that must merge. **EXISTING PR** identifies useful work in conflicting #21/#22 that must be
+selectively rebased. A row marked **residual** records only the part left after a narrower PR.
+
+#### Durability, correctness and protocol
+
+| ID | Disposition | Remaining work |
+| --- | --- | --- |
+| SOL-01 | `MERGED` [#27](https://github.com/L-K-M/Eko/pull/27) | Merge the tested write-before-authorization fix; until then `main` can accept an ACK for an event whose frame has not reached the wire. |
+| SOL-02 | `MERGED` [#31](https://github.com/L-K-M/Eko/pull/31) | Merge the shared generation-transition transaction. It retires every prior namespace reconstructible from durable state and establishes the boundary for future transitions; a fully pruned pre-fix namespace cannot be reconstructed. |
+| SOL-03 | `OPEN` | Move a connected Mac session atomically into unpair-only mode so buffered normal traffic cannot kill the socket before the matching acknowledgement. |
+| SOL-04 | `OPEN` | Define and vector-test how a delayed matching fetch may fill historical content after a newer removal without reviving stale state. |
+| SOL-05 | `OPEN` | Add a nullable current-OTP reference, clear it on code-free updates, and retain old OTP rows only for dedupe/audit. |
+| SOL-06 | `OPEN` | Serialize `AckAccumulator.flush`, prevent out-of-order `lastSent` regression and reset threshold state on no-op flushes. |
+| SOL-07 | `OPEN` | Treat post-commit welcome loss as paired-but-disconnected, and either reuse or deliberately transfer the confirmed socket into normal sync. |
+| SOL-08 | `OPEN` | Bind provisional Android outbox cursors to the pairing attempt and remove them on rejection, or create them only during final promotion. |
+| SOL-09 | `OPEN` | Enforce one monotonic 300-second pairing deadline on both sides, with every receive bounded by the remaining duration. |
+| SOL-10 | `OPEN` | Clear disconnect evidence only after its gap commits and retain the earliest accepted-but-uncommitted callback for honest bounds. |
+| SOL-11 | `OPEN` | Stop treating broad `REASON_USER_REQUESTED` exit history as sole proof of an explicit Eko pause; persist an app-owned marker and visible Resume state. |
+| SOL-12 | `OPEN` | Make bootstrap failures cancellation-safe and repairable without deleting a store that has not been proven corrupt. |
+| SOL-13 | `OPEN` | Remove completed receipt/tombstone jobs, add bounded durable retry, and stop the sticky service when no connection work remains. |
+| SOL-14 | `OPEN` | Iterate eligible Android networks, use network-scoped DNS, keep discovery endpoints ephemeral, persist only after exact-pin TLS succeeds, and cancel a live session when its bound network becomes ineligible. |
+| SOL-15 | `OPEN` | Preserve CDM state by association, track presence per association, refresh trust after every mutation and serialize listener rebinds. |
+| SOL-16 | `MERGED` [#34](https://github.com/L-K-M/Eko/pull/34) + `OPEN`/`DESIGN` residual | Merge the nesting bound. Independently make `unpair_ack` reachable, accept legal pre-`welcome` `ping`/`pong`/`error` controls, validate error codes and advertise `ext_types` under the existing contract (`OPEN`); decide ACK-zero, certificate-profile and unknown-member lexical semantics before aligning all implementations (`DESIGN`). |
+| SOL-75 | `OPEN` | Derive Mac connection-state identity only from the authenticated certificate; do not let an unverified `hello.deviceID` mark another phone failed. |
+| SOL-76 | `DESIGN` + `OPEN` | Define the duplicate-detection horizon and a compact applied-event receipt that can still prove an old retransmission is equivalent. Never replace an applied event with an overlapping gap; retain full receipts until the protocol-compatible representation exists. |
+| SOL-77 | `OPEN` | Remove completion callbacks that mutate `peerJobs` from inside `computeIfAbsent`, and serialize peer reconciliation so concurrent triggers cannot spin or overwrite lifecycle state. |
+
+#### Security and privacy
+
+| ID | Disposition | Remaining work |
+| --- | --- | --- |
+| SOL-17 | `MERGED` [#30](https://github.com/L-K-M/Eko/pull/30) | Merge the bounded O(1) inbound ring; `main` still buffers decoded peer messages without count or byte limits. |
+| SOL-18 | `MERGED` [#28](https://github.com/L-K-M/Eko/pull/28) + `EXISTING PR` residual | Merge export DTO/redaction canaries, then selectively rebase #22's one-export consent reset so including notification content always requires a fresh opt-in. |
+| SOL-19 | `DESIGN` | Replace ML Kit with a telemetry-free local QR decoder, or explicitly redesign the no-telemetry promise and disclosure after a deliberate scan-quality decision. |
+| SOL-20 | `OPEN` | Keep TLS admission pure and reserve the exclusive unknown-peer slot only after valid QR/application proof; release failures and cap pending attempts. |
+| SOL-21 | `DESIGN` | Stop continuously broadcasting a 20-year fingerprint/computer name, using pairing-only identity or a designed rotating paired-discovery handle. |
+| SOL-22 | `OPEN` | Minimize revoked state to the pin, IDs and anti-rollback/receipt fields actually needed; delete pairing transcript, names, preferences and endpoint history. |
+| SOL-23 | `OPEN` | Burn persisted pairing attempts before closing on commitment mismatch so a later correct reveal cannot resume them. |
+| SOL-24 | `DESIGN` | Specify aggregate active-snapshot count/key-byte limits and sender behavior, or stage chunks in a quota-limited table. |
+| SOL-25 | `OPEN` | Give Android and Mac writes independent deadlines that close the underlying transport and complete exactly once under timeout/cancellation races. |
+| SOL-26 | `DESIGN` | Explicitly document and test Universal Clipboard exposure; the general pasteboard is necessary for ordinary paste and is not local-only. |
+| SOL-27 | `MERGED` [#35](https://github.com/L-K-M/Eko/pull/35) | Merge the four-field banking/TAN guard and its Unicode/source-identity regressions; `main` still inspects only the displayed body. |
+
+#### Performance and battery
+
+| ID | Disposition | Remaining work |
+| --- | --- | --- |
+| SOL-28 | `OPEN` | Stream replay in bounded pages pinned to one immutable high-water, using projected active rows and constrained-heap/concurrent-capture tests. |
+| SOL-29 | `EXISTING PR` + `OPEN` | Selectively rebase useful #22 work, add the global recent index, stop per-event device dirties, use newest-only observation buffers and query one preference directly. |
+| SOL-30 | `OPEN` | Copy framework data quickly on the listener callback, cache labels, and move ordered mapping/sanitization to the serialized writer. |
+| SOL-31 | `OPEN` | Remove synchronous SharedPreferences writes and full-payload/full-table maintenance from Android's durable hot path. |
+| SOL-32 | `EXISTING PR` + `OPEN` | Selectively rebase surviving #21 status/chrome work, give status unfiltered state, pass row values/closures and retain formatters. |
+| SOL-33 | `OPEN` | Bound OTP input before normalization/artifact passes, fast-path ASCII and avoid per-scalar allocation while preserving origin-bound semantics. |
+| SOL-34 | `OPEN` | Present status first, initialize migration/Keychain/identity work off-main with explicit failure state, and construct Settings lazily. |
+| SOL-35 | `OPEN` | Bound discovery windows, peers and bytes; rate-limit before parse, expire by timer and label every hint unverified. |
+| SOL-36 | `OPEN` | Atomically consume pairing actions and serialize/field-update app-rule mutations so rapid UI actions cannot overwrite one another. |
+
+#### Interface and product experience
+
+| ID | Disposition | Remaining work |
+| --- | --- | --- |
+| SOL-37 | `OPEN` | Require a usable association at minimum, then make onboarding completion consume the durable Test Echo result owned by SOL-53. |
+| SOL-38 | `DESIGN` | Add a typed optional phone-health capability for access, listener, pause, store, redaction and last-forward evidence without inferring failure from silence. |
+| SOL-39 | `OPEN` | Surface provisional/denied/revoked Mac notification authorization, offer promotion/System Settings and preserve panel-only operation. |
+| SOL-40 | `OPEN` | Add recovery UX for permanent notification denial, scanner bind failure and listener repair; make setup controls reflow/localize, checklist state semantic, pending attempts dismissible/root-owned, and service notifications route to relevant status. |
+| SOL-41 | `OPEN` | Make non-OTP row actions stable and keyboard/VoiceOver reachable through reserved controls, focus/selection or an always-present menu. |
+| SOL-42 | `MERGED` [#33](https://github.com/L-K-M/Eko/pull/33) | Merge the localized destructive-unpair confirmation and stale/duplicate-action guard. |
+| SOL-43 | `OPEN` | Drive `PreferenceRow` from model bindings or synchronize and roll back local state after failed/external/normalized writes. |
+| SOL-44 | `OPEN` | Count synchronizing separately and derive the fresh-code badge from an independent, unfiltered store observation; #21 fixes neither calculation. |
+| SOL-45 | `OPEN` | Replace clipping/fixed contrast/layout assumptions and test EN/DE, text size, contrast/transparency, narrow Mac panels, tablets and foldables. |
+| SOL-46 | `OPEN` | Separate durable gap coverage from acknowledgement/collapse, filter gaps by phone, show localized ranges, page history and add Kept/filter-aware empty states. |
+| SOL-47 | `OPEN` | Store/display post, first-receipt and state-transition times separately so replay/removal neither lies about age nor reorders history. |
+| SOL-48 | `OPEN` | Add visible/announced copy state and clear deadline, Clear Now, offline dismissal state and actionable failure feedback. |
+| SOL-49 | `OPEN` | Put plain-language health and one repair action before raw diagnostics; model redaction as untested/passed/detected, localize free-form capture-gap evidence, show useful ranges/counters and make logs stable/live-readable. |
+| SOL-50 | `DESIGN` + `OPEN` | Hide or define Android's unused OTP hint without weakening banking guards (`DESIGN`); independently add search, icons, profile labels, last-seen context and pre-traffic rule configuration (`OPEN`). |
+| SOL-51 | `IDEA` | Define a small cross-platform token/palette/type vocabulary and one German voice while retaining native controls. |
+| SOL-74 | `OPEN` | Replace raw pairing failure strings with typed localized reasons on both platforms, retain raw details only in diagnostics, and make displayed fingerprints selectable for manual verification. |
+
+#### Missing capabilities
+
+| ID | Disposition | Remaining work |
+| --- | --- | --- |
+| SOL-52 | `OPEN` | Preserve Android user/profile through Mac notification and preference keys/UI; identical packages in Personal and Work must remain independent. |
+| SOL-53 | `OPEN` | Build the synthetic content-free event through the real writer, TLS, Mac transaction and phone ACK; SOL-37 owns when that result completes onboarding. |
+| SOL-54 | `OPEN` | Implement the documented Android diagnostics preview/export after sharing tested redaction canaries with the Mac model. |
+| SOL-55 | `OPEN` | Add Delete History, per-device retention/pause and discovery/Bluetooth controls without deleting cursor/coverage safety state; Android diagnostics preview/export is owned by SOL-54. |
+| SOL-56 | `OPEN` | Add the promised hotkey/latest-code, Mute App and per-device/timed/Focus pause actions after unfiltered status and accessible navigation exist; Kept/history UI is owned by SOL-46. |
+| SOL-57 | `OPEN` | Surface typed identity-changed recovery and require a new SAS; never let names or endpoints replace certificate identity. |
+| SOL-58 | `OPEN` | Add user-owned aliases, consistent initial device names, visible last-seen state and restrained hash-derived phone accents paired with text. |
+| SOL-59 | `OPEN` | Add an About/version surface, then a disclosed release-page check later; a full updater remains post-1.0. |
+| SOL-60 | `MERGED` [#32](https://github.com/L-K-M/Eko/pull/32) + `DESIGN` residual | Merge the shared BLE UUID. Separately decide whether to authenticate and implement UDP hints with shared constants/vectors or remove the dead unsigned listener/docs. |
+| SOL-61 | `IDEA` | After reliability work, prioritize app icons, safe link handoff, Codes Only, `group_key` collapse and bounded Dismiss All. |
+| SOL-78 | `OPEN` | Show factual inline backlog progress and completion in the panel, using a system notification only when the panel is closed. |
+
+#### Release engineering and assurance
+
+| ID | Disposition | Remaining work |
+| --- | --- | --- |
+| SOL-62 | `MERGED` [#29](https://github.com/L-K-M/Eko/pull/29) | Merge staged DMG construction and mounted-content verification; branch CI does not exercise the tag-only signed release path. |
+| SOL-63 | `EXTERNAL` | Create/install/map a Developer ID provisioning profile for the restricted Keychain group, inspect the export and launch-smoke the signed app. |
+| SOL-64 | `OPEN` | Make platform jobs upload private workflow artifacts and publish one release only after both succeed, with one body/checksum manifest. |
+| SOL-65 | `EXTERNAL` | Record the real Android signer SHA-256 digest and reject any valid-but-wrong keystore; test upgrade from the prior public APK. |
+| SOL-66 | `EXTERNAL` | Protect `main`/release tags/workflows and move signing secrets to an approved protected environment; require releases reachable from protected `main`. |
+| SOL-67 | `MERGED` [#36](https://github.com/L-K-M/Eko/pull/36) + `OPEN` residual | Merge the exact Swift Crypto pin; still pin XcodeGen, create-dmg, Python validator packages and third-party Actions, add deliberate Gradle verification/locking and a version catalog, and move Room from `kapt` to KSP. |
+| SOL-68 | `MERGED` [#37](https://github.com/L-K-M/Eko/pull/37) + `OPEN` residual | Merge local staging failure propagation; still harden `release.sh` version/build/branch/rollback/atomic-push rules and compare Android/Mac build numbers in the workflow. |
+| SOL-69 | `OPEN` | Reconcile CI commands, diagnostics/install/protocol-reservation promises, supported Mac hardware, JDK/toolchain policy, remaining lint and tracked IDE state with actual behavior. |
+| SOL-70 | `OPEN` | Add deterministic transport/session tests for Android and missing Mac queue/send/unpair/clipboard/AppModel bindings; keep signed OS behavior manual. |
+| SOL-71 | `OPEN` | Execute shared scenarios through adapters on both implementations, starting with invalid ACK, generation transition, stale fetch and connected unpair. |
+| SOL-72 | `OPEN` | Commit synthetic immutable old-schema fixtures and migrate each public version forward in CI. |
+| SOL-73 | `EXTERNAL` | Record sanitized result evidence for hardware gates S1-S11 rather than adding placeholder CI that cannot prove them. |
 
 ---
 
@@ -116,8 +263,8 @@ annotated before this pass reported. The interesting ones are the rest:
 
 | Withdrawn claim | Why it was wrong |
 | --- | --- |
-| Opaque panel defeats `.ultraThinMaterial` | The AppKit premise was wrong; the material was already working. **Reverted from #21.** |
-| `.popUpMenu` sits above modal alerts | Impossible as described — the controller does not exist on the startup-failure path. The pinned-panel case is real, so #21 stands on that. |
+| Opaque panel defeats `.ultraThinMaterial` | The AppKit premise was wrong; the material was already working. **Removed from #21's proposed diff.** |
+| `.popUpMenu` sits above modal alerts | Impossible as described — the controller does not exist on the startup-failure path. The pinned-panel case is real and survives only in the open #21 proposal. |
 | Moving `blockStartsAfterUserStop()` off the main thread | It is a deliberate ordering barrier: `ConnectionService.requestStart` consults the flag it writes. Acting on this would have been a regression. **#19 never touched it** — only the `refreshSystemChecks` half the verifier upheld. |
 | "Include ongoing" is inert on Android 13+ | Checked against AOSP: the platform never classifies a notification as ONGOING when applying the listener type filter. |
 | Not resuming `NWListener .waiting` | That is the correct Network.framework contract; the recommendation would have broken it. |
@@ -140,24 +287,10 @@ review before it lands, which is what happened here.
 ### macOS core
 
 <a id="b-01"></a>
-**B-01 · `confirmPairing` leaves the superseded generation un-retired** — `high` [S]
-`EkoStore.swift:440,558`, `SessionManager.swift:141`
-
-`beginSession` treats a generation change as a hard boundary — retire the old generation,
-deactivate its notifications. `confirmPairing` performs the same generation change and does
-neither. Reachable through `(.revoked, .pair)`: a device reaches `revoked_pending` with history
-intact via `requestUnpair` on a live session, and re-pairing from the phone commits G2 while G1's
-rows survive un-retired.
-
-Two consequences. G1's rows stay `is_active = 1` forever, so the panel shows dead notifications
-as live and "Dismiss on phone" targets a dead generation. And G1 is not in `retired_generation`,
-so a later `beginSession` announcing G1 passes the retired check, sets `cursor = 0`, and the first
-`ingestEvent` at seq 1 hits the surviving `(device, G1, 1)` composite primary key — **a hard throw
-out of `runNormalLoop` on every reconnect, with no recovery short of "forget device".**
-
-*Fix:* make `confirmPairing` do the same boundary work, and make `beginSession` assert on reset
-that no rows exist for the incoming `(device, generation)` so a rollback fails loudly at admission
-rather than wedging on first insert.
+**B-01 · `confirmPairing` leaves the superseded generation un-retired** — `high` [S] · **RESOLVED on `main` by
+[#31](https://github.com/L-K-M/Eko/pull/31)**. The branch makes pairing and normal admission share one
+transition transaction, retires prior namespaces represented by durable state, deactivates invalid
+materialized state and preserves future generation boundaries across unpair. It is not yet on `main`.
 
 **B-02 · `AckAccumulator.flush` is reentrant** — `medium` [S] · `SessionManager.swift:993,1013`
 `lastSent` is mutated *after* `await transport.send`. Actor reentrancy lets the 1-second timer and
@@ -196,8 +329,9 @@ One-line fix: assign after the check, or derive it from the peer certificate.
 **B-07 · Event receipts grow unbounded within a generation** — `low` [S] · `EkoStore.swift:1483,1516`
 `prune` strips payloads but never deletes rows for the current generation, because the duplicate
 check needs them. Sound reasoning; the effect is a `WITHOUT ROWID` table growing monotonically for
-the life of a pairing, with `notification_key` up to 8 KiB per row. Bound the window below
-max(Mac retention, the phone's 48 h/2 000 outbox) and record one gap span for the deleted range.
+the life of a pairing, with `notification_key` up to 8 KiB per row. A gap is not a legal substitute:
+event/gap positions cannot overlap and duplicate retransmission still needs equivalence proof. Design
+a compact applied-event receipt or revise the duplicate contract explicitly; retain rows until then.
 
 ### Android core
 
@@ -290,7 +424,8 @@ shared `localDeviceName()`.
 **P-01 · The feed query cannot use an index, and every event dirties the `device` table** — `high` [S]
 `EkoStore.swift:214,801,1701,1793`
 
-Four compounding problems, of which #22 fixed only the last:
+Four compounding problems. The open, conflicting #22 branch proposes fixes for portions of this path,
+but none of them are current `main` behavior:
 
 - Every committed event runs `UPDATE device SET processed_through_seq, last_seen_ms`, and both live
   `ValueObservation`s read `device` — so GRDB's tracked region is invalidated by every ingest,
@@ -338,10 +473,9 @@ allocation. Pass closures plus `now` as a value and make the row `Equatable`; ho
 yield into a stream constructed *without* a buffering policy, which defaults to `.unbounded`. The
 MainActor consumers then walk every stale snapshot in order. **One word, three times.**
 
-**P-06 · Inbound queue is unbounded with an O(n) dequeue** — `medium` [S] · `NetworkTransport.swift:162,191`
-`receiveNext()` re-arms unconditionally, so TCP flow control never engages and peak memory tracks the
-whole backlog. `messages.removeFirst()` on an `Array` is O(n), making a full drain O(n²). Same defect
-as [S-01](#s-01), which is its security-facing half — fix once.
+**P-06 · Inbound queue is unbounded with an O(n) dequeue** — `medium` [S] · **RESOLVED on `main` by
+[#30](https://github.com/L-K-M/Eko/pull/30)**. The branch replaces it with a bounded count/byte ring,
+O(1) dequeue and deterministic resource-exhaustion/cancellation behavior; `main` remains affected.
 
 **P-07 · OTP extraction allocates one `String` per Unicode scalar** — `medium` [S]
 `OTPExtractor.swift:81,193` — `normalizeDigits` heap-allocates per scalar over the **full** text; the
@@ -389,19 +523,14 @@ freshly allocated array costs nothing. Hoisting the grouping into the model is t
 
 ## 3. Interface — macOS
 
-**M-01 · Gap rows print raw wire enum tokens** — `high` [S] · `PanelViews.swift:414`, `SettingsView.swift:241`
-The most user-facing warning in the product reads *"Telefon könnte Benachrichtigungen verpasst haben ·
-writer_overflow"* — an untranslated snake_case protocol token, in an app whose selling point includes
-complete EN+DE localization. Settings → Diagnostics has the same leak via `String(describing:)` on
-three state enums, truncated to two lines. `GapSpan.startTime`/`endTime` are decoded and never
-rendered; "may have missed notifications" without a time range is not actionable.
+**M-01 · Gap rows omit their time range and unknown evidence falls back to raw text** — `medium` [S]
+#25 localized the three normative `gapReason` tokens and the diagnostics state enums. The residual is
+free-form/unknown capture evidence rendered verbatim, plus decoded `GapSpan.startTime`/`endTime` that
+are never shown; "may have missed notifications" without a time range is not actionable.
 
-**M-02 · The error strip is permanent** — `high` [S] · `AppModel.swift:107,190`, `PanelViews.swift:134`
-`fatalError` is written in exactly one place and never cleared; `ErrorStrip` has no dismiss, no retry,
-no expiry. And it is set from *transient* conditions — a failed `setStarred`, a failed export,
-`beginPairing` before the listener has bound. So clicking Add phone one second too early after launch
-pins a full-bleed red bar across the panel for the rest of the process lifetime. The bar is also
-`Color.red.opacity(0.88)` with white `.caption` text, ~3.5:1 and backdrop-dependent.
+**M-02 · ~~The error strip is permanent~~** — **addressed on `main` by
+[#25](https://github.com/L-K-M/Eko/pull/25)** with explicit dismissal and self-clearing behavior.
+Contrast and broader error-recovery presentation remain under SOL-45 and SOL-48.
 
 **M-03 · Definitive gap rows are undeletable and permanently pinned** — `high` [S]
 `PanelViews.swift:159`, `EkoStore.swift:1568`
@@ -421,10 +550,9 @@ rows sliding under a stationary pointer then cascade into hover flicker while sc
 `.accessibilityElement(children: .contain)` with `.accessibilityLabel` is contradictory — VoiceOver
 reads the summary and then re-reads every child.
 
-**M-05 · Unpair fires immediately; the less destructive Forget is confirmed** — `high` [S]
-`SettingsView.swift:123` — the app guards the recoverable action and leaves the irreversible one one
-click away, as two identical small destructive buttons in the same row. Recovery is the full pairing
-flow on the phone.
+**M-05 · Unpair fires immediately; the less destructive Forget is confirmed** — `high` [S] · **IN
+REVIEW in [#33](https://github.com/L-K-M/Eko/pull/33)**. The branch adds a localized alert naming the
+phone and explaining history/re-pair effects, and rejects duplicate, stale and already-revoked actions.
 
 **M-06 · `PreferenceRow` copies its model into `@State` at init** — `high` [S] · `SettingsView.swift:191`
 `State(initialValue:)` is honoured only on first construction, and the parent list is driven by a live
@@ -432,22 +560,17 @@ flow on the phone.
 round-trip echo — is silently discarded, while `onChange` writes on every mutation. **A write-only
 surface whose displayed state can permanently diverge from what is persisted.**
 
-**M-07 · `PairingDisplay.token` is dead code; the fingerprint is not selectable** — `low` [S] · **downgraded**
-The original claim — no manual fallback at all — is refuted. PLAN asks for a manual **host:port** line
-and `PanelViews.swift:476` renders exactly that, and token-less pairing is a first-class protocol path,
-not a degraded one: with no token the flow runs the commit-then-reveal SAS and the user compares the
-short code. What survives is smaller: `PairingDisplay.token` is written and never read by any view
-(the QR payload carries `invitation.token` independently), and the fingerprint is shown truncated
-without `.textSelection(.enabled)`, so a security-conscious user cannot copy it to compare.
+**M-07 · The pairing fingerprint is not selectable** — `low` [S] · **narrowed by #26**
+The original manual-fallback and dead-token claims are closed: token-less SAS remains first-class,
+manual host:port is visible and #26 now renders `PairingDisplay.token`. The fingerprint is still shown
+truncated without `.textSelection(.enabled)`, so a security-conscious user cannot copy it to compare.
 
 <a id="m-08"></a>
 **M-08 · Banner authorization is provisional-only and nothing surfaces it** — `high` [S]
-`NotificationCoordinator.swift:43,105`
-Provisional authorization means **quiet** delivery — no banner — until the user promotes the app. Since
-native banners with a Copy code action are the headline feature, the default first-run experience is
-that nothing visibly happens when a code arrives. `UNAuthorizationStatus` is never read, and there is
-no `willPresent`, so even after promotion banners are suppressed while Eko is frontmost — which is
-exactly the state `showPanel()` forces.
+`NotificationCoordinator.swift:43,105`. #25 added `.sound` authorization and `willPresent`, including
+a delivery-time pause gate. The remaining defect is authorization UX: provisional means quiet delivery
+until promotion, `UNAuthorizationStatus` is never surfaced, and Settings offers no explanation or path
+for provisional, denied or later-revoked access.
 
 **M-09 · Contrast failures in light mode** — `medium` [S] · `PanelViews.swift:264,286,409`
 `FilterButton` pairs literal white with `Color.accentColor`, which on macOS resolves to the *user's*
@@ -509,13 +632,10 @@ gap. (F-01's "update notice" row is the *Android* promise, which is separate and
 
 ## 4. Interface — Android
 
-**A-01 · Permission denials produce silently dead buttons** — `high` [S] · `MainActivity.kt:72,135`
-Camera denial does nothing at all — no message, no rationale, no route to Settings — and after the
-second denial the system dialog stops appearing, so "Scan QR code" becomes a button that visibly does
-nothing, forever. POST_NOTIFICATIONS is the same shape. Neither path calls
-`shouldShowRequestPermissionRationale`, and there is **no `Snackbar`/`SnackbarHost` anywhere in the
-module**, so there is no channel for transient feedback at all. Returning from Settings without
-granting leaves the card byte-identical.
+**A-01 · Permanent notification denial has no recovery path** — `high` [S] · **narrowed by #25**
+#25 made camera denial visible. `POST_NOTIFICATIONS` remains a fire-and-refresh path: after permanent
+denial there is no rationale, denial-specific state or route to App Info, and returning without the
+grant leaves the checklist byte-identical.
 
 **A-02 · Checklist state is conveyed by colour and a null-described icon** — `high` [S]
 `EkoScreens.kt:257,266,439`
@@ -532,13 +652,10 @@ There is no progress indicator of any kind in the app.
 The behaviour is defensible; the silence is not. See also [B-08](#b-08), which makes it fire far more
 often than intended.
 
-**A-04 · Diagnostics leaks raw internals** — `medium` [S] · `EkoScreens.kt:631`, `TransportRuntime.kt:43`
-Untranslated Kotlin class names where localized `status_*` strings already exist; raw epoch millis,
-because `log()` prefixes every line with `System.currentTimeMillis()`; a numeric `ApplicationExitInfo`
-constant rendered as "Recent process exit reason: 10"; raw presence events and association IDs. All
-100 log lines render eagerly inside one `LazyColumn` item. Meanwhile `lastTransition`,
-`commitFailures` and `reconciliationFailures` are collected and never shown, though PLAN lists NLS
-bind transitions as a requirement.
+**A-04 · Diagnostics still expose low-level data instead of actionable health** — `medium` [S] ·
+**narrowed by #25**. Transport states and presence are localized. Remaining issues include raw epoch
+millis, numeric `ApplicationExitInfo` reasons and association IDs; all 100 log lines render eagerly in
+one item, while collected transition/commit/reconciliation evidence is not surfaced usefully.
 
 **A-05 · Foreground-service notification has no deep link** — `medium` [S] · `ConnectionService.kt:214`
 A bare launch intent with no extras, and `MainActivity` has no `onNewIntent`. The notification saying
@@ -551,8 +668,8 @@ written only by `recordSeen()` during capture, so it contains apps that have act
 notification — not every installed app. What survives is small: `AppWithRule.lastSeenWall` is selected
 by the query and carried into the UI but never rendered (a free "last notification 2 days ago" line),
 and the "Contains codes" switch is offered with no explanation of what it changes. App icons and a
-search field remain worthwhile once the list is long enough to need them. Separately, both Apps and
-Home do flash their empty state before data loads, because `stateIn` starts at `emptyList()`.
+search field remain worthwhile once the list is long enough to need them. #25 removed the transient
+empty-state flash while initial data loads.
 
 **A-07 · Pending pairings and the `+` action are ambiguous** — `low` [S] · `EkoScreens.kt:129,340`
 Pending pairings are unlabelled bare `TextButton`s with no expiry, no endpoint and **no way to dismiss
@@ -566,14 +683,9 @@ disappear while the handle keeps ticking toward expiry.
 ## 5. Security & privacy
 
 <a id="s-01"></a>
-**S-01 · Unbounded inbound frame queue, reachable pre-confirmation** — `high` [S]
-`NetworkTransport.swift:132,162,174`
-`receiveNext()` always re-arms and appends into an uncapped array. The consumer has long stalls —
-most importantly `runPairing` blocking on `await pairingApproval(pending)` for up to the 5-minute
-attempt expiry while the user decides. Nothing is read during that window and the reader keeps
-enqueuing. **That window is reachable by any peer pairing mode admitted, before any user
-confirmation**, so a LAN host can grow the Mac's memory until it is OOM-killed. Cap count *and* bytes,
-and either apply real backpressure or treat overflow as a protocol violation.
+**S-01 · Unbounded inbound frame queue, reachable pre-confirmation** — `high` [S] · **RESOLVED on `main` by
+[#30](https://github.com/L-K-M/Eko/pull/30)** with independent message/byte ceilings and terminal
+resource-exhaustion behavior. Until merge, pairing approval can still grow `main` without bound.
 
 **S-02 · Pairing admission latches the fingerprint inside the TLS verify block** — `medium` [S]
 `TLSListener.swift:129`, `PeerAdmission.swift:58`
@@ -583,17 +695,15 @@ SAS, any user action, and the legitimate phone cannot pair until the window is r
 denial-of-pairing rather than a trust bypass, but trivially triggerable by anything on the network.
 
 <a id="s-03"></a>
-**S-03 · macOS diagnostics export ignores the documented redaction contract** — `high` [S]
-`DiagnosticsRecorder.swift:72`, `docs/diagnostics.md:57`
-The docs define a mandatory redaction table and state that a default export "must transform sensitive
-values before writing the archive, not merely hide them in the UI". The exporter honours exactly one
-row (title/body dropped). Device IDs, device names, certificate fingerprints and addresses are written
-verbatim — and the support docs route every escalation through this file.
+**S-03 · macOS diagnostics export ignores the documented redaction contract** — `high` [S] · **IN
+REVIEW in [#28](https://github.com/L-K-M/Eko/pull/28)** for redaction. The branch prevents default
+export construction from serializing identity models/certificates/addresses, uses per-export aliases,
+redacts free-form event messages and adds canary tests. The content checkbox is still sticky on `main`;
+#22's one-export reset must be selectively rebased after #28.
 
-**S-04 · Banking/TAN exclusion inspects only the body** — `medium` [S] · `NotificationCoordinator.swift:110`
-PLAN promises auto-copy is "never for banking/TAN messages"; the gate is one regex over `outcome.body`,
-which never includes the **title** and never considers the **app identity**. A message titled "Zahlung
-freigeben" with body "Code: 481920" passes. (The regex is also recompiled per call.)
+**S-04 · Banking/TAN exclusion inspects only the body** — `medium` [S] · **RESOLVED on `main` by
+[#35](https://github.com/L-K-M/Eko/pull/35)**. The branch checks title, displayed body, app label and
+package with one retained Unicode-normalized matcher and compound/source-identity regressions.
 
 **S-05 · Bonjour advertises a permanent identity fingerprint on every network, always** — `medium` [S]
 `BonjourPublisher.swift:31` — the TXT record carries the Mac's 64-hex certificate fingerprint, from a
@@ -728,13 +838,11 @@ notification and a panel keyboard shortcut that were never built; the release ch
 entitlement allowlist omits a shipped, required entitlement. (The `macos/README.md` build-command
 claim is **withdrawn** — `Scripts/verify-macos.sh` is the sanctioned gate and README points at it.)
 
-**C-06 · Supply chain and tooling** — `medium` **[V]**
-No `Package.resolved` is committed and `swift-crypto` is pinned as a range, so macOS builds are not
-reproducible. No version catalog: `androidx.core:core-ktx` and `kotlinx-coroutines` versions are
-duplicated verbatim across four and five module files. `:outbox` uses `kapt` for Room, which lint
-flags — with Kotlin 2.2, kapt is legacy and KSP is materially faster. And **no test on either platform
-asserts that a redacted diagnostics export contains no notification content** — the one property the
-redaction contract exists to guarantee (see [S-03](#s-03)).
+**C-06 · Supply chain and tooling** — `medium` **[V]** · **split across in-review #28 and #36**
+#36 proposes the exact `swift-crypto` pin and #28 proposes Mac diagnostics redaction canaries; neither
+is on `main` yet. After they merge, the residual is to pin workflow-installed tools/validator packages
+and immutable Action revisions, add Gradle dependency verification/locking deliberately, introduce a
+version catalog for duplicated Android versions, and move Room from legacy `kapt` to KSP.
 
 **C-07 · Remaining lint findings** — `low` **[V]** — six `ApplySharedPref` synchronous `commit()` sites
 (one of which is [P-09](#p-09)), one `PluralsCandidate` in the app module, four unused string
@@ -825,7 +933,7 @@ and there is no `@FocusState` in the app, so opening the panel and typing does n
 nothing; the feed is a `LazyVStack`, so there is no selection model, no arrow navigation, no focus ring.
 For a menubar app whose whole value is speed, the interaction is mouse-only end to end. Focus search on
 open; ↑/↓ to move; Return to copy; ⌘⌫ to dismiss on the phone; `/` to search; ⌘1…⌘9 to grab the Nth
-code. (#21 added the Edit menu and Escape, which is the precondition.)
+code. (#25 supplied the main/Edit menu; Escape remains only in the conflicting #21 proposal.)
 
 **D-06 · Replace the Android checklist wall with a staged pager** — `idea`, large effort.
 `OnboardingScreen` presents all eight cards at once — ~400 words of system-permission prose and six
@@ -920,8 +1028,8 @@ focused on search rather than doing nothing.
 an opt-in code chip, a struck glyph with a *count*, and a progress arc during sync. Shipped is four
 unrelated symbols that swap the icon's whole identity, so the mark a user learns to aim for changes shape
 with connectivity. A small custom `NSView` with a stable glyph plus overlays; `BacklogSummary` already
-flows through `AppSessionSink` for the arc. (#21 fixed the redraw storm and the never-expiring badge —
-this is the design half.)
+flows through `AppSessionSink` for the arc. (#25 fixed badge expiry; #21's redraw-throttling work remains
+an unmerged, conflicting proposal. This is the design half.)
 
 **I-14 · Backlog progress as a compact pill, and the missing inline banner** — medium. Completion is
 announced as a system notification — a banner about banners — while during the replay the panel shows

@@ -3,7 +3,10 @@ package dev.eko.pairing
 import android.companion.CompanionDeviceManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import dev.eko.core.EkoJson
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,6 +20,18 @@ import org.robolectric.annotation.Config
 @Config(sdk = [32])
 class CdmAssociationControllerTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
+
+    @Test
+    fun `BLE service UUID matches the shared discovery vector`() {
+        val content = requireNotNull(javaClass.classLoader?.getResource("discovery.json")) {
+            "Missing shared discovery vector"
+        }.readText()
+        val vector = EkoJson.parseToJsonElement(content).jsonObject
+        val expected = vector.getValue("ble_service_uuid").jsonPrimitive.content
+
+        assertEquals("eko-discovery-v1", vector.getValue("format").jsonPrimitive.content)
+        assertEquals(expected, EKO_BLE_SERVICE_UUID.toString())
+    }
 
     @Test
     fun `external association inventory changes are detected for listener rebind`() = runTest {

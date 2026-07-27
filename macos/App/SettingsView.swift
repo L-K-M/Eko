@@ -136,7 +136,7 @@ private struct DevicesSettingsView: View {
                             showUnpairDialog = true
                         }
                         .disabled(
-                            device.pairingState == .revokedPending
+                            device.pairingState != .confirmed
                                 || model.unpairRequestsInFlight.contains(device.id)
                         )
                         .accessibilityLabel(String(localized: "action.unpair", defaultValue: "Unpair") + " " + device.name)
@@ -159,8 +159,11 @@ private struct DevicesSettingsView: View {
         ) { device in
             Button(String(localized: "action.unpair", defaultValue: "Unpair"), role: .destructive) {
                 model.requestUnpair(device)
+                devicePendingUnpair = nil
             }
-            Button(String(localized: "action.cancel", defaultValue: "Cancel"), role: .cancel) {}
+            Button(String(localized: "action.cancel", defaultValue: "Cancel"), role: .cancel) {
+                devicePendingUnpair = nil
+            }
         } message: { device in
             Text(String.localizedStringWithFormat(
                 String(localized: "device.unpair.message", defaultValue: "Unpairing %@ stops notification mirroring, and the phone must be paired again. If it is offline, Eko immediately deletes its local notification history."),

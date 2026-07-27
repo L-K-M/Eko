@@ -104,9 +104,10 @@ record() { RESULTS+=("$1"); }
 DIST="$ROOT/dist"
 STAGED=0
 stage() {
-  local src="$1" name="${2:-$(basename "$1")}"
-  mkdir -p "$DIST"
-  rm -rf "${DIST:?}/$name"
+  local src="$1"
+  local name="${2:-$(basename "$1")}"
+  mkdir -p "$DIST" || return 1
+  rm -rf "${DIST:?}/$name" || return 1
   cp -R "$src" "$DIST/$name" || return 1
   STAGED=$((STAGED + 1))
   echo "-- staged dist/$name"
@@ -187,7 +188,10 @@ build_apk() {
   echo "-- gradlew $task"
   if ( cd android && ./gradlew "$task" ); then
     if [[ -f "$apk" ]]; then
-      stage "$apk" "$out"
+      if ! stage "$apk" "$out"; then
+        echo "!! apk: failed to stage $apk as dist/$out" >&2
+        record "apk: FAILED (staging)"; return 1
+      fi
       record "apk: built ($PROFILE) -> dist/$out"
     else
       echo "!! apk: $task succeeded but $apk is missing" >&2
@@ -280,7 +284,10 @@ build_app() {
     }
   fi
 
-  stage "$built" "Eko.app"
+  if ! stage "$built" "Eko.app"; then
+    echo "!! app: failed to stage $built as dist/Eko.app" >&2
+    record "app: FAILED (staging)"; return 1
+  fi
   record "app: built ($config) -> dist/Eko.app"
 
   if $INSTALL; then

@@ -28,8 +28,8 @@ import dev.eko.app.ui.QrScanner
 import dev.eko.capture.NotificationListenerController
 import dev.eko.pairing.AssociationEvent
 import dev.eko.pairing.CdmAssociationController
+import dev.eko.pairing.EKO_BLE_SERVICE_UUID
 import dev.eko.pairing.PairingQr
-import java.util.UUID
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
@@ -173,5 +173,3 @@ private fun EkoApp(viewModel: EkoViewModel) {
         },
     )
 }
-
-private val EKO_BLE_SERVICE_UUID: UUID = UUID.fromString("72c6f4e8-cc7b-4ea8-9657-8dbb49e7d041")

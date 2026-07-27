@@ -353,6 +353,38 @@
         }
       }
     },
+    "device.unpair.message": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beim Entkoppeln von %@ wird die Spiegelung beendet; das Telefon muss erneut gekoppelt werden. Ist es offline, löscht Eko seinen lokalen Benachrichtigungsverlauf sofort."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpairing %@ stops notification mirroring, and the phone must be paired again. If it is offline, Eko immediately deletes its local notification history."
+          }
+        }
+      }
+    },
+    "device.unpair.title": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Telefon entkoppeln?"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpair this phone?"
+          }
+        }
+      }
+    },
     "device.revoked": {
       "localizations": {
         "de": {

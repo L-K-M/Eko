@@ -63,25 +63,29 @@ internal object WireJson {
         put("unpair_id", unpairId)
     }
 
-    fun backlog(snapshot: BacklogSnapshot, syncId: String): List<JsonObject> = buildList {
-        add(buildJsonObject {
+    fun backlog(snapshot: BacklogSnapshot, syncId: String): List<OutboundFrame> = buildList {
+        add(OutboundFrame(buildJsonObject {
             put("type", "backlog_start")
             put("sync_id", syncId)
             put("from_seq", snapshot.replayFromSeq)
             put("replay_to_seq", snapshot.highWater)
             put("event_count", snapshot.events.size)
-        })
-        snapshot.gaps.forEach { add(gap(it, syncId)) }
-        snapshot.events.forEach { add(event(it, replayed = true, syncId = syncId)) }
+        }))
+        snapshot.gaps.forEach { gap ->
+            add(OutboundFrame(gap(gap, syncId), SequenceCoverage(gap.fromSeq, gap.toSeq)))
+        }
+        snapshot.events.forEach { event ->
+            add(OutboundFrame(event(event, replayed = true, syncId = syncId), SequenceCoverage(event.seq, event.seq)))
+        }
         val activeChunks = boundedActiveChunks(syncId, snapshot.active)
         activeChunks.forEachIndexed { index, chunk ->
-            add(activeChunk(syncId, index, chunk, index == activeChunks.lastIndex))
+            add(OutboundFrame(activeChunk(syncId, index, chunk, index == activeChunks.lastIndex)))
         }
-        add(buildJsonObject {
+        add(OutboundFrame(buildJsonObject {
             put("type", "backlog_end")
             put("sync_id", syncId)
             put("state_seq", snapshot.highWater)
-        })
+        }))
     }
 
     fun event(entity: OutboxEventEntity, replayed: Boolean, syncId: String? = null): JsonObject {

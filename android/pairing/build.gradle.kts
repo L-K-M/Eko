@@ -21,6 +21,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     testOptions.unitTests.isIncludeAndroidResources = true
+    sourceSets["test"].resources.srcDir(rootProject.projectDir.resolve("../protocol/test-vectors"))
 }
 
 kotlin {

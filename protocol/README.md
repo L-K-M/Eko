@@ -14,6 +14,7 @@ schemas/
 test-vectors/
   framing.json
   content-hash.json
+  discovery.json
   sas.json
   malformed-frames.json
   scenarios/*.json
@@ -74,6 +75,13 @@ boundary for short vectors.
 case, serialize `n` with RFC 8785 JCS, UTF-8 encode it, and compare both
 `canonical_utf8_hex` and the complete lowercase `sha256`. `canonical_utf8` is a
 human-readable copy of the same bytes.
+
+## Discovery Constants
+
+`test-vectors/discovery.json` has format `eko-discovery-v1`. Its fixed BLE
+service UUID is advertised by the Mac and used by Android's companion-device
+filter. Discovery remains an untrusted hint; this constant does not establish
+peer identity.
 
 ## SAS Vectors
 

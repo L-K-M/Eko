@@ -8,6 +8,12 @@ public enum DecodedFrame: Equatable, Sendable {
     case json(Data)
 }
 
+enum FrameLayout {
+    static let lengthPrefixByteCount = 4
+    static let typeByteCount = 1
+    static let headerByteCount = lengthPrefixByteCount + typeByteCount
+}
+
 public struct FrameDecoder: Sendable {
     private var storage = Data()
     private var offset = 0
@@ -18,17 +24,17 @@ public struct FrameDecoder: Sendable {
         storage.append(bytes)
         var frames: [DecodedFrame] = []
 
-        while storage.count - offset >= 4 {
+        while storage.count - offset >= FrameLayout.lengthPrefixByteCount {
             let length = Int(storage.uint32(at: offset))
             guard length > 0 else { throw EkoCoreError.protocolViolation("frame length is zero") }
             guard length <= ProtocolLimits.maximumFrameLength else {
                 throw EkoCoreError.frameTooLarge
             }
-            guard storage.count - offset >= 4 + length else { break }
+            guard storage.count - offset >= FrameLayout.lengthPrefixByteCount + length else { break }
 
-            let type = storage[offset + 4]
-            let payloadStart = offset + 5
-            let payloadEnd = offset + 4 + length
+            let type = storage[offset + FrameLayout.lengthPrefixByteCount]
+            let payloadStart = offset + FrameLayout.headerByteCount
+            let payloadEnd = offset + FrameLayout.lengthPrefixByteCount + length
             let payload = Data(storage[payloadStart..<payloadEnd])
             if type == FrameType.json.rawValue {
                 frames.append(.json(payload))
@@ -49,7 +55,7 @@ public struct FrameDecoder: Sendable {
     public mutating func finish() throws {
         let remaining = storage.count - offset
         guard remaining > 0 else { return }
-        guard remaining >= 4 else {
+        guard remaining >= FrameLayout.lengthPrefixByteCount else {
             throw EkoCoreError.protocolViolation("connection ended during frame prefix")
         }
         let length = Int(storage.uint32(at: offset))
@@ -57,7 +63,7 @@ public struct FrameDecoder: Sendable {
         guard length <= ProtocolLimits.maximumFrameLength else {
             throw EkoCoreError.frameTooLarge
         }
-        guard remaining >= 4 + length else {
+        guard remaining >= FrameLayout.lengthPrefixByteCount + length else {
             throw EkoCoreError.protocolViolation("connection ended during frame body")
         }
     }
@@ -67,11 +73,11 @@ public struct FrameDecoder: Sendable {
 
 public enum FrameEncoder {
     public static func encode(type: FrameType, payload: Data) throws -> Data {
-        let length = payload.count + 1
+        let length = payload.count + FrameLayout.typeByteCount
         guard length <= ProtocolLimits.maximumFrameLength else {
             throw EkoCoreError.frameTooLarge
         }
-        var frame = Data(capacity: length + 4)
+        var frame = Data(capacity: payload.count + FrameLayout.headerByteCount)
         frame.appendUInt32(UInt32(length))
         frame.append(type.rawValue)
         frame.append(payload)

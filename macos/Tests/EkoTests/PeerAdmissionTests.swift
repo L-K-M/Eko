@@ -57,6 +57,32 @@ final class PeerAdmissionTests: XCTestCase {
         )
         XCTAssertEqual(authorizer.authorize(certificateDER: Data(repeating: 9, count: 96)), .rejected)
         XCTAssertTrue(reasons.messages.last?.contains("already claimed") == true)
+
+        // Collision defense: a pairing attempt keyed by this fingerprint whose
+        // stored DER differs byte-for-byte is a pin mismatch, not an unknown.
+        let mismatched = Data(repeating: 10, count: 96)
+        try store.savePairingAttempt(PersistedPairingAttempt(
+            attemptID: "ffeeddccbbaa99887766554433221100",
+            deviceID: EkoCrypto.fingerprint(of: mismatched),
+            deviceName: "Colliding Phone",
+            localDeviceName: "Mac",
+            peerCertificateDER: Data(repeating: 11, count: 96),
+            localNonce: Data(repeating: 1, count: 32),
+            localCommitment: Data(repeating: 2, count: 32),
+            peerCommitment: Data(),
+            peerNonce: Data(),
+            verificationCode: "",
+            transcriptHash: Data(),
+            qrPreauthenticated: false,
+            localConfirmed: false,
+            peerConfirmed: false,
+            highestConnectionEpoch: 1,
+            outboxGeneration: testGenerationA,
+            initialCursor: nil,
+            expiresAt: Date().addingTimeInterval(300)
+        ))
+        XCTAssertEqual(authorizer.authorize(certificateDER: mismatched), .rejected)
+        XCTAssertTrue(reasons.messages.last?.contains("does not match the stored pin") == true)
     }
 
     private final class ReasonLog: @unchecked Sendable {

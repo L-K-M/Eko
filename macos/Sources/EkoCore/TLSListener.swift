@@ -138,8 +138,7 @@ public final class TLSListener: @unchecked Sendable {
             // ignored — peers present self-signed certificates and admission
             // is decided by the exact-DER pin, not by CA trust.
             _ = SecTrustSetNetworkFetchAllowed(trustReference, false)
-            var evaluationError: CFError?
-            _ = SecTrustEvaluateWithError(trustReference, &evaluationError)
+            _ = SecTrustEvaluateWithError(trustReference, nil)
             guard let chain = SecTrustCopyCertificateChain(trustReference) as? [SecCertificate],
                   let leaf = chain.first else {
                 complete(false)

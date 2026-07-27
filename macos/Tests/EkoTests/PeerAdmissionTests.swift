@@ -38,6 +38,70 @@ final class PeerAdmissionTests: XCTestCase {
         )
     }
 
+    func testRejectionsReportTheirReason() throws {
+        let store = try EkoStore(path: temporaryDatabasePath())
+        let pairingMode = PairingModeController()
+        let reasons = ReasonLog()
+        let authorizer = StorePeerAuthorizer(store: store, pairingMode: pairingMode) { reasons.append($0) }
+
+        // Pairing mode inactive: an unknown certificate is rejected with the reason.
+        XCTAssertEqual(authorizer.authorize(certificateDER: Data(repeating: 7, count: 96)), .rejected)
+        XCTAssertTrue(reasons.messages.last?.contains("pairing mode is not active") == true)
+
+        // Another device claimed the active window first.
+        _ = try pairingMode.activate()
+        let first = Data(repeating: 8, count: 96)
+        XCTAssertEqual(
+            authorizer.authorize(certificateDER: first),
+            .pairing(fingerprint: EkoCrypto.fingerprint(of: first))
+        )
+        XCTAssertEqual(authorizer.authorize(certificateDER: Data(repeating: 9, count: 96)), .rejected)
+        XCTAssertTrue(reasons.messages.last?.contains("already claimed") == true)
+
+        // Collision defense: a pairing attempt keyed by this fingerprint whose
+        // stored DER differs byte-for-byte is a pin mismatch, not an unknown.
+        let mismatched = Data(repeating: 10, count: 96)
+        try store.savePairingAttempt(PersistedPairingAttempt(
+            attemptID: "ffeeddccbbaa99887766554433221100",
+            deviceID: EkoCrypto.fingerprint(of: mismatched),
+            deviceName: "Colliding Phone",
+            localDeviceName: "Mac",
+            peerCertificateDER: Data(repeating: 11, count: 96),
+            localNonce: Data(repeating: 1, count: 32),
+            localCommitment: Data(repeating: 2, count: 32),
+            peerCommitment: Data(),
+            peerNonce: Data(),
+            verificationCode: "",
+            transcriptHash: Data(),
+            qrPreauthenticated: false,
+            localConfirmed: false,
+            peerConfirmed: false,
+            highestConnectionEpoch: 1,
+            outboxGeneration: testGenerationA,
+            initialCursor: nil,
+            expiresAt: Date().addingTimeInterval(300)
+        ))
+        XCTAssertEqual(authorizer.authorize(certificateDER: mismatched), .rejected)
+        XCTAssertTrue(reasons.messages.last?.contains("does not match the stored pin") == true)
+    }
+
+    private final class ReasonLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: [String] = []
+
+        var messages: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+
+        func append(_ message: String) {
+            lock.lock()
+            stored.append(message)
+            lock.unlock()
+        }
+    }
+
     func testQRTokenValidationDoesNotConsumeUntilMarked() throws {
         let pairingMode = PairingModeController()
         let invitation = try pairingMode.activate()

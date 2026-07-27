@@ -130,6 +130,7 @@
     <string name="presence_disappeared">außer Reichweite</string>
     <string name="token_hint">Wird auf dem Mac unter dem QR-Code angezeigt. Leer lassen, um stattdessen einen Bestätigungscode zu vergleichen.</string>
     <string name="pair_error_connection">Der Mac hat die Verbindung beendet. Öffnen Sie \u201eTelefon hinzufügen\u201c auf dem Mac, damit die Kopplung aktiv ist, und versuchen Sie es erneut.</string>
+    <string name="pair_error_tls_handshake">Der sichere Handshake mit dem Mac ist fehlgeschlagen (%1$s). Stellen Sie sicher, dass \u201eTelefon hinzufügen\u201c auf dem Mac geöffnet ist, und versuchen Sie es erneut.</string>
     <string name="pair_error_unknown_host">Der Mac wurde unter diesem Namen nicht gefunden. Verwenden Sie seine IP-Adresse oder stellen Sie sicher, dass beide Geräte im selben Netzwerk sind.</string>
     <string name="pair_error_unreachable">Der Mac ist nicht erreichbar. Prüfen Sie, ob beide Geräte im selben Netzwerk sind und die Kopplung auf dem Mac geöffnet ist.</string>
 </resources>

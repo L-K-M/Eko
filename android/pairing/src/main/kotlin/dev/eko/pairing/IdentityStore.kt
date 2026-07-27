@@ -44,6 +44,15 @@ class IdentityStore private constructor(context: Context) : EventStoreResetJourn
         current.copy(certificateDerBase64 = certificateDerBase64)
     }
 
+    // Deliberate identity rotation (e.g. replacing a keystore key that cannot
+    // sign TLS handshakes). Only legal while no peer has pinned the identity;
+    // pending pairings bind the old certificate in their commitments, so they
+    // are dropped with it.
+    suspend fun resetIdentity(certificateDerBase64: String) = update { current ->
+        check(current.confirmedPeers.isEmpty()) { "Cannot rotate an identity that peers have pinned" }
+        current.copy(certificateDerBase64 = certificateDerBase64, pendingPairings = emptyList())
+    }
+
     suspend fun savePending(pending: PendingPairing) = update { current ->
         val existing = current.pendingPairings.firstOrNull { it.attemptId == pending.attemptId }
         if (existing != null) {

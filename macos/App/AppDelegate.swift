@@ -188,13 +188,23 @@ final class AppRuntime {
         )
         model.attach(sessionManager: sessions)
         model.openPanel = { panelOpenBroker.open() }
-        let authorizer = StorePeerAuthorizer(store: store, pairingMode: pairingMode)
+        let diagnostics = self.diagnostics
+        let authorizer = StorePeerAuthorizer(
+            store: store,
+            pairingMode: pairingMode,
+            onRejection: { message in
+                Task { await diagnostics.record(.warning, category: "listener", message: message) }
+            }
+        )
         listener = TLSListener(
             identity: identity,
             authorizer: authorizer,
             sessionManager: sessions,
             stateHandler: { [weak model] state in
                 Task { @MainActor in model?.setListenerState(state) }
+            },
+            events: { message in
+                Task { await diagnostics.record(.warning, category: "listener", message: message) }
             }
         )
         let bonjour = BonjourPublisher { [weak model] state in model?.setBonjourState(state) }

@@ -84,6 +84,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var networkPathState: NetworkPathState = .unsatisfied
     @Published private(set) var diagnosticsEvents: [DiagnosticEvent] = []
     @Published private(set) var boundPort: UInt16?
+    @Published private(set) var unpairRequestsInFlight: Set<String> = []
     @Published var panelPinned = false
     @Published var focusedNotificationID: String?
     @Published var includeContentInDiagnostics = false
@@ -322,10 +323,15 @@ final class AppModel: ObservableObject {
     }
 
     func requestUnpair(_ device: Device) {
+        guard devices.contains(where: { $0.id == device.id && $0.pairingState == .confirmed }),
+              !unpairRequestsInFlight.contains(device.id),
+              let sessionManager else { return }
+        unpairRequestsInFlight.insert(device.id)
         Task {
             do {
-                try await sessionManager?.requestUnpair(deviceID: device.id)
+                try await sessionManager.requestUnpair(deviceID: device.id)
             } catch {
+                unpairRequestsInFlight.remove(device.id)
                 await diagnostics.record(.error, category: "unpair", message: error.localizedDescription)
             }
         }
@@ -405,11 +411,12 @@ final class AppModel: ObservableObject {
                 for try await value in store.observeDevices() {
                     let previouslyConfirmed = Set(self.devices.filter { $0.pairingState == .confirmed }.map(\.id))
                     self.devices = value
+                    let confirmed = Set(value.filter { $0.pairingState == .confirmed }.map(\.id))
+                    self.unpairRequestsInFlight.formIntersection(confirmed)
                     // Pairing completes in EkoCore with no callback into the
                     // app layer; a device turning confirmed while the QR is up
                     // is that signal. Without this the panel sits on a dead QR
                     // until the invitation expires.
-                    let confirmed = Set(value.filter { $0.pairingState == .confirmed }.map(\.id))
                     if self.route == .pairing,
                        self.pairingDisplay != nil,
                        !confirmed.subtracting(previouslyConfirmed).isEmpty {

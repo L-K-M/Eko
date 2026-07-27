@@ -543,6 +543,66 @@ final class SessionManagerTests: XCTestCase {
         } catch {}
     }
 
+    func testRejectedStaleUnpairDoesNotBlockDismissAfterRepair() async throws {
+        let phone = try vectorPhoneCertificate()
+        let store = try EkoStore(path: temporaryDatabasePath())
+        let mac = StubIdentity(certificateDER: macCertificate)
+        let sink = RecordingSink()
+        let manager = makeManager(store: store, identity: mac, sink: sink)
+
+        _ = try store.confirmPairing(
+            hello: testHello(certificateDER: phone.der, epoch: 1),
+            certificateDER: phone.der,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+        _ = try store.applyUnpair(
+            deviceID: phone.deviceID,
+            message: UnpairMessage(
+                unpairID: "deadbeef-0000-4000-8000-000000000004",
+                initiatorID: phone.deviceID,
+                peerID: mac.fingerprint,
+                reason: .userRequest
+            )
+        )
+        do {
+            try await manager.requestUnpair(deviceID: phone.deviceID)
+            XCTFail("A revoked device must reject a new local unpair")
+        } catch {
+            XCTAssertEqual(error as? EkoCoreError, .invalidState("device is not paired"))
+        }
+
+        _ = try store.confirmPairing(
+            hello: testHello(certificateDER: phone.der, generation: testGenerationB, epoch: 2),
+            certificateDER: phone.der,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+        let live = ScriptedTransport()
+        let liveTask = Task {
+            await manager.run(
+                admission: .paired(deviceID: phone.deviceID),
+                peerCertificateDER: phone.der,
+                transport: live
+            )
+        }
+        live.enqueue(.hello(testHello(
+            certificateDER: phone.der,
+            generation: testGenerationB,
+            epoch: 3
+        )))
+        enqueueEmptyBacklog(on: live)
+        let becameOnline = await waitUntil { sink.hasState(.online, for: phone.deviceID) }
+        XCTAssertTrue(becameOnline)
+
+        try await manager.dismiss(deviceID: phone.deviceID, key: "notification")
+        XCTAssertTrue(live.sentMessages().contains { $0.type == "dismiss" })
+        await live.close()
+        await liveTask.value
+    }
+
     // MARK: - Helpers
 
     private func makeManager(

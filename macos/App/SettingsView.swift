@@ -82,6 +82,8 @@ private struct GeneralSettingsView: View {
 
 private struct DevicesSettingsView: View {
     @ObservedObject var model: AppModel
+    @State private var devicePendingUnpair: Device?
+    @State private var showUnpairDialog = false
     @State private var devicePendingForget: Device?
     @State private var showForgetDialog = false
 
@@ -130,8 +132,13 @@ private struct DevicesSettingsView: View {
                                 .font(.caption.weight(.medium))
                         }
                         Button(String(localized: "action.unpair", defaultValue: "Unpair"), role: .destructive) {
-                            model.requestUnpair(device)
+                            devicePendingUnpair = device
+                            showUnpairDialog = true
                         }
+                        .disabled(
+                            device.pairingState == .revokedPending
+                                || model.unpairRequestsInFlight.contains(device.id)
+                        )
                         .accessibilityLabel(String(localized: "action.unpair", defaultValue: "Unpair") + " " + device.name)
                         if device.pairingState == .revokedPending {
                             Button(String(localized: "action.forget", defaultValue: "Forget…"), role: .destructive) {
@@ -144,6 +151,27 @@ private struct DevicesSettingsView: View {
                     .padding(.vertical, 5)
                 }
             }
+        }
+        .alert(
+            String(localized: "device.unpair.title", defaultValue: "Unpair this phone?"),
+            isPresented: $showUnpairDialog,
+            presenting: devicePendingUnpair
+        ) { device in
+            Button(String(localized: "action.unpair", defaultValue: "Unpair"), role: .destructive) {
+                model.requestUnpair(device)
+            }
+            Button(String(localized: "action.cancel", defaultValue: "Cancel"), role: .cancel) {}
+        } message: { device in
+            Text(String.localizedStringWithFormat(
+                String(localized: "device.unpair.message", defaultValue: "Unpairing %@ stops notification mirroring, and the phone must be paired again. If it is offline, Eko immediately deletes its local notification history."),
+                device.name
+            ))
+        }
+        .onChange(of: model.devices) { _, devices in
+            guard let pending = devicePendingUnpair,
+                  !devices.contains(where: { $0.id == pending.id && $0.pairingState == .confirmed }) else { return }
+            showUnpairDialog = false
+            devicePendingUnpair = nil
         }
         .confirmationDialog(
             String(localized: "device.forget.title", defaultValue: "Forget without notifying?"),

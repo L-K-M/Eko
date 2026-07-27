@@ -8,6 +8,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class FrameCodecTest {
     @Test
@@ -52,6 +53,37 @@ class FrameCodecTest {
     }
 
     @Test
+    fun `accepts objects and arrays at the 64 level nesting limit`() {
+        val payloads = listOf(nestedObject(levels = 64), nestedArray(levels = 64))
+
+        payloads.forEach { payload ->
+            val parsed = FrameCodec.readJson(ByteArrayInputStream(FrameCodec.encodeJson(payload)))
+            assertTrue("value" in parsed)
+        }
+    }
+
+    @Test
+    fun `rejects objects and arrays above the 64 level nesting limit`() {
+        val payloads = listOf(nestedObject(levels = 65), nestedArray(levels = 65))
+
+        payloads.forEach { payload ->
+            val error = assertFailsWith<ProtocolException> {
+                FrameCodec.readJson(ByteArrayInputStream(FrameCodec.encodeJson(payload)))
+            }
+            assertTrue(error.message.orEmpty().contains("nesting exceeds 64 levels"))
+        }
+    }
+
+    @Test
+    fun `rejects deeply nested JSON without overflowing the stack`() {
+        val encoded = FrameCodec.encodeJson(nestedObject(levels = 10_000))
+
+        assertFailsWith<ProtocolException> {
+            FrameCodec.readJson(ByteArrayInputStream(encoded))
+        }
+    }
+
+    @Test
     fun `skips unknown frame payload without interpreting it`() {
         val unknown = FrameCodec.encode(Frame(0x7f, ByteArray(128) { it.toByte() }))
         val next = FrameCodec.encodeJson("""{"type":"pong"}""")
@@ -59,5 +91,19 @@ class FrameCodecTest {
 
         assertEquals(0x7f, FrameCodec.read(stream)?.type)
         assertEquals("pong", FrameCodec.readJson(stream).requiredString("type"))
+    }
+
+    private fun nestedObject(levels: Int): String = buildString {
+        repeat(levels) { append("{\"value\":") }
+        append("null")
+        repeat(levels) { append('}') }
+    }
+
+    private fun nestedArray(levels: Int): String = buildString {
+        append("{\"value\":")
+        repeat(levels - 1) { append('[') }
+        append("null")
+        repeat(levels - 1) { append(']') }
+        append('}')
     }
 }

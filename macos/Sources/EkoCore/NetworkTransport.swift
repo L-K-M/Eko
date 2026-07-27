@@ -138,7 +138,10 @@ public final class NWFrameTransport: SessionTransport, @unchecked Sendable {
                         switch frame {
                         case .json(let payload):
                             let message = try ProtocolCodec.decode(payload)
-                            try self.inbox.yield(message, encodedByteCount: payload.count + 5)
+                            try self.inbox.yield(
+                                message,
+                                encodedByteCount: payload.count + FrameLayout.headerByteCount
+                            )
                         }
                     }
                 } catch {

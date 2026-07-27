@@ -7,6 +7,7 @@ public enum EkoCoreError: Error, Equatable, LocalizedError, Sendable {
     case invalidState(String)
     case sequenceConflict
     case frameTooLarge
+    case resourceExhausted
     case storage(String)
     case identity(String)
     case unauthorized
@@ -26,6 +27,7 @@ public enum EkoCoreError: Error, Equatable, LocalizedError, Sendable {
         case .invalidState(let detail): return "Invalid protocol state: \(detail)"
         case .sequenceConflict: return "A sequence position conflicts with committed state."
         case .frameTooLarge: return "The frame exceeds the protocol size limit."
+        case .resourceExhausted: return "The transport exceeded its bounded resource budget."
         case .storage(let detail): return "Storage error: \(detail)"
         case .identity(let detail): return "Identity error: \(detail)"
         case .unauthorized: return "The peer is not authorized."

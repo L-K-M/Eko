@@ -138,7 +138,7 @@ public final class NWFrameTransport: SessionTransport, @unchecked Sendable {
                         switch frame {
                         case .json(let payload):
                             let message = try ProtocolCodec.decode(payload)
-                            self.inbox.yield(message)
+                            try self.inbox.yield(message, encodedByteCount: payload.count + 5)
                         }
                     }
                 } catch {
@@ -168,30 +168,68 @@ public final class NWFrameTransport: SessionTransport, @unchecked Sendable {
     }
 }
 
-private final class MessageInbox: @unchecked Sendable {
+final class MessageInbox: @unchecked Sendable {
+    private final class CancellationToken: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+
+        var isCancelled: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return cancelled
+        }
+
+        func cancel() {
+            lock.lock()
+            cancelled = true
+            lock.unlock()
+        }
+    }
+
+    private struct QueuedMessage {
+        let message: WireMessage
+        let encodedByteCount: Int
+    }
+
     private struct Waiter {
         let id: UUID
         let continuation: CheckedContinuation<WireMessage?, Error>
     }
 
-    private var messages: [WireMessage] = []
+    private var messages: [QueuedMessage?]
+    private var messageHead = 0
+    private var messageCount = 0
+    private var queuedByteCount = 0
     private var waiter: Waiter?
     private var terminalError: Error?
     private var finished = false
-    private var cancelledWaiters: Set<UUID> = []
     private let lock = NSLock()
+    private let maximumQueuedBytes: Int
+
+    init(maximumQueuedMessages: Int = 256, maximumQueuedBytes: Int = 16 * 1_024 * 1_024) {
+        precondition(maximumQueuedMessages > 0)
+        precondition(maximumQueuedBytes > 0)
+        messages = Array(repeating: nil, count: maximumQueuedMessages)
+        self.maximumQueuedBytes = maximumQueuedBytes
+    }
 
     func next() async throws -> WireMessage? {
         try Task.checkCancellation()
         let id = UUID()
+        let cancellation = CancellationToken()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let result: Result<WireMessage?, Error>?
                 lock.lock()
-                if cancelledWaiters.remove(id) != nil {
+                if cancellation.isCancelled {
                     result = .failure(CancellationError())
-                } else if !messages.isEmpty {
-                    result = .success(messages.removeFirst())
+                } else if messageCount > 0 {
+                    let queued = messages[messageHead]!
+                    messages[messageHead] = nil
+                    messageHead = (messageHead + 1) % messages.count
+                    messageCount -= 1
+                    queuedByteCount -= queued.encodedByteCount
+                    result = .success(queued.message)
                 } else if let terminalError {
                     result = .failure(terminalError)
                 } else if finished {
@@ -206,11 +244,13 @@ private final class MessageInbox: @unchecked Sendable {
                 if let result { continuation.resume(with: result) }
             }
         } onCancel: {
+            cancellation.cancel()
             self.cancelWaiter(id: id)
         }
     }
 
-    func yield(_ message: WireMessage) {
+    func yield(_ message: WireMessage, encodedByteCount: Int) throws {
+        precondition(encodedByteCount >= 0)
         let continuation: CheckedContinuation<WireMessage?, Error>?
         lock.lock()
         guard !finished else {
@@ -221,7 +261,16 @@ private final class MessageInbox: @unchecked Sendable {
             self.waiter = nil
             continuation = waiter.continuation
         } else {
-            messages.append(message)
+            if messageCount == messages.count || encodedByteCount > maximumQueuedBytes - queuedByteCount {
+                finished = true
+                terminalError = EkoCoreError.resourceExhausted
+                lock.unlock()
+                throw EkoCoreError.resourceExhausted
+            }
+            let tail = (messageHead + messageCount) % messages.count
+            messages[tail] = QueuedMessage(message: message, encodedByteCount: encodedByteCount)
+            messageCount += 1
+            queuedByteCount += encodedByteCount
             continuation = nil
         }
         lock.unlock()
@@ -258,7 +307,6 @@ private final class MessageInbox: @unchecked Sendable {
             self.waiter = nil
             continuation = waiter.continuation
         } else {
-            cancelledWaiters.insert(id)
             continuation = nil
         }
         lock.unlock()

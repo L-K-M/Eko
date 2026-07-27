@@ -234,6 +234,144 @@ final class EkoStoreTests: XCTestCase {
         XCTAssertEqual(try fixture.store.device(id: fixture.hello.deviceID)?.highestConnectionEpoch, 4)
     }
 
+    func testSeenLegacyGenerationIsRetiredBeforeReplayCanCollide() throws {
+        let path = try temporaryDatabasePath()
+        let store = try EkoStore(path: path, clock: FixedClock(date: now))
+        let certificate = Data((0..<128).map { UInt8($0 & 0xff) })
+        let initial = testHello(certificateDER: certificate, generation: testGenerationA, epoch: 1)
+        _ = try store.confirmPairing(
+            hello: initial,
+            certificateDER: certificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+        _ = try store.ingestEvent(
+            deviceID: initial.deviceID,
+            generation: testGenerationA,
+            event: testEvent(sequence: 1)
+        )
+
+        // Reproduce the pre-fix state: confirmPairing selected G2 without retiring
+        // G1, whose rows still occupy that namespace.
+        let rawPool = try DatabasePool(path: path)
+        try rawPool.write { db in
+            try db.execute(
+                sql: "UPDATE device SET current_generation = ?, processed_through_seq = 0, highest_conn_epoch = 2 WHERE id = ?",
+                arguments: [testGenerationB, initial.deviceID]
+            )
+        }
+
+        let rollback = testHello(certificateDER: certificate, generation: testGenerationA, epoch: 3)
+        XCTAssertThrowsError(try store.confirmPairing(
+            hello: rollback,
+            certificateDER: certificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )) { error in
+            XCTAssertEqual(error as? EkoCoreError, .retiredGeneration)
+        }
+        XCTAssertEqual(try store.device(id: initial.deviceID)?.currentGeneration, testGenerationB)
+        XCTAssertFalse(try XCTUnwrap(store.notifications().first).isActive)
+        let retiredAfterPairing = try rawPool.read { db in
+            try Bool.fetchOne(
+                db,
+                sql: "SELECT EXISTS(SELECT 1 FROM retired_generation WHERE device_id = ? AND outbox_gen = ?)",
+                arguments: [initial.deviceID, testGenerationA]
+            ) ?? false
+        }
+        XCTAssertTrue(retiredAfterPairing)
+
+        XCTAssertEqual(try store.beginSession(
+            hello: rollback,
+            certificateDER: certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ), .retiredGeneration)
+        XCTAssertEqual(try store.device(id: initial.deviceID)?.currentGeneration, testGenerationB)
+        XCTAssertEqual(try store.device(id: initial.deviceID)?.highestConnectionEpoch, 3)
+    }
+
+    func testOtpOnlyLegacyGenerationIsRetired() throws {
+        let path = try temporaryDatabasePath()
+        let store = try EkoStore(path: path, clock: FixedClock(date: now))
+        let certificate = Data((0..<128).map { UInt8($0 & 0xff) })
+        let initial = testHello(certificateDER: certificate, generation: testGenerationA, epoch: 1)
+        _ = try store.confirmPairing(
+            hello: initial,
+            certificateDER: certificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+        _ = try store.ingestEvent(
+            deviceID: initial.deviceID,
+            generation: testGenerationA,
+            event: testEvent(sequence: 1)
+        )
+
+        let rawPool = try DatabasePool(path: path)
+        try rawPool.write { db in
+            try db.execute(sql: "DELETE FROM notification WHERE device_id = ?", arguments: [initial.deviceID])
+            try db.execute(sql: "DELETE FROM event WHERE device_id = ?", arguments: [initial.deviceID])
+            try db.execute(
+                sql: "UPDATE device SET current_generation = ?, processed_through_seq = 0, highest_conn_epoch = 2 WHERE id = ?",
+                arguments: [testGenerationB, initial.deviceID]
+            )
+        }
+        XCTAssertEqual(try store.diagnostics().otpCount, 1)
+
+        let rollback = testHello(certificateDER: certificate, generation: testGenerationA, epoch: 3)
+        XCTAssertEqual(try store.beginSession(
+            hello: rollback,
+            certificateDER: certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ), .retiredGeneration)
+    }
+
+    func testTransitionOnlyLegacyGenerationIsRetired() throws {
+        let path = try temporaryDatabasePath()
+        let store = try EkoStore(path: path, clock: FixedClock(date: now))
+        let certificate = Data((0..<128).map { UInt8($0 & 0xff) })
+        let initial = testHello(certificateDER: certificate, generation: testGenerationA, epoch: 1)
+        _ = try store.confirmPairing(
+            hello: initial,
+            certificateDER: certificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+        let second = testHello(certificateDER: certificate, generation: testGenerationB, epoch: 2)
+        guard case .started = try store.beginSession(
+            hello: second,
+            certificateDER: certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ) else {
+            return XCTFail("Expected the second generation to start")
+        }
+
+        let generationC = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+        let rawPool = try DatabasePool(path: path)
+        try rawPool.write { db in
+            try db.execute(
+                sql: "UPDATE device SET current_generation = ?, processed_through_seq = 0, highest_conn_epoch = 3 WHERE id = ?",
+                arguments: [generationC, initial.deviceID]
+            )
+        }
+
+        let rollback = testHello(certificateDER: certificate, generation: testGenerationB, epoch: 4)
+        XCTAssertEqual(try store.beginSession(
+            hello: rollback,
+            certificateDER: certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ), .retiredGeneration)
+        XCTAssertEqual(try store.device(id: initial.deviceID)?.currentGeneration, generationC)
+    }
+
     func testAppliedUnpairReceiptIsIdempotentAndRetainsPin() throws {
         let fixture = try makeStore()
         let request = UnpairMessage(
@@ -253,6 +391,10 @@ final class EkoStoreTests: XCTestCase {
         XCTAssertEqual(
             try fixture.store.peerAuthorization(for: fixture.certificate),
             .revoked(deviceID: fixture.hello.deviceID)
+        )
+        XCTAssertEqual(
+            try fixture.store.device(id: fixture.hello.deviceID)?.currentGeneration,
+            testGenerationA
         )
     }
 
@@ -308,6 +450,132 @@ final class EkoStoreTests: XCTestCase {
             return XCTFail("Expected the re-paired device to admit a normal session")
         }
         XCTAssertEqual(start.cursor, 42)
+
+        let stale = testHello(certificateDER: fixture.certificate, generation: testGenerationA, epoch: 11)
+        XCTAssertEqual(try fixture.store.beginSession(
+            hello: stale,
+            certificateDER: fixture.certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ), .retiredGeneration)
+    }
+
+    func testSameGenerationRePairAfterAppliedReceiptKeepsItsBoundary() throws {
+        let fixture = try makeStore()
+        let request = UnpairMessage(
+            unpairID: "deadbeef-0000-4000-8000-000000000012",
+            initiatorID: fixture.hello.deviceID,
+            peerID: String(repeating: "a", count: 64),
+            reason: .userRequest
+        )
+        XCTAssertEqual(try fixture.store.applyUnpair(
+            deviceID: fixture.hello.deviceID,
+            message: request
+        ), .applied)
+
+        let repair = testHello(certificateDER: fixture.certificate, generation: testGenerationA, epoch: 9)
+        let device = try fixture.store.confirmPairing(
+            hello: repair,
+            certificateDER: fixture.certificate,
+            initialCursor: 7,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+
+        XCTAssertEqual(device.currentGeneration, testGenerationA)
+        XCTAssertEqual(device.processedThroughSequence, 7)
+        let session = testHello(certificateDER: fixture.certificate, generation: testGenerationA, epoch: 10)
+        guard case .started(let start) = try fixture.store.beginSession(
+            hello: session,
+            certificateDER: fixture.certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ) else {
+            return XCTFail("Expected the same generation to resume after re-pairing")
+        }
+        XCTAssertEqual(start.cursor, 7)
+        XCTAssertFalse(start.generationChanged)
+    }
+
+    func testSameCertificateRePairRetiresThePreservedGeneration() throws {
+        let fixture = try makeStore()
+        _ = try fixture.store.ingestEvent(
+            deviceID: fixture.hello.deviceID,
+            generation: testGenerationA,
+            event: testEvent(sequence: 1)
+        )
+        let firstUnpair = UnpairMessage(
+            unpairID: "deadbeef-0000-4000-8000-000000000020",
+            initiatorID: String(repeating: "a", count: 64),
+            peerID: fixture.hello.deviceID,
+            reason: .userRequest
+        )
+        try fixture.store.beginUnpair(
+            deviceID: fixture.hello.deviceID,
+            message: firstUnpair,
+            deleteHistory: false
+        )
+
+        let replacement = testHello(certificateDER: fixture.certificate, generation: testGenerationB, epoch: 9)
+        let device = try fixture.store.confirmPairing(
+            hello: replacement,
+            certificateDER: fixture.certificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+
+        XCTAssertEqual(device.currentGeneration, testGenerationB)
+        XCTAssertNil(try fixture.store.pendingUnpair(deviceID: fixture.hello.deviceID))
+        let oldNotification = try XCTUnwrap(fixture.store.notifications().first)
+        XCTAssertEqual(oldNotification.generation, testGenerationA)
+        XCTAssertFalse(oldNotification.isActive)
+        XCTAssertEqual(try fixture.store.recentEvents(deviceID: fixture.hello.deviceID).count, 1)
+
+        let current = testHello(certificateDER: fixture.certificate, generation: testGenerationB, epoch: 10)
+        guard case .started(let start) = try fixture.store.beginSession(
+            hello: current,
+            certificateDER: fixture.certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ) else {
+            return XCTFail("Expected the replacement generation to start")
+        }
+        XCTAssertEqual(start.cursor, 0)
+        XCTAssertFalse(start.generationChanged)
+
+        let retired = testHello(certificateDER: fixture.certificate, generation: testGenerationA, epoch: 11)
+        XCTAssertEqual(try fixture.store.beginSession(
+            hello: retired,
+            certificateDER: fixture.certificate,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        ), .retiredGeneration)
+
+        let secondUnpair = UnpairMessage(
+            unpairID: "deadbeef-0000-4000-8000-000000000021",
+            initiatorID: String(repeating: "a", count: 64),
+            peerID: fixture.hello.deviceID,
+            reason: .userRequest
+        )
+        try fixture.store.beginUnpair(
+            deviceID: fixture.hello.deviceID,
+            message: secondUnpair,
+            deleteHistory: false
+        )
+        let staleRepair = testHello(certificateDER: fixture.certificate, generation: testGenerationA, epoch: 12)
+        XCTAssertThrowsError(try fixture.store.confirmPairing(
+            hello: staleRepair,
+            certificateDER: fixture.certificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )) { error in
+            XCTAssertEqual(error as? EkoCoreError, .retiredGeneration)
+        }
+        XCTAssertEqual(try fixture.store.device(id: fixture.hello.deviceID)?.pairingState, .revokedPending)
+        XCTAssertEqual(try fixture.store.device(id: fixture.hello.deviceID)?.currentGeneration, testGenerationB)
+        XCTAssertNotNil(try fixture.store.pendingUnpair(deviceID: fixture.hello.deviceID))
     }
 
     func testForgetWithoutNotifyingErasesPeerCompletely() throws {

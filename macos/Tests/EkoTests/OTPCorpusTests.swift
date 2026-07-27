@@ -37,6 +37,59 @@ final class OTPCorpusTests: XCTestCase {
         XCTAssertGreaterThan(totalEvents, 0)
     }
 
+    func testBankingAutoCopyGuardChecksNotificationAndSourceContext() {
+        let body = "Code: 123456"
+
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: "Payment approval",
+            body: body,
+            appLabel: "Messages",
+            appPackage: "com.example.messages"
+        ))
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: "Sign-in code",
+            body: body,
+            appLabel: "Postbank",
+            appPackage: "com.example.app"
+        ))
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: "Sign-in code",
+            body: body,
+            appLabel: "Example",
+            appPackage: "com.example.mobilebanking"
+        ))
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: "photoTANApp approval",
+            body: body,
+            appLabel: "Example",
+            appPackage: "com.example.app"
+        ))
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: "Sign-in code",
+            body: body,
+            appLabel: "Example",
+            appPackage: "com.example.pushtan_app"
+        ))
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: "Sign-in code",
+            body: "Code 123456 for U\u{0308}berweisungsauftrag",
+            appLabel: "Example",
+            appPackage: "com.example.app"
+        ))
+        XCTAssertTrue(NotificationCoordinator.isBankingStyle(
+            title: nil,
+            body: String(repeating: "bank", count: 16_000) + "\u{203F}",
+            appLabel: nil,
+            appPackage: nil
+        ))
+        XCTAssertFalse(NotificationCoordinator.isBankingStyle(
+            title: "Sign-in code",
+            body: body,
+            appLabel: "Example Authenticator",
+            appPackage: "com.example.authenticator"
+        ))
+    }
+
     @discardableResult
     private func runCase(_ corpusCase: OTPCorpusCase, file: String, defaults: OTPCorpusDefaults?) -> Int {
         let deviceID = corpusCase.deviceID ?? corpusCase.id
@@ -78,7 +131,12 @@ final class OTPCorpusTests: XCTestCase {
                 }
             }
             let panel = match != nil
-            let autoCopyAllowed = match != nil && !NotificationCoordinator.isBankingStyle(content.displayBody)
+            let autoCopyAllowed = match != nil && !NotificationCoordinator.isBankingStyle(
+                title: content.title,
+                body: content.displayBody,
+                appLabel: nil,
+                appPackage: nil
+            )
 
             XCTAssertEqual(match?.code, event.expected.code, "code: \(context)")
             XCTAssertEqual(actualTier, event.expected.tier, "tier: \(context)")

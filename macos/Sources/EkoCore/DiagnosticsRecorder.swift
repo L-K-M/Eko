@@ -1,3 +1,4 @@
+import Crypto
 import Foundation
 import OSLog
 
@@ -23,21 +24,22 @@ public struct DiagnosticEvent: Codable, Equatable, Sendable {
 }
 
 public struct DiagnosticsNotification: Codable, Equatable, Sendable {
-    public let deviceID: String
-    public let appPackage: String
+    public let deviceAlias: String
+    public let appAlias: String
     public let receivedAt: Date
+    /// A nil title means the source had no title; otherwise redacted exports retain only the marker and length.
     public let title: String?
-    public let body: String?
+    public let body: String
     public let titleCharacterCount: Int?
     public let bodyCharacterCount: Int
 }
 
 public struct DiagnosticsDevice: Codable, Equatable, Sendable {
-    public let id: String
+    public let idAlias: String
     public let name: String
-    public let certificateFingerprint: String
+    public let certificateAlias: String
     public let pairingState: PairingState
-    public let currentGeneration: String?
+    public let currentGenerationAlias: String?
     public let processedThroughSequence: Int64
     public let lastAddressClass: String?
     public let capabilities: [String]
@@ -60,7 +62,7 @@ public struct DiagnosticsExport: Codable, Equatable, Sendable {
     public let generatedAt: Date
     public let appVersion: String
     public let operatingSystem: String
-    public let identityFingerprint: String
+    public let identityAlias: String
     public let store: StoreDiagnostics
     public let devices: [DiagnosticsDevice]
     public let events: [DiagnosticsEvent]
@@ -141,11 +143,11 @@ public actor DiagnosticsRecorder {
             )
             deviceAliases[device.id] = deviceAlias
             exportedDevices.append(DiagnosticsDevice(
-                id: deviceAlias,
+                idAlias: deviceAlias,
                 name: deviceLabel,
-                certificateFingerprint: certificateAlias,
+                certificateAlias: certificateAlias,
                 pairingState: device.pairingState,
-                currentGeneration: device.currentGeneration.map {
+                currentGenerationAlias: device.currentGeneration.map {
                     redactor.pseudonym($0, kind: "generation")
                 },
                 processedThroughSequence: device.processedThroughSequence,
@@ -164,8 +166,8 @@ public actor DiagnosticsRecorder {
                 ?? redactor.pseudonym(notification.deviceID, kind: "device")
             let appAlias = redactor.pseudonym(notification.appPackage, kind: "app")
             exportedNotifications.append(DiagnosticsNotification(
-                deviceID: deviceAlias,
-                appPackage: appAlias,
+                deviceAlias: deviceAlias,
+                appAlias: appAlias,
                 receivedAt: notification.receivedAt,
                 title: includeNotificationContent
                     ? notification.title
@@ -184,7 +186,7 @@ public actor DiagnosticsRecorder {
             DiagnosticsEvent(
                 timestamp: event.timestamp,
                 level: event.level,
-                category: Self.safeCategory(event.category),
+                category: event.category,
                 message: "<redacted>",
                 messageCharacterCount: event.message.count,
                 messageDigest: redactor.pseudonym(event.message, kind: "event-message")
@@ -195,7 +197,7 @@ public actor DiagnosticsRecorder {
             generatedAt: generatedAt,
             appVersion: appVersion,
             operatingSystem: ProcessInfo.processInfo.operatingSystemVersionString,
-            identityFingerprint: redactedIdentity,
+            identityAlias: redactedIdentity,
             store: try store.diagnostics(),
             devices: exportedDevices,
             events: exportedEvents,
@@ -245,18 +247,17 @@ public actor DiagnosticsRecorder {
 }
 
 private struct DiagnosticsExportRedactor {
-    private let salt: Data
+    private let key: SymmetricKey
 
     init() throws {
-        salt = try EkoCrypto.randomBytes(count: 32)
+        key = SymmetricKey(data: try EkoCrypto.randomBytes(count: 32))
     }
 
     func pseudonym(_ value: String, kind: String) -> String {
-        var input = salt
-        input.append(Data(kind.utf8))
+        var input = Data(kind.utf8)
         input.append(0)
         input.append(Data(value.utf8))
-        let digest = EkoCrypto.sha256(input).hexLowercased
+        let digest = Data(HMAC<SHA256>.authenticationCode(for: input, using: key)).hexLowercased
         return "\(kind)-\(digest.prefix(24))"
     }
 }

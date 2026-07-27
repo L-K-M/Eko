@@ -33,6 +33,10 @@ final class DiagnosticsRecorderTests: XCTestCase {
         XCTAssertTrue(exported.contains("<redacted>"))
         let payload = try decodeExport(exportURL)
         XCTAssertEqual(payload.events.first?.category, "redacted")
+        XCTAssertEqual(payload.notifications.first?.title, "<redacted>")
+        XCTAssertEqual(payload.notifications.first?.body, "<redacted>")
+        XCTAssertEqual(payload.notifications.first?.titleCharacterCount, "Sender".count)
+        XCTAssertEqual(payload.notifications.first?.bodyCharacterCount, "Verification code 123456".count)
     }
 
     func testPseudonymsAreStableWithinOneExportAndRotateAcrossExports() async throws {
@@ -77,13 +81,13 @@ final class DiagnosticsRecorderTests: XCTestCase {
         let secondDevice = try XCTUnwrap(second.devices.first)
         let firstNotification = try XCTUnwrap(first.notifications.first)
         let secondNotification = try XCTUnwrap(second.notifications.first)
-        XCTAssertEqual(firstDevice.id, firstNotification.deviceID)
-        XCTAssertEqual(secondDevice.id, secondNotification.deviceID)
-        XCTAssertNotEqual(firstDevice.id, secondDevice.id)
+        XCTAssertEqual(firstDevice.idAlias, firstNotification.deviceAlias)
+        XCTAssertEqual(secondDevice.idAlias, secondNotification.deviceAlias)
+        XCTAssertNotEqual(firstDevice.idAlias, secondDevice.idAlias)
         XCTAssertNotEqual(firstDevice.name, secondDevice.name)
-        XCTAssertNotEqual(firstDevice.certificateFingerprint, secondDevice.certificateFingerprint)
-        XCTAssertNotEqual(first.identityFingerprint, second.identityFingerprint)
-        XCTAssertNotEqual(firstNotification.appPackage, secondNotification.appPackage)
+        XCTAssertNotEqual(firstDevice.certificateAlias, secondDevice.certificateAlias)
+        XCTAssertNotEqual(first.identityAlias, second.identityAlias)
+        XCTAssertNotEqual(firstNotification.appAlias, secondNotification.appAlias)
         XCTAssertEqual(first.events.first?.category, "session")
         XCTAssertEqual(first.events.first?.message, "<redacted>")
         XCTAssertNotEqual(first.events.first?.messageDigest, second.events.first?.messageDigest)
@@ -103,7 +107,10 @@ final class DiagnosticsRecorderTests: XCTestCase {
         let certificate = Data((0..<128).map { UInt8($0 & 0xff) })
         let hello = testHello(certificateDER: certificate)
         let endpoint = "127.0.0.1:48808"
-        let store = try EkoStore(path: temporaryDatabasePath(), clock: FixedClock(date: now))
+        let databasePath = try temporaryDatabasePath()
+        let databaseDirectory = URL(fileURLWithPath: databasePath).deletingLastPathComponent()
+        addTeardownBlock { try? FileManager.default.removeItem(at: databaseDirectory) }
+        let store = try EkoStore(path: databasePath, clock: FixedClock(date: now))
         _ = try store.confirmPairing(
             hello: hello,
             certificateDER: certificate,

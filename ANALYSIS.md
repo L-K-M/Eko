@@ -130,6 +130,22 @@ pairing-time `stale_generation` rejection fires after SAS confirmation with no p
 path (B-19), and protocol.md §7 plus the generation-transition vectors do not yet document the
 pairing-phase rejection. Branch gates do not replace tag-only release or physical BLE verification.
 
+### In review 2026-07-27 — [#39](https://github.com/L-K-M/Eko/pull/39) pairing root cause: Android key cannot sign TLS handshakes
+
+Second field session reproduced the pairing failure with #26's fixes in place: both QR and manual
+entry failed with "The Mac closed the connection" while pairing was demonstrably active on the Mac.
+Source-level root cause: `AndroidIdentity` minted its keystore key with `setDigests(DIGEST_SHA256)`
+only, but Conscrypt signs TLS client-auth transcripts by delegating an already-hashed digest to the
+keystore as `NONEwithECDSA` — an operation Keymaster refuses without `DIGEST_NONE` authorization.
+The phone could never produce its TLS 1.3 CertificateVerify, so every attempt died in the handshake
+regardless of entry path or Mac state, and the error mapper mislabelled the local failure as a
+Mac-side closure. #39 mints keys with both digests, rotates unusable existing keys (safe: no peer
+can have pinned an identity that cannot complete the pairing handshake), stops blaming the Mac for
+`SSLHandshakeException`, surfaces Mac error-frame codes during pairing, records TLS-layer
+rejections in the Mac Diagnostics pane, and makes the verify block's chain extraction well-defined
+(explicit trust evaluation, verdict ignored, exact-DER pin decides). Unverifiable here: on-device
+handshake completion — but with the new surfacing, any residual failure now names itself.
+
 ### Current review roadmap
 
 This is the authoritative index from the `aa2a9fb` re-review plus the PR state observed on 2026-07-27.

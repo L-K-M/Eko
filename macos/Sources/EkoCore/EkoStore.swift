@@ -1377,6 +1377,14 @@ public final class EkoStore: @unchecked Sendable {
             guard !hasPending else {
                 throw EkoCoreError.invalidState("device already has a pending unpair action")
             }
+            let pairingState = try String.fetchOne(
+                db,
+                sql: "SELECT pairing_state FROM device WHERE id = ?",
+                arguments: [deviceID]
+            )
+            guard pairingState == PairingState.confirmed.rawValue else {
+                throw EkoCoreError.invalidState("device is not paired")
+            }
             try db.execute(sql: "DELETE FROM pairing_attempt WHERE device_id = ?", arguments: [deviceID])
             if deleteHistory { try Self.deleteNotificationData(db, deviceID: deviceID) }
             if deleteHistory {

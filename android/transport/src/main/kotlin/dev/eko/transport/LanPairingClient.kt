@@ -369,7 +369,7 @@ private suspend fun readExpected(socket: Socket, type: String): JsonObject = wit
         type -> frame
         // Surface the Mac's stated reason (unauthorized, pairing_expired, …)
         // instead of a generic frame-type mismatch.
-        "error" -> throw ProtocolException("The Mac refused pairing: ${frame.optionalString("code") ?: "unknown error"}")
+        "error" -> throw ProtocolException("The Mac refused pairing: ${frame.optionalString("code")?.takeIf(String::isNotBlank) ?: "unknown error"}")
         else -> throw ProtocolException("Expected $type pairing frame")
     }
 }

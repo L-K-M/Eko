@@ -132,7 +132,8 @@ public final class StorePeerAuthorizer: PeerAuthorizing, @unchecked Sendable {
     }
 
     public func authorize(certificateDER: Data) -> TLSAdmission {
-        let fingerprint = EkoCrypto.fingerprint(of: certificateDER)
+        // Deferred: only rejection paths need the fingerprint label.
+        let fingerprint = { String(EkoCrypto.fingerprint(of: certificateDER).prefix(12)) }
         do {
             switch try store.peerAuthorization(for: certificateDER) {
             case .paired(let deviceID): return .paired(deviceID: deviceID)
@@ -144,15 +145,15 @@ public final class StorePeerAuthorizer: PeerAuthorizing, @unchecked Sendable {
                     let reason = pairingMode.acceptsNewPairingAttempts
                         ? "another device already claimed this pairing window"
                         : "pairing mode is not active"
-                    onRejection("rejected unknown peer \(fingerprint.prefix(12))…: \(reason)")
+                    onRejection("rejected unknown peer \(fingerprint())…: \(reason)")
                 }
                 return admission
             case .certificateMismatch:
-                onRejection("rejected peer \(fingerprint.prefix(12))…: certificate does not match the stored pin")
+                onRejection("rejected peer \(fingerprint())…: certificate does not match the stored pin")
                 return .rejected
             }
         } catch {
-            onRejection("rejected peer \(fingerprint.prefix(12))…: authorization lookup failed: \(error.localizedDescription)")
+            onRejection("rejected peer \(fingerprint())…: authorization lookup failed: \(error.localizedDescription)")
             return .rejected
         }
     }

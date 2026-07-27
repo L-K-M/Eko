@@ -70,6 +70,10 @@ public final class SystemUserNotificationScheduler: UserNotificationScheduling, 
 public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
     public static let copyActionIdentifier = "EKO_COPY_CODE"
     public static let otpCategoryIdentifier = "EKO_OTP"
+    private static let bankingStylePattern = try! NSRegularExpression(
+        pattern: #"(?:bank|payment|transaction|zahlung|betrag|überweisung|ueberweisung|uberweisung|finance|finanz|card|karte|mtan|smstan|phototan|pushtan|chiptan|\btan\b|\b(?:CHF|EUR|USD)\b)"#,
+        options: [.caseInsensitive]
+    )
 
     private let scheduler: any UserNotificationScheduling
     private let systemCenter: UNUserNotificationCenter?
@@ -119,7 +123,12 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         let preference = outcome.appPackage.flatMap { try? store.appPreference(deviceID: outcome.deviceID, appPackage: $0) }
         if let code = outcome.otpCode,
            preference?.autoCopyOTP == true,
-           !Self.isBankingStyle(outcome.body ?? "") {
+           !Self.isBankingStyle(
+               title: outcome.title,
+               body: outcome.body,
+               appLabel: outcome.appLabel,
+               appPackage: outcome.appPackage
+           ) {
             await clipboard.copy(code, clearAfter: deliveryPolicy.clipboardClearAfter())
             try? store.markOTPCopied(deviceID: outcome.deviceID, code: code)
         }
@@ -229,10 +238,18 @@ public final class NotificationCoordinator: NSObject, UNUserNotificationCenterDe
         "eko.notification." + EkoCrypto.sha256(Data("\(deviceID)\u{0}\(key)".utf8)).hexLowercased
     }
 
-    static func isBankingStyle(_ text: String) -> Bool {
-        text.range(
-            of: #"\b(?:m?TAN|bank|payment|transaction|zahlung|betrag|überweisung|CHF|EUR|USD)\b"#,
-            options: [.regularExpression, .caseInsensitive]
-        ) != nil
+    static func isBankingStyle(
+        title: String?,
+        body: String?,
+        appLabel: String?,
+        appPackage: String?
+    ) -> Bool {
+        [title, body, appLabel, appPackage].compactMap { $0 }.contains { text in
+            let normalized = text.precomposedStringWithCanonicalMapping
+            bankingStylePattern.firstMatch(
+                in: normalized,
+                range: NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+            ) != nil
+        }
     }
 }

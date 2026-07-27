@@ -235,12 +235,12 @@ public actor SessionManager {
             reason: .userRequest
         )
         if let session = activeSessions[deviceID] {
-            pendingUnpairs[deviceID] = unpairID
             try store.beginUnpair(deviceID: deviceID, message: message, deleteHistory: false)
+            pendingUnpairs[deviceID] = unpairID
             try await session.transport.send(.unpair(message))
         } else {
-            pendingUnpairs[deviceID] = unpairID
             try store.beginUnpair(deviceID: deviceID, message: message, deleteHistory: true)
+            pendingUnpairs[deviceID] = unpairID
         }
     }
 

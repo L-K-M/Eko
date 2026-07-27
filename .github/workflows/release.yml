@@ -450,19 +450,50 @@ jobs:
           DIST="$RUNNER_TEMP/dist"
           mkdir -p "$DIST"
           DMG="$DIST/$APP_NAME-$VERSION.dmg"
-          # create-dmg can exit non-zero on a headless runner even on success —
-          # verify the file rather than trusting the status.
+          STAGE="$(mktemp -d "$RUNNER_TEMP/dmg-source.XXXXXX")"
+          # create-dmg copies the contents of its source directory. Passing the
+          # bundle itself would put Contents/ at the image root instead of Eko.app.
+          ditto "$APP_PATH" "$STAGE/$APP_NAME.app"
           create-dmg \
             --volname "$APP_NAME $VERSION" \
-            --window-size 540 380 \
-            --icon-size 100 \
-            --icon "$APP_NAME.app" 150 185 \
             --app-drop-link 390 185 \
-            "$DMG" "$APP_PATH" || true
-          [ -f "$DMG" ] || { echo "::error::DMG was not created"; exit 1; }
+            --skip-jenkins \
+            "$DMG" "$STAGE"
+
+          hdiutil verify "$DMG"
+          MOUNT="$(mktemp -d "$RUNNER_TEMP/dmg-mount.XXXXXX")"
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$MOUNT" "$DMG"
+          cleanup_mount() { hdiutil detach -force "$MOUNT" >/dev/null 2>&1 || true; }
+          detach_mount() {
+            for delay in 1 2 4 8; do
+              if hdiutil detach "$MOUNT"; then return 0; fi
+              sleep "$delay"
+            done
+            hdiutil detach "$MOUNT"
+          }
+          trap cleanup_mount EXIT
+          EXECUTABLE="$MOUNT/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+          [ -x "$EXECUTABLE" ] || {
+            echo "::error::DMG does not contain the executable at $APP_NAME.app/Contents/MacOS/$APP_NAME"
+            exit 1
+          }
+          [ -L "$MOUNT/Applications" ] && [ "$(readlink "$MOUNT/Applications")" = "/Applications" ] || {
+            echo "::error::DMG does not contain the expected /Applications link"
+            exit 1
+          }
+          detach_mount
+          trap - EXIT
+
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "DIST=$DIST" >> "$GITHUB_ENV"
           echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - name: Sign the disk image
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          set -euo pipefail
+          codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
+          codesign --verify --strict --verbose=2 "$DMG"
 
       - name: Notarize and staple the disk image
         if: steps.signing.outputs.signed == 'true'
@@ -487,8 +518,11 @@ jobs:
           codesign --display --entitlements :- "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
           xcrun stapler validate "$DMG"
+          hdiutil verify "$DMG"
+          codesign --verify --strict --verbose=2 "$DMG"
           # The real end-user check: Gatekeeper's own verdict.
           spctl --assess --type exec --verbose=4 "$APP_PATH"
+          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG"
 
       - name: Verify the ad-hoc signed bundle
         if: steps.signing.outputs.signed != 'true'
@@ -497,6 +531,7 @@ jobs:
           # An ad-hoc signature can't be stapled or assessed by Gatekeeper, but
           # it still verifies for internal consistency.
           codesign --verify --strict --verbose=2 "$APP_PATH"
+          hdiutil verify "$DMG"
 
       - name: Package the archive and checksums
         id: package

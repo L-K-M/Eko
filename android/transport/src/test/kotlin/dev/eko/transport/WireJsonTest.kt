@@ -7,6 +7,8 @@ import dev.eko.core.EkoJson
 import dev.eko.core.EventKind
 import dev.eko.core.NotificationContent
 import dev.eko.core.ProtocolException
+import dev.eko.outbox.BacklogSnapshot
+import dev.eko.outbox.GapSpanEntity
 import dev.eko.outbox.OutboxEventEntity
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
@@ -66,5 +68,47 @@ class WireJsonTest {
         assertEquals("error", frame.strictString("type"))
         assertEquals("store_reset", frame.strictString("code"))
         assertTrue(frame.strictBoolean("fatal"))
+    }
+
+    @Test
+    fun `backlog frames carry exact sequence coverage`() {
+        val body = DurableEventBody(
+            event = EventKind.POSTED,
+            key = "opaque-key",
+            postedAt = 12,
+            user = 0,
+            app = AppDescriptor("example.app", "Example", "msg"),
+            notification = NotificationContent(text = "redacted", isClearable = true, isGroupSummary = false),
+            dnd = DndDescriptor("all", false),
+        )
+        val event = OutboxEventEntity(
+            seq = 43,
+            notificationKey = requireNotNull(body.key),
+            eventType = "posted",
+            payloadJson = EkoJson.encodeToString(body),
+            contentHash = "ab".repeat(32),
+            createdWall = 1,
+            createdElapsed = 1,
+            createdBoot = "boot",
+        )
+        val snapshot = BacklogSnapshot(
+            generation = "generation",
+            highWater = 43,
+            replayFromSeq = 43,
+            events = listOf(event),
+            gaps = listOf(GapSpanEntity("peer", "generation", 41, 42, "retention_count")),
+            active = emptyList(),
+        )
+
+        val frames = WireJson.backlog(snapshot, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+
+        assertEquals(
+            listOf(null, SequenceCoverage(41, 42), SequenceCoverage(43, 43), null, null),
+            frames.map(OutboundFrame::coverage),
+        )
+        assertEquals(
+            listOf("backlog_start", "backlog_gap", "event", "active_chunk", "backlog_end"),
+            frames.map { it.message.strictString("type") },
+        )
     }
 }

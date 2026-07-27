@@ -15,8 +15,8 @@ xcodebuild -project Eko.xcodeproj -scheme Eko -configuration Debug build test
 ```
 
 The icon generator has no third-party dependencies and deterministically writes every required
-macOS icon size before project generation. SwiftPM resolves exact GRDB and swift-certificates
-versions from `Package.swift`.
+macOS icon size before project generation. SwiftPM resolves exact GRDB, Yams, swift-certificates,
+and swift-crypto versions from `Package.swift`.
 
 Notification delivery, Local Network privacy attribution, Keychain identities, launch at login,
 Bluetooth advertising, hardened runtime, and sandbox behavior require a signed build. Release

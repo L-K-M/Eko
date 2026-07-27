@@ -398,6 +398,39 @@ final class EkoStoreTests: XCTestCase {
         )
     }
 
+    func testAppliedUnpairCannotBeReplacedByLocalRequest() throws {
+        let fixture = try makeStore()
+        let applied = UnpairMessage(
+            unpairID: "deadbeef-0000-4000-8000-000000000002",
+            initiatorID: fixture.hello.deviceID,
+            peerID: String(repeating: "a", count: 64),
+            reason: .userRequest
+        )
+        XCTAssertEqual(try fixture.store.applyUnpair(
+            deviceID: fixture.hello.deviceID,
+            message: applied
+        ), .applied)
+
+        let local = UnpairMessage(
+            unpairID: "deadbeef-0000-4000-8000-000000000003",
+            initiatorID: String(repeating: "a", count: 64),
+            peerID: fixture.hello.deviceID,
+            reason: .userRequest
+        )
+        XCTAssertThrowsError(try fixture.store.beginUnpair(
+            deviceID: fixture.hello.deviceID,
+            message: local,
+            deleteHistory: true
+        )) { error in
+            XCTAssertEqual(error as? EkoCoreError, .invalidState("device is not paired"))
+        }
+        XCTAssertNil(try fixture.store.pendingUnpair(deviceID: fixture.hello.deviceID))
+        XCTAssertEqual(try fixture.store.applyUnpair(
+            deviceID: fixture.hello.deviceID,
+            message: applied
+        ), .alreadyApplied)
+    }
+
     func testSameCertificateRePairAfterAppliedReceiptSupersedesAndCleansUp() throws {
         let fixture = try makeStore()
         _ = try fixture.store.ingestEvent(

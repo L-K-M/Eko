@@ -13,6 +13,8 @@ public enum TLSListenerState: Equatable, Sendable {
 public final class TLSListener: @unchecked Sendable {
     public typealias StateHandler = @Sendable (TLSListenerState) -> Void
 
+    public typealias EventHandler = @Sendable (String) -> Void
+
     private let identity: DeviceIdentity
     private let authorizer: any PeerAuthorizing
     private let sessionManager: SessionManager
@@ -20,6 +22,7 @@ public final class TLSListener: @unchecked Sendable {
     private let verificationQueue = DispatchQueue(label: "com.eko.listener.verify", qos: .userInitiated)
     private let limiter = ConnectionLimiter()
     private let stateHandler: StateHandler
+    private let events: EventHandler
     private var listener: NWListener?
     private var preferredPort: UInt16 = 48_808
     private var fallbackAttempted = false
@@ -28,12 +31,14 @@ public final class TLSListener: @unchecked Sendable {
         identity: DeviceIdentity,
         authorizer: any PeerAuthorizing,
         sessionManager: SessionManager,
-        stateHandler: @escaping StateHandler = { _ in }
+        stateHandler: @escaping StateHandler = { _ in },
+        events: @escaping EventHandler = { _ in }
     ) {
         self.identity = identity
         self.authorizer = authorizer
         self.sessionManager = sessionManager
         self.stateHandler = stateHandler
+        self.events = events
     }
 
     public func start(preferredPort: UInt16 = 48_808) async throws -> UInt16 {
@@ -128,6 +133,13 @@ public final class TLSListener: @unchecked Sendable {
         let authorizer = self.authorizer
         sec_protocol_options_set_verify_block(securityOptions, { _, trust, complete in
             let trustReference = sec_trust_copy_ref(trust).takeRetainedValue()
+            // Build the chain before copying it: SecTrustCopyCertificateChain
+            // is only defined after an evaluation. The verdict is deliberately
+            // ignored — peers present self-signed certificates and admission
+            // is decided by the exact-DER pin, not by CA trust.
+            _ = SecTrustSetNetworkFetchAllowed(trustReference, false)
+            var evaluationError: CFError?
+            _ = SecTrustEvaluateWithError(trustReference, &evaluationError)
             guard let chain = SecTrustCopyCertificateChain(trustReference) as? [SecCertificate],
                   let leaf = chain.first else {
                 complete(false)
@@ -159,6 +171,7 @@ public final class TLSListener: @unchecked Sendable {
             }
             let source = Self.sourceKey(connection.endpoint)
             guard self.limiter.begin(source: source) else {
+                self.events("rate-limited connection from \(source)")
                 connection.cancel()
                 return
             }
@@ -169,6 +182,7 @@ public final class TLSListener: @unchecked Sendable {
                     self.limiter.end()
                     let admission = self.authorizer.authorize(certificateDER: peerDER)
                     guard admission.isAccepted else {
+                        self.events("connection from \(source) closed: peer not admitted")
                         await transport.close()
                         return
                     }
@@ -179,6 +193,9 @@ public final class TLSListener: @unchecked Sendable {
                     )
                 } catch {
                     self.limiter.end()
+                    // The TLS verify block's own rejections also surface here,
+                    // as a connection that failed before becoming ready.
+                    self.events("connection from \(source) failed during TLS setup: \(error.localizedDescription)")
                     await transport.close()
                 }
             }

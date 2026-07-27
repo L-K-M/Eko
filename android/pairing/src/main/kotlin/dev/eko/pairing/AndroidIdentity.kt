@@ -34,19 +34,44 @@ object AndroidIdentity {
 
     suspend fun getOrCreate(store: IdentityStore): DeviceIdentity = withContext(Dispatchers.IO) {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+        var rotated = false
+        if (keyStore.containsAlias(ALIAS)) {
+            val existingKey = keyStore.getKey(ALIAS, null) as? PrivateKey
+            if (existingKey != null && !supportsTlsHandshakeSigning(existingKey) &&
+                store.read().confirmedPeers.isEmpty()
+            ) {
+                keyStore.deleteEntry(ALIAS)
+                rotated = true
+            }
+        }
         if (!keyStore.containsAlias(ALIAS)) generate()
         val privateKey = keyStore.getKey(ALIAS, null) as? PrivateKey
             ?: error("Android Keystore did not return Eko's private key")
         val certificate = keyStore.getCertificate(ALIAS) as? X509Certificate
             ?: error("Android Keystore did not return Eko's certificate")
         val encoded = Base64.encodeToString(certificate.encoded, Base64.NO_WRAP)
-        store.persistCertificate(encoded)
+        if (rotated) store.resetIdentity(encoded) else store.persistCertificate(encoded)
         DeviceIdentity(
             certificate = certificate,
             privateKey = privateKey,
             deviceId = certificateFingerprint(certificate.encoded),
             keyManager = PinnedAliasKeyManager(ALIAS, privateKey, certificate),
         )
+    }
+
+    // TLS client authentication signs a transcript the TLS stack has already
+    // hashed: Conscrypt delegates a raw digest to the keystore provider as
+    // NONEwithECDSA, and Keymaster refuses that operation unless the key
+    // authorizes DIGEST_NONE. A key minted without it can never complete a
+    // handshake, so it is rotated — safe while no peer has pinned it, and a
+    // peer cannot have pinned it because pairing runs over that handshake.
+    private fun supportsTlsHandshakeSigning(privateKey: PrivateKey): Boolean = try {
+        val factory = java.security.KeyFactory.getInstance(privateKey.algorithm, KEYSTORE)
+        val info = factory.getKeySpec(privateKey, android.security.keystore.KeyInfo::class.java)
+        info.digests.contains(KeyProperties.DIGEST_NONE)
+    } catch (_: Exception) {
+        // Unable to inspect the key: keep it rather than destroy an identity.
+        true
     }
 
     private fun generate() {
@@ -60,7 +85,9 @@ object AndroidIdentity {
             KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY,
         )
             .setAlgorithmParameterSpec(java.security.spec.ECGenParameterSpec("secp256r1"))
-            .setDigests(KeyProperties.DIGEST_SHA256)
+            // DIGEST_NONE authorizes the raw pre-hashed signing TLS client
+            // authentication needs; SHA-256 covers the self-signed certificate.
+            .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
             .setCertificateSubject(subject)
             .setCertificateSerialNumber(serial)
             .setCertificateNotBefore(notBefore)

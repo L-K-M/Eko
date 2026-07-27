@@ -119,22 +119,40 @@ public protocol PeerAuthorizing: Sendable {
 public final class StorePeerAuthorizer: PeerAuthorizing, @unchecked Sendable {
     private let store: EkoStore
     private let pairingMode: PairingModeController
+    private let onRejection: @Sendable (String) -> Void
 
-    public init(store: EkoStore, pairingMode: PairingModeController) {
+    public init(
+        store: EkoStore,
+        pairingMode: PairingModeController,
+        onRejection: @escaping @Sendable (String) -> Void = { _ in }
+    ) {
         self.store = store
         self.pairingMode = pairingMode
+        self.onRejection = onRejection
     }
 
     public func authorize(certificateDER: Data) -> TLSAdmission {
+        let fingerprint = EkoCrypto.fingerprint(of: certificateDER)
         do {
             switch try store.peerAuthorization(for: certificateDER) {
             case .paired(let deviceID): return .paired(deviceID: deviceID)
             case .pendingPairing(let deviceID): return .pairing(fingerprint: deviceID)
             case .revoked(let deviceID): return .revoked(deviceID: deviceID)
-            case .unknown: return pairingMode.admitUnknown(certificateDER: certificateDER)
-            case .certificateMismatch: return .rejected
+            case .unknown:
+                let admission = pairingMode.admitUnknown(certificateDER: certificateDER)
+                if !admission.isAccepted {
+                    let reason = pairingMode.acceptsNewPairingAttempts
+                        ? "another device already claimed this pairing window"
+                        : "pairing mode is not active"
+                    onRejection("rejected unknown peer \(fingerprint.prefix(12))…: \(reason)")
+                }
+                return admission
+            case .certificateMismatch:
+                onRejection("rejected peer \(fingerprint.prefix(12))…: certificate does not match the stored pin")
+                return .rejected
             }
         } catch {
+            onRejection("rejected peer \(fingerprint.prefix(12))…: authorization lookup failed: \(error.localizedDescription)")
             return .rejected
         }
     }

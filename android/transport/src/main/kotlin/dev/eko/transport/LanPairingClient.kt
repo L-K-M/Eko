@@ -364,8 +364,13 @@ class LanPairingClient(context: Context) {
 }
 
 private suspend fun readExpected(socket: Socket, type: String): JsonObject = withContext(Dispatchers.IO) {
-    FrameCodec.readJson(socket.getInputStream()).also {
-        if (it.strictString("type") != type) throw ProtocolException("Expected $type pairing frame")
+    val frame = FrameCodec.readJson(socket.getInputStream())
+    when (frame.strictString("type")) {
+        type -> frame
+        // Surface the Mac's stated reason (unauthorized, pairing_expired, …)
+        // instead of a generic frame-type mismatch.
+        "error" -> throw ProtocolException("The Mac refused pairing: ${frame.optionalString("code") ?: "unknown error"}")
+        else -> throw ProtocolException("Expected $type pairing frame")
     }
 }
 

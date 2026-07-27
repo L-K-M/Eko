@@ -130,6 +130,7 @@
     <string name="presence_disappeared">out of range</string>
     <string name="token_hint">Shown under the QR code on the Mac\u2019s pairing screen. Leave empty to compare a verification code instead.</string>
     <string name="pair_error_connection">The Mac closed the connection. Open \u201cAdd phone\u201d on the Mac so pairing is active, then try again.</string>
+    <string name="pair_error_tls_handshake">The secure handshake with the Mac failed (%1$s). Make sure \u201cAdd phone\u201d is open on the Mac, then try again.</string>
     <string name="pair_error_unknown_host">Could not find the Mac by that name. Use its IP address, or make sure both devices are on the same network.</string>
     <string name="pair_error_unreachable">Could not reach the Mac. Check that both devices are on the same network and that pairing is open on the Mac.</string>
 </resources>

@@ -224,18 +224,34 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
     // Map those to actionable localized guidance; anything unrecognized keeps
     // its original message for diagnosability.
     // Order matters: ConnectException and NoRouteToHostException both extend
-    // SocketException, so they must be matched before that broad arm.
-    // SocketTimeoutException is not a SocketException (it extends
-    // InterruptedIOException) — it is grouped with them purely for the same
-    // "can't reach the Mac" guidance.
+    // SocketException, so they must be matched before that broad arm, and
+    // SSLHandshakeException extends SSLException, so it comes first too — a
+    // handshake failure can be local (e.g. the keystore refusing to sign) and
+    // must not be blamed on the Mac. SocketTimeoutException is not a
+    // SocketException (it extends InterruptedIOException) — it is grouped with
+    // them purely for the same "can't reach the Mac" guidance.
     private fun pairingFailureDetail(error: Throwable): String = when (error) {
         is java.net.UnknownHostException ->
             context.getString(R.string.pair_error_unknown_host)
         is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.NoRouteToHostException ->
             context.getString(R.string.pair_error_unreachable)
+        is javax.net.ssl.SSLHandshakeException ->
+            context.getString(R.string.pair_error_tls_handshake, rootCauseMessage(error))
         is javax.net.ssl.SSLException, is java.io.EOFException, is java.net.SocketException ->
             context.getString(R.string.pair_error_connection)
         else -> error.message ?: error.javaClass.simpleName
+    }
+
+    private fun rootCauseMessage(error: Throwable): String {
+        var cause: Throwable = error
+        var depth = 0
+        while (depth < 8) {
+            val next = cause.cause ?: break
+            if (next === cause) break
+            cause = next
+            depth += 1
+        }
+        return cause.message?.takeIf(String::isNotBlank) ?: cause.javaClass.simpleName
     }
 
     private fun watchPairingExpiry(handle: PairingHandle) {

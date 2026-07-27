@@ -14,7 +14,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", exact: "7.11.1"),
         .package(url: "https://github.com/apple/swift-certificates.git", exact: "1.19.3"),
-        .package(url: "https://github.com/apple/swift-crypto.git", "3.12.3"..<"5.0.0"),
+        .package(url: "https://github.com/apple/swift-crypto.git", exact: "4.5.1"),
         .package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2"),
     ],
     targets: [

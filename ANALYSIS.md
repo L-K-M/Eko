@@ -6,7 +6,7 @@ good. It merges the point-in-time review in [`opus.md`](opus.md), the follow-up 
 
 The ledger distinguishes merged changes from open implementation PRs. The current review roadmap is
 the authoritative status index: **IN REVIEW** means a fix exists on an open branch but is not behavior
-on `main`. The older numbered body retains the reviews' evidence and rationale; its source line numbers
+on `main` (the 2026-07-27 batch has since merged; statuses below reflect that). The older numbered body retains the reviews' evidence and rationale; its source line numbers
 are historical navigation aids, and the roadmap controls wherever status or scope differs.
 
 Severity bands: **critical** (data loss, hangs, unusable) · **high** (a user hits it in the
@@ -18,8 +18,8 @@ first hour) · **medium** (real, bounded) · **low** (polish, tech debt) · **id
 ## Ledger — merged and in review
 
 The first table predates restored repository CI: #17-#23 were opened while Actions could not run, so
-their original verification claims are local. #17-#20 and #23 later merged; #21 and #22 remain open
-and conflict with `main`. #25 and #26 merged with green CI. The current-review PRs #27-#37 are
+their original verification claims are local. #17-#20 and #23 later merged; #21 and #22 were closed as
+superseded on 2026-07-27, their surviving pieces tracked under SOL-29 and SOL-32. #25 and #26 merged with green CI. The current-review PRs #27-#37 are
 recorded separately below and each runs the full repository gate.
 
 | PR | Status | Implemented scope |
@@ -28,8 +28,8 @@ recorded separately below and each runs the full repository gate.
 | [#18](https://github.com/L-K-M/Eko/pull/18) Capture durability | **MERGED** | Queued commits discarded when the listener is torn down (**the notification-loss bug**); `removeCallbacks(::enqueueReconciliation)` removing nothing, and the phantom Diagnostics counters it produced; per-notification `Resources.getIdentifier` for the redaction marker |
 | [#19](https://github.com/L-K-M/Eko/pull/19) ViewModel hot path | **MERGED** | N+1 `pairingRows()` per peer per captured notification; Home recomputing at the capture rate; uncaught store failure killing the app on launch; five binder round-trips on the main thread per resume |
 | [#20](https://github.com/L-K-M/Eko/pull/20) Android UI | **MERGED** | Landing on the setup checklist every launch; the invisible QR reticle, missing `BackHandler` and missing insets; nothing surviving rotation; the Mac name starved to one glyph per line; fake-button status chip; unlabelled switch rows; unpair dialog overflow and inverted hierarchy; frozen diagnostics timestamps; dark-mode launch flash; off-centre launcher icon with no monochrome layer |
-| [#21](https://github.com/L-K-M/Eko/pull/21) macOS menu & chrome | **OPEN, CONFLICTING** | Historical proposal. Menu/quit, right-click and badge-expiry work were superseded by #25. Selectively rebase only surviving panel-level, Escape/highlight and status-throttling/image-cache changes; do not merge wholesale. |
-| [#22](https://github.com/L-K-M/Eko/pull/22) macOS panel performance | **OPEN, CONFLICTING** | Proposed asynchronous ingest/focus writes, hidden-panel observation suspension and one-export diagnostics consent. Selectively rebase useful pieces; none are current `main` behavior. |
+| [#21](https://github.com/L-K-M/Eko/pull/21) macOS menu & chrome | **CLOSED — superseded** | Historical proposal. Menu/quit, right-click and badge-expiry work were superseded by #25. Selectively rebase only surviving panel-level, Escape/highlight and status-throttling/image-cache changes; do not merge wholesale. |
+| [#22](https://github.com/L-K-M/Eko/pull/22) macOS panel performance | **CLOSED — superseded** | Proposed asynchronous ingest/focus writes, hidden-panel observation suspension and one-export diagnostics consent. Selectively rebase useful pieces; none are current `main` behavior. |
 | [#23](https://github.com/L-K-M/Eko/pull/23) CI | **MERGED** | `:core`'s nine test classes never ran — including the shared protocol vectors and the pinning test |
 
 Also resolved independently, on `main` in [#4](https://github.com/L-K-M/Eko/pull/4): CI and
@@ -108,22 +108,27 @@ signing/settings work and hardware evidence remain in the roadmap below.
 | PR | Status | Review item | Branch implementation |
 | --- | --- | --- | --- |
 | [#26](https://github.com/L-K-M/Eko/pull/26) | **MERGED** | field fixes before the review baseline | `.local` QR fallback, CDM feature/exception crashes, notification-access bounce, common pairing-error cleanup, manual-token visibility, empty-feed Add Phone and Quit discovery |
-| [#27](https://github.com/L-K-M/Eko/pull/27) | **IN REVIEW** | SOL-01 | ACK authorization advances only after each event/gap frame is successfully written, with contiguous per-device coverage and blocked/failed-write tests |
-| [#28](https://github.com/L-K-M/Eko/pull/28) | **IN REVIEW** | SOL-18 (redaction scope) | diagnostics export DTOs exclude certificates, addresses and raw identity models; identifiers are per-export aliases, free-form events are redacted, writes are serialized, and canary tests enforce the default contract |
-| [#29](https://github.com/L-K-M/Eko/pull/29) | **IN REVIEW** | SOL-62 | DMG creation uses a staging directory containing `Eko.app`, verifies and mounts the image, checks its executable, retries detach, and signs/notarizes/verifies the outer DMG |
-| [#30](https://github.com/L-K-M/Eko/pull/30) | **IN REVIEW** | SOL-17 | Mac inbound buffering is a 256-message/16 MiB ring with O(1) dequeue, deterministic resource-exhaustion closure and cancellation/EOF tests |
-| [#31](https://github.com/L-K-M/Eko/pull/31) | **IN REVIEW** | SOL-02 | pairing and normal admission share one generation transition transaction; every prior namespace still represented by durable evidence is retired and unpair preserves the anti-rollback boundary |
-| [#32](https://github.com/L-K-M/Eko/pull/32) | **IN REVIEW** | SOL-60 (BLE scope) | Android and macOS consume one shared BLE service UUID vector; Android's CDM filter now matches the Mac advertisement |
-| [#33](https://github.com/L-K-M/Eko/pull/33) | **IN REVIEW** | SOL-42 | localized Mac unpair confirmation names the phone, explains offline history loss/re-pairing, prevents duplicate/stale actions and atomically rejects unpairing an already-revoked device |
-| [#34](https://github.com/L-K-M/Eko/pull/34) | **IN REVIEW** | SOL-16 (nesting scope) | Android's strict JSON scanner matches the Mac's 64-level recursion bound; object, array and 10,000-level attack tests run before JSON tree construction |
-| [#35](https://github.com/L-K-M/Eko/pull/35) | **IN REVIEW** | SOL-27 | banking/TAN auto-copy checks title, body, app label and package using one retained, Unicode-normalized, bounded-cost matcher with compound/package tests |
-| [#36](https://github.com/L-K-M/Eko/pull/36) | **IN REVIEW** | SOL-67 (Swift Crypto scope) | `swift-crypto` is pinned to the tested exact 4.5.1 release rather than a moving major-version range |
-| [#37](https://github.com/L-K-M/Eko/pull/37) | **IN REVIEW** | SOL-68 (staging scope) | `build.sh` propagates destination creation/removal/copy failures and records success only after the artifact reaches `dist/` |
+| [#27](https://github.com/L-K-M/Eko/pull/27) | **MERGED** | SOL-01 | ACK authorization advances only after each event/gap frame is successfully written, with contiguous per-device coverage and blocked/failed-write tests |
+| [#28](https://github.com/L-K-M/Eko/pull/28) | **MERGED** | SOL-18 (redaction scope) | diagnostics export DTOs exclude certificates, addresses and raw identity models; identifiers are per-export aliases, free-form events are redacted, writes are serialized, and canary tests enforce the default contract |
+| [#29](https://github.com/L-K-M/Eko/pull/29) | **MERGED** | SOL-62 | DMG creation uses a staging directory containing `Eko.app`, verifies and mounts the image, checks its executable, retries detach, and signs/notarizes/verifies the outer DMG |
+| [#30](https://github.com/L-K-M/Eko/pull/30) | **MERGED** | SOL-17 | Mac inbound buffering is a 256-message/16 MiB ring with O(1) dequeue, deterministic resource-exhaustion closure and cancellation/EOF tests |
+| [#31](https://github.com/L-K-M/Eko/pull/31) | **MERGED** | SOL-02 | pairing and normal admission share one generation transition transaction; every prior namespace still represented by durable evidence is retired and unpair preserves the anti-rollback boundary |
+| [#32](https://github.com/L-K-M/Eko/pull/32) | **MERGED** | SOL-60 (BLE scope) | Android and macOS consume one shared BLE service UUID vector; Android's CDM filter now matches the Mac advertisement |
+| [#33](https://github.com/L-K-M/Eko/pull/33) | **MERGED** | SOL-42 | localized Mac unpair confirmation names the phone, explains offline history loss/re-pairing, prevents duplicate/stale actions and atomically rejects unpairing an already-revoked device |
+| [#34](https://github.com/L-K-M/Eko/pull/34) | **MERGED** | SOL-16 (nesting scope) | Android's strict JSON scanner matches the Mac's 64-level recursion bound; object, array and 10,000-level attack tests run before JSON tree construction |
+| [#35](https://github.com/L-K-M/Eko/pull/35) | **MERGED** | SOL-27 | banking/TAN auto-copy checks title, body, app label and package using one retained, Unicode-normalized, bounded-cost matcher with compound/package tests |
+| [#36](https://github.com/L-K-M/Eko/pull/36) | **MERGED** | SOL-67 (Swift Crypto scope) | `swift-crypto` is pinned to the tested exact 4.5.1 release rather than a moving major-version range |
+| [#37](https://github.com/L-K-M/Eko/pull/37) | **MERGED** | SOL-68 (staging scope) | `build.sh` propagates destination creation/removal/copy failures and records success only after the artifact reaches `dist/` |
 
-At reconciliation time, the protocol, tools, Android and macOS CI jobs are green on every PR from
-#27 through #37. Automated review is advisory; #27's review job was cancelled, while its platform CI
-passed. These are branch-level gates, not an integrated stack, and do not replace tag-only release or
-physical BLE verification.
+All eleven implementation PRs merged on 2026-07-27 after an adversarial review pass with green CI
+on every branch. Two required intervention before merging: #30 was blocked in review — its hard cap
+with an always-re-arming receive loop would have terminated legitimate 2 000-event backlog replays —
+and was revised in place with high/low-water backpressure (pause the receive loop at half the caps,
+resume at a quarter, caps retained as an attack backstop, best-effort error frame on exhaustion);
+#31 was conflict-resolved against the already-merged #33. #31's review recorded follow-ups: the new
+pairing-time `stale_generation` rejection fires after SAS confirmation with no phone-side recovery
+path (B-19), and protocol.md §7 plus the generation-transition vectors do not yet document the
+pairing-phase rejection. Branch gates do not replace tag-only release or physical BLE verification.
 
 ### Current review roadmap
 
@@ -137,8 +142,8 @@ selectively rebased. A row marked **residual** records only the part left after 
 
 | ID | Disposition | Remaining work |
 | --- | --- | --- |
-| SOL-01 | `IN REVIEW` [#27](https://github.com/L-K-M/Eko/pull/27) | Merge the tested write-before-authorization fix; until then `main` can accept an ACK for an event whose frame has not reached the wire. |
-| SOL-02 | `IN REVIEW` [#31](https://github.com/L-K-M/Eko/pull/31) | Merge the shared generation-transition transaction. It retires every prior namespace reconstructible from durable state and establishes the boundary for future transitions; a fully pruned pre-fix namespace cannot be reconstructed. |
+| SOL-01 | `MERGED` [#27](https://github.com/L-K-M/Eko/pull/27) | Merge the tested write-before-authorization fix; until then `main` can accept an ACK for an event whose frame has not reached the wire. |
+| SOL-02 | `MERGED` [#31](https://github.com/L-K-M/Eko/pull/31) | Merge the shared generation-transition transaction. It retires every prior namespace reconstructible from durable state and establishes the boundary for future transitions; a fully pruned pre-fix namespace cannot be reconstructed. |
 | SOL-03 | `OPEN` | Move a connected Mac session atomically into unpair-only mode so buffered normal traffic cannot kill the socket before the matching acknowledgement. |
 | SOL-04 | `OPEN` | Define and vector-test how a delayed matching fetch may fill historical content after a newer removal without reviving stale state. |
 | SOL-05 | `OPEN` | Add a nullable current-OTP reference, clear it on code-free updates, and retain old OTP rows only for dedupe/audit. |
@@ -152,7 +157,7 @@ selectively rebased. A row marked **residual** records only the part left after 
 | SOL-13 | `OPEN` | Remove completed receipt/tombstone jobs, add bounded durable retry, and stop the sticky service when no connection work remains. |
 | SOL-14 | `OPEN` | Iterate eligible Android networks, use network-scoped DNS, keep discovery endpoints ephemeral, persist only after exact-pin TLS succeeds, and cancel a live session when its bound network becomes ineligible. |
 | SOL-15 | `OPEN` | Preserve CDM state by association, track presence per association, refresh trust after every mutation and serialize listener rebinds. |
-| SOL-16 | `IN REVIEW` [#34](https://github.com/L-K-M/Eko/pull/34) + `OPEN`/`DESIGN` residual | Merge the nesting bound. Independently make `unpair_ack` reachable, accept legal pre-`welcome` `ping`/`pong`/`error` controls, validate error codes and advertise `ext_types` under the existing contract (`OPEN`); decide ACK-zero, certificate-profile and unknown-member lexical semantics before aligning all implementations (`DESIGN`). |
+| SOL-16 | `MERGED` [#34](https://github.com/L-K-M/Eko/pull/34) + `OPEN`/`DESIGN` residual | Merge the nesting bound. Independently make `unpair_ack` reachable, accept legal pre-`welcome` `ping`/`pong`/`error` controls, validate error codes and advertise `ext_types` under the existing contract (`OPEN`); decide ACK-zero, certificate-profile and unknown-member lexical semantics before aligning all implementations (`DESIGN`). |
 | SOL-75 | `OPEN` | Derive Mac connection-state identity only from the authenticated certificate; do not let an unverified `hello.deviceID` mark another phone failed. |
 | SOL-76 | `DESIGN` + `OPEN` | Define the duplicate-detection horizon and a compact applied-event receipt that can still prove an old retransmission is equivalent. Never replace an applied event with an overlapping gap; retain full receipts until the protocol-compatible representation exists. |
 | SOL-77 | `OPEN` | Remove completion callbacks that mutate `peerJobs` from inside `computeIfAbsent`, and serialize peer reconciliation so concurrent triggers cannot spin or overwrite lifecycle state. |
@@ -161,8 +166,8 @@ selectively rebased. A row marked **residual** records only the part left after 
 
 | ID | Disposition | Remaining work |
 | --- | --- | --- |
-| SOL-17 | `IN REVIEW` [#30](https://github.com/L-K-M/Eko/pull/30) | Merge the bounded O(1) inbound ring; `main` still buffers decoded peer messages without count or byte limits. |
-| SOL-18 | `IN REVIEW` [#28](https://github.com/L-K-M/Eko/pull/28) + `EXISTING PR` residual | Merge export DTO/redaction canaries, then selectively rebase #22's one-export consent reset so including notification content always requires a fresh opt-in. |
+| SOL-17 | `MERGED` [#30](https://github.com/L-K-M/Eko/pull/30) | Merge the bounded O(1) inbound ring; `main` still buffers decoded peer messages without count or byte limits. |
+| SOL-18 | `MERGED` [#28](https://github.com/L-K-M/Eko/pull/28) + `EXISTING PR` residual | Merge export DTO/redaction canaries, then selectively rebase #22's one-export consent reset so including notification content always requires a fresh opt-in. |
 | SOL-19 | `DESIGN` | Replace ML Kit with a telemetry-free local QR decoder, or explicitly redesign the no-telemetry promise and disclosure after a deliberate scan-quality decision. |
 | SOL-20 | `OPEN` | Keep TLS admission pure and reserve the exclusive unknown-peer slot only after valid QR/application proof; release failures and cap pending attempts. |
 | SOL-21 | `DESIGN` | Stop continuously broadcasting a 20-year fingerprint/computer name, using pairing-only identity or a designed rotating paired-discovery handle. |
@@ -171,7 +176,7 @@ selectively rebased. A row marked **residual** records only the part left after 
 | SOL-24 | `DESIGN` | Specify aggregate active-snapshot count/key-byte limits and sender behavior, or stage chunks in a quota-limited table. |
 | SOL-25 | `OPEN` | Give Android and Mac writes independent deadlines that close the underlying transport and complete exactly once under timeout/cancellation races. |
 | SOL-26 | `DESIGN` | Explicitly document and test Universal Clipboard exposure; the general pasteboard is necessary for ordinary paste and is not local-only. |
-| SOL-27 | `IN REVIEW` [#35](https://github.com/L-K-M/Eko/pull/35) | Merge the four-field banking/TAN guard and its Unicode/source-identity regressions; `main` still inspects only the displayed body. |
+| SOL-27 | `MERGED` [#35](https://github.com/L-K-M/Eko/pull/35) | Merge the four-field banking/TAN guard and its Unicode/source-identity regressions; `main` still inspects only the displayed body. |
 
 #### Performance and battery
 
@@ -196,7 +201,7 @@ selectively rebased. A row marked **residual** records only the part left after 
 | SOL-39 | `OPEN` | Surface provisional/denied/revoked Mac notification authorization, offer promotion/System Settings and preserve panel-only operation. |
 | SOL-40 | `OPEN` | Add recovery UX for permanent notification denial, scanner bind failure and listener repair; make setup controls reflow/localize, checklist state semantic, pending attempts dismissible/root-owned, and service notifications route to relevant status. |
 | SOL-41 | `OPEN` | Make non-OTP row actions stable and keyboard/VoiceOver reachable through reserved controls, focus/selection or an always-present menu. |
-| SOL-42 | `IN REVIEW` [#33](https://github.com/L-K-M/Eko/pull/33) | Merge the localized destructive-unpair confirmation and stale/duplicate-action guard. |
+| SOL-42 | `MERGED` [#33](https://github.com/L-K-M/Eko/pull/33) | Merge the localized destructive-unpair confirmation and stale/duplicate-action guard. |
 | SOL-43 | `OPEN` | Drive `PreferenceRow` from model bindings or synchronize and roll back local state after failed/external/normalized writes. |
 | SOL-44 | `OPEN` | Count synchronizing separately and derive the fresh-code badge from an independent, unfiltered store observation; #21 fixes neither calculation. |
 | SOL-45 | `OPEN` | Replace clipping/fixed contrast/layout assumptions and test EN/DE, text size, contrast/transparency, narrow Mac panels, tablets and foldables. |
@@ -220,7 +225,7 @@ selectively rebased. A row marked **residual** records only the part left after 
 | SOL-57 | `OPEN` | Surface typed identity-changed recovery and require a new SAS; never let names or endpoints replace certificate identity. |
 | SOL-58 | `OPEN` | Add user-owned aliases, consistent initial device names, visible last-seen state and restrained hash-derived phone accents paired with text. |
 | SOL-59 | `OPEN` | Add an About/version surface, then a disclosed release-page check later; a full updater remains post-1.0. |
-| SOL-60 | `IN REVIEW` [#32](https://github.com/L-K-M/Eko/pull/32) + `DESIGN` residual | Merge the shared BLE UUID. Separately decide whether to authenticate and implement UDP hints with shared constants/vectors or remove the dead unsigned listener/docs. |
+| SOL-60 | `MERGED` [#32](https://github.com/L-K-M/Eko/pull/32) + `DESIGN` residual | Merge the shared BLE UUID. Separately decide whether to authenticate and implement UDP hints with shared constants/vectors or remove the dead unsigned listener/docs. |
 | SOL-61 | `IDEA` | After reliability work, prioritize app icons, safe link handoff, Codes Only, `group_key` collapse and bounded Dismiss All. |
 | SOL-78 | `OPEN` | Show factual inline backlog progress and completion in the panel, using a system notification only when the panel is closed. |
 
@@ -228,13 +233,13 @@ selectively rebased. A row marked **residual** records only the part left after 
 
 | ID | Disposition | Remaining work |
 | --- | --- | --- |
-| SOL-62 | `IN REVIEW` [#29](https://github.com/L-K-M/Eko/pull/29) | Merge staged DMG construction and mounted-content verification; branch CI does not exercise the tag-only signed release path. |
+| SOL-62 | `MERGED` [#29](https://github.com/L-K-M/Eko/pull/29) | Merge staged DMG construction and mounted-content verification; branch CI does not exercise the tag-only signed release path. |
 | SOL-63 | `EXTERNAL` | Create/install/map a Developer ID provisioning profile for the restricted Keychain group, inspect the export and launch-smoke the signed app. |
 | SOL-64 | `OPEN` | Make platform jobs upload private workflow artifacts and publish one release only after both succeed, with one body/checksum manifest. |
 | SOL-65 | `EXTERNAL` | Record the real Android signer SHA-256 digest and reject any valid-but-wrong keystore; test upgrade from the prior public APK. |
 | SOL-66 | `EXTERNAL` | Protect `main`/release tags/workflows and move signing secrets to an approved protected environment; require releases reachable from protected `main`. |
-| SOL-67 | `IN REVIEW` [#36](https://github.com/L-K-M/Eko/pull/36) + `OPEN` residual | Merge the exact Swift Crypto pin; still pin XcodeGen, create-dmg, Python validator packages and third-party Actions, add deliberate Gradle verification/locking and a version catalog, and move Room from `kapt` to KSP. |
-| SOL-68 | `IN REVIEW` [#37](https://github.com/L-K-M/Eko/pull/37) + `OPEN` residual | Merge local staging failure propagation; still harden `release.sh` version/build/branch/rollback/atomic-push rules and compare Android/Mac build numbers in the workflow. |
+| SOL-67 | `MERGED` [#36](https://github.com/L-K-M/Eko/pull/36) + `OPEN` residual | Merge the exact Swift Crypto pin; still pin XcodeGen, create-dmg, Python validator packages and third-party Actions, add deliberate Gradle verification/locking and a version catalog, and move Room from `kapt` to KSP. |
+| SOL-68 | `MERGED` [#37](https://github.com/L-K-M/Eko/pull/37) + `OPEN` residual | Merge local staging failure propagation; still harden `release.sh` version/build/branch/rollback/atomic-push rules and compare Android/Mac build numbers in the workflow. |
 | SOL-69 | `OPEN` | Reconcile CI commands, diagnostics/install/protocol-reservation promises, supported Mac hardware, JDK/toolchain policy, remaining lint and tracked IDE state with actual behavior. |
 | SOL-70 | `OPEN` | Add deterministic transport/session tests for Android and missing Mac queue/send/unpair/clipboard/AppModel bindings; keep signed OS behavior manual. |
 | SOL-71 | `OPEN` | Execute shared scenarios through adapters on both implementations, starting with invalid ACK, generation transition, stale fetch and connected unpair. |
@@ -282,7 +287,7 @@ review before it lands, which is what happened here.
 ### macOS core
 
 <a id="b-01"></a>
-**B-01 · `confirmPairing` leaves the superseded generation un-retired** — `high` [S] · **IN REVIEW in
+**B-01 · `confirmPairing` leaves the superseded generation un-retired** — `high` [S] · **RESOLVED on `main` by
 [#31](https://github.com/L-K-M/Eko/pull/31)**. The branch makes pairing and normal admission share one
 transition transaction, retires prior namespaces represented by durable state, deactivates invalid
 materialized state and preserves future generation boundaries across unpair. It is not yet on `main`.
@@ -468,7 +473,7 @@ allocation. Pass closures plus `now` as a value and make the row `Equatable`; ho
 yield into a stream constructed *without* a buffering policy, which defaults to `.unbounded`. The
 MainActor consumers then walk every stale snapshot in order. **One word, three times.**
 
-**P-06 · Inbound queue is unbounded with an O(n) dequeue** — `medium` [S] · **IN REVIEW in
+**P-06 · Inbound queue is unbounded with an O(n) dequeue** — `medium` [S] · **RESOLVED on `main` by
 [#30](https://github.com/L-K-M/Eko/pull/30)**. The branch replaces it with a bounded count/byte ring,
 O(1) dequeue and deterministic resource-exhaustion/cancellation behavior; `main` remains affected.
 
@@ -678,7 +683,7 @@ disappear while the handle keeps ticking toward expiry.
 ## 5. Security & privacy
 
 <a id="s-01"></a>
-**S-01 · Unbounded inbound frame queue, reachable pre-confirmation** — `high` [S] · **IN REVIEW in
+**S-01 · Unbounded inbound frame queue, reachable pre-confirmation** — `high` [S] · **RESOLVED on `main` by
 [#30](https://github.com/L-K-M/Eko/pull/30)** with independent message/byte ceilings and terminal
 resource-exhaustion behavior. Until merge, pairing approval can still grow `main` without bound.
 
@@ -696,7 +701,7 @@ export construction from serializing identity models/certificates/addresses, use
 redacts free-form event messages and adds canary tests. The content checkbox is still sticky on `main`;
 #22's one-export reset must be selectively rebased after #28.
 
-**S-04 · Banking/TAN exclusion inspects only the body** — `medium` [S] · **IN REVIEW in
+**S-04 · Banking/TAN exclusion inspects only the body** — `medium` [S] · **RESOLVED on `main` by
 [#35](https://github.com/L-K-M/Eko/pull/35)**. The branch checks title, displayed body, app label and
 package with one retained Unicode-normalized matcher and compound/source-identity regressions.
 

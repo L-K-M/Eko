@@ -92,23 +92,36 @@ StrictYamlLoader.add_constructor(
 def load_json(path: pathlib.Path) -> dict | None:
     try:
         return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=no_duplicate_json_keys)
+    except RecursionError:
+        fail(path, "JSON is nested too deeply to parse")
+        return None
     except (ValueError, UnicodeDecodeError) as exc:
         fail(path, str(exc))
         return None
 
 
+# Scenarios are committed, reviewed files; this bound turns a pathologically
+# nested one into a clean CI failure instead of an interpreter crash.
+MAX_SCENARIO_DEPTH = 128
+
+
 def walk_frames(node: object, path: str = "$"):
     """Yield (json-pointer-ish location, frame object) for every frame literal."""
-    if isinstance(node, dict):
-        for key, value in node.items():
-            here = f"{path}.{key}"
-            if key in FRAME_KEYS and isinstance(value, dict):
-                yield here, value
-            else:
-                yield from walk_frames(value, here)
-    elif isinstance(node, list):
-        for index, value in enumerate(node):
-            yield from walk_frames(value, f"{path}[{index}]")
+    stack = [(node, path, 0)]
+    while stack:
+        current, here, depth = stack.pop()
+        if depth > MAX_SCENARIO_DEPTH:
+            raise ValueError(f"{here}: scenario nesting exceeds {MAX_SCENARIO_DEPTH} levels")
+        if isinstance(current, dict):
+            for key, value in current.items():
+                child = f"{here}.{key}"
+                if key in FRAME_KEYS and isinstance(value, dict):
+                    yield child, value
+                else:
+                    stack.append((value, child, depth + 1))
+        elif isinstance(current, list):
+            for index, value in enumerate(current):
+                stack.append((value, f"{here}[{index}]", depth + 1))
 
 
 def main() -> int:
@@ -197,7 +210,12 @@ def main() -> int:
             continue
         if document.get("format") != "eko-scenario-v1":
             fail(path, f"format is {document.get('format')!r}, expected 'eko-scenario-v1'")
-        for location, frame in walk_frames(document):
+        try:
+            frames = list(walk_frames(document))
+        except ValueError as exc:
+            fail(path, str(exc))
+            continue
+        for location, frame in frames:
             checked += 1
             # iter_errors returns a generator, which is always truthy — the
             # list() is what actually decides whether the frame validated.

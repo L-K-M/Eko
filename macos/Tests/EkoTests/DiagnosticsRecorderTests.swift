@@ -37,6 +37,8 @@ final class DiagnosticsRecorderTests: XCTestCase {
         XCTAssertEqual(payload.notifications.first?.body, "<redacted>")
         XCTAssertEqual(payload.notifications.first?.titleCharacterCount, "Sender".count)
         XCTAssertEqual(payload.notifications.first?.bodyCharacterCount, "Verification code 123456".count)
+        let attributes = try FileManager.default.attributesOfItem(atPath: exportURL.path)
+        XCTAssertEqual(attributes[.posixPermissions] as? Int, 0o600)
     }
 
     func testPseudonymsAreStableWithinOneExportAndRotateAcrossExports() async throws {

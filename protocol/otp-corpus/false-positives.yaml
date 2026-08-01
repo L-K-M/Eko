@@ -252,3 +252,24 @@ cases:
     events:
       - text: "Account ending 7318 received a transfer."
         expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-036-masked-card-charge
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Mastercard XXXX 5782\nCHF 118.01 belastet. Kein Code erforderlich."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-037-card-brand-last-four
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Zahlung mit Kreditkarte 5782 bestätigt. Kein Code nötig."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-038-asterisk-masked-card
+    locale: en
+    source: banking
+    events:
+      - text: "Visa **** 4821 was charged USD 24.80. No code is needed."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}

@@ -71,6 +71,54 @@ final class OTPExtractorTests: XCTestCase {
         XCTAssertNil(extractor.extract(from: NotificationContent(text: "Shipping ETA 4829")))
     }
 
+    func testMaskedCardTailDoesNotOutrankThePaymentCode() {
+        assertCode("682415", in: """
+        CHF 118.01
+        01.08.2026 / 17:57
+        Mastercard XXXX 5782
+        Your code for confirming the payment transaction: 682415
+        """)
+    }
+
+    func testMaskedCardTailIsIgnoredInEveryMaskingStyle() {
+        assertCode("682415", in: "Mastercard **** 5782\nCode for the payment: 682415")
+        assertCode("682415", in: "Visa •••• 5782 - your verification code is 682415")
+        assertCode("682415", in: "Karte xxxx-xxxx-xxxx-5782\nIhr Code lautet 682415")
+        assertCode("682415", in: "Payment with card ...5782. Code 682415")
+    }
+
+    func testCardTailWithoutACodeStaysUnmatched() {
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Mastercard XXXX 5782 wurde belastet. Kein Code noetig."
+        )))
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Zahlung mit Kreditkarte 5782 bestaetigt. Kein Code noetig."
+        )))
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Visa **** 4821 was charged USD 24.80. No code is needed."
+        )))
+    }
+
+    func testMaskRunIsNeverACodeItself() {
+        XCTAssertNil(extractor.extract(from: NotificationContent(text: "Code XXXX wurde verwendet")))
+    }
+
+    func testKeywordPrefersTheNumberOnItsOwnLine() {
+        assertCode("682415", in: "Terminal 4821\nYour code for confirming the payment transaction: 682415")
+        assertCode("682415", in: "Coop Pronto\nCHF 24.80\nTerminal 4821\nIhr Code zur Freigabe der Zahlung lautet: 682415")
+    }
+
+    func testCodeOnItsOwnLineStillWinsWhenNothingSharesTheKeywordLine() {
+        assertCode("682415", in: "Your verification code\n682415")
+    }
+
+    func testMaskLookalikesDoNotEatARealCode() {
+        assertCode("482913", in: "Your code is... 482913")
+        assertCode("448291", in: "Ihr Code lautet 448291...")
+        assertCode("9XX482", in: "Your verification code is 9XX482")
+        assertCode("6824", in: "Your Mastercard code is 6824")
+    }
+
     private func assertCode(
         _ expected: String,
         in text: String,

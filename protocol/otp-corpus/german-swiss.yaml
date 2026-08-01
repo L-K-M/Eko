@@ -226,3 +226,17 @@ cases:
         notification_key: bank-conversation
         text: "Neue mTAN 902771 für CHF 20.00"
         expected: {code: "902771", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: ch-009-maskierte-karte-und-code
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Zahlung CHF 118.01\nKreditkarte **** 5782\nIhr Code zur Bestätigung der Zahlung: 682415"
+        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: ch-010-terminalnummer-vor-dem-code
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Coop Pronto\nCHF 24.80\nTerminal 4821\nIhr Code zur Freigabe der Zahlung lautet: 682415"
+        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}

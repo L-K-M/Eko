@@ -117,6 +117,11 @@ final class OTPExtractorTests: XCTestCase {
         assertCode("7043", in: "Revolut\nCard **** 8821\n7043 is your confirmation code")
         assertCode("4821", in: "Visa ****\n4821 ist Ihr Code zur Freigabe")
         assertCode("1234", in: "XXXX\n1234 is your verification code")
+        assertCode("4821", in: "Visa No.\n4821 ist Ihr Code")
+        assertCode("4821", in: "Ihre Karte\n4821 ist Ihr Code")
+        assertCode("1234", in: "Card ending\n1234 is your code")
+        assertCode("4821", in: "Bestellung\n4821 ist Ihr Code")
+        assertCode("682415", in: "Rechnung\n682415 ist Ihr Code")
     }
 
     func testCodeOnItsOwnLineStillWins() {

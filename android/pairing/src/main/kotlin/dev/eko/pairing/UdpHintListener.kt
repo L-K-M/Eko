@@ -29,6 +29,7 @@ class UdpHintListener : Closeable {
     private val mutable = MutableStateFlow<List<UdpMacHint>>(emptyList())
     val hints = mutable.asStateFlow()
     private val lastPacketByHost = LinkedHashMap<String, Long>()
+    private var lastAcceptedPacketAt = 0L
     private var socket: DatagramSocket? = null
     private var job: Job? = null
 
@@ -51,9 +52,16 @@ class UdpHintListener : Closeable {
                     if (packet.length > MAX_PACKET_BYTES) continue
                     val source = packet.address.hostAddress ?: continue
                     val now = System.currentTimeMillis()
+                    // The per-source throttle below is keyed on the UDP source
+                    // address, which a LAN sender forges freely — so it cannot be
+                    // the only budget. This global accepted-packet throttle is
+                    // source-independent and bounds how fast the hints list (and
+                    // the recomposition it drives) can churn under a flood.
+                    if (now - lastAcceptedPacketAt < MIN_GLOBAL_PACKET_INTERVAL_MS) continue
                     val previous = synchronized(lastPacketByHost) { lastPacketByHost[source] ?: 0 }
                     if (now - previous < MIN_PACKET_INTERVAL_MS) continue
                     parse(packet.data.copyOfRange(packet.offset, packet.offset + packet.length), source, now)?.let { hint ->
+                        lastAcceptedPacketAt = now
                         synchronized(lastPacketByHost) {
                             lastPacketByHost[source] = now
                             while (lastPacketByHost.size > MAX_PEERS) {
@@ -63,9 +71,13 @@ class UdpHintListener : Closeable {
                         // Drop hints that stopped announcing: entries were only
                         // ever replaced by fingerprint, so a Mac that changed
                         // address or left advertised a stale endpoint forever.
+                        // Cap the tracked hints too: forged-source packets with
+                        // fresh fingerprints must not grow this list without
+                        // bound while the pairing screen is open.
                         mutable.value = (mutable.value.filterNot { it.fingerprint == hint.fingerprint } + hint)
                             .filter { now - it.seenAtWall <= HINT_TTL_MS }
                             .sortedBy(UdpMacHint::name)
+                            .let { hints -> if (hints.size <= MAX_PEERS) hints else hints.sortedBy(UdpMacHint::seenAtWall).takeLast(MAX_PEERS) }
                     }
                 } catch (_: SocketTimeoutException) {
                     Unit
@@ -114,6 +126,7 @@ class UdpHintListener : Closeable {
         const val PORT = 48_809
         const val MAX_PACKET_BYTES = 1_024
         const val MIN_PACKET_INTERVAL_MS = 500L
+        const val MIN_GLOBAL_PACKET_INTERVAL_MS = 50L
         const val MAX_PEERS = 42
         const val HINT_TTL_MS = 15_000L
         val FINGERPRINT = Regex("^[0-9a-f]{64}$")

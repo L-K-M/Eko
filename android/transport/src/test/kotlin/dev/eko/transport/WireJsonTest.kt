@@ -95,12 +95,15 @@ class WireJsonTest {
             generation = "generation",
             highWater = 43,
             replayFromSeq = 43,
-            events = listOf(event),
+            eventSeqs = listOf(43),
             gaps = listOf(GapSpanEntity("peer", "generation", 41, 42, "retention_count")),
             active = emptyList(),
         )
 
-        val frames = WireJson.backlog(snapshot, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
+        val frames =
+            WireJson.backlogStart(snapshot, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") +
+                WireJson.backlogEvent(event, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee") +
+                WireJson.backlogEnd(snapshot, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee")
 
         assertEquals(
             listOf(null, SequenceCoverage(41, 42), SequenceCoverage(43, 43), null, null),
@@ -110,5 +113,7 @@ class WireJsonTest {
             listOf("backlog_start", "backlog_gap", "event", "active_chunk", "backlog_end"),
             frames.map { it.message.strictString("type") },
         )
+        val start = frames.first()
+        assertEquals(1, start.message.strictLong("event_count"))
     }
 }

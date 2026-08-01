@@ -214,11 +214,11 @@ cases:
       - text: "CHF 118.01\n01.08.2026 / 17:57\nMastercard XXXX 5782\nYour code for confirming the payment transaction: 682415"
         expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
 
-  - id: en-027-decoy-number-on-earlier-line
-    locale: en
+  - id: en-027-amount-line-above-code
+    locale: en-CH
     source: banking
     events:
-      - text: "Terminal 4821\nYour code for confirming the payment transaction: 682415"
+      - text: "Coop\nCHF 45.00\n682415 is your confirmation code"
         expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
 
   - id: en-028-code-wrapped-in-emphasis

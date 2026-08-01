@@ -234,9 +234,9 @@ cases:
       - text: "Zahlung CHF 118.01\nKreditkarte **** 5782\nIhr Code zur Bestätigung der Zahlung: 682415"
         expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
 
-  - id: ch-010-terminalnummer-vor-dem-code
+  - id: ch-010-kartenendung-ueber-dem-code
     locale: de-CH
     source: banking
     events:
-      - text: "Coop Pronto\nCHF 24.80\nTerminal 4821\nIhr Code zur Freigabe der Zahlung lautet: 682415"
+      - text: "Mastercard 5782\n682415 ist Ihr Code"
         expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}

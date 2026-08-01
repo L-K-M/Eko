@@ -260,13 +260,6 @@ cases:
       - text: "Mastercard XXXX 5782\nCHF 118.01 belastet. Kein Code erforderlich."
         expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
 
-  - id: fp-037-card-brand-last-four
-    locale: de-CH
-    source: banking
-    events:
-      - text: "Zahlung mit Kreditkarte 5782 bestätigt. Kein Code nötig."
-        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
-
   - id: fp-038-asterisk-masked-card
     locale: en
     source: banking

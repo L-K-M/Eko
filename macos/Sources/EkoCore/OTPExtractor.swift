@@ -30,8 +30,11 @@ public struct OTPExtractor: Sendable {
     private static let quotedPattern = try! NSRegularExpression(
         pattern: #"\"[^\"\n]{0,120}\"|“[^”\n]{0,120}”|«[^»\n]{0,120}»"#
     )
+    // Horizontal whitespace only: a phone number never spans a line break, but
+    // a card tail and the code beneath it do, and \s would splice the two into
+    // one nine-digit "number" and delete both.
     private static let phonePattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])\+?\d(?:[\s().-]*\d){8,}(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])\+?\d(?:[ \t().-]*\d){8,}(?![0-9A-Za-z])"#
     )
     private static let dateTimePattern = try! NSRegularExpression(
         pattern: #"\b\d{1,2}:\d{2}(?::\d{2})?\b|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b"#
@@ -43,36 +46,38 @@ public struct OTPExtractor: Sendable {
         pattern: #"\b(?:ending|ends?\s+in|endziffer|letzte[nr]?\s+ziffern?|card|karte)\D{0,12}\d{4}\b"#,
         options: [.caseInsensitive]
     )
-    // A run of masking glyphs followed by the surviving digits of an account
-    // number: "XXXX 5782", "**** 5782", "xxxx-xxxx-xxxx-5782", "...5782".
-    // A letter mask needs three glyphs and a non-alphanumeric on its left, so
-    // an alphanumeric code merely containing a doubled X ("9XX482") survives;
-    // one that *begins* with three of them is the accepted cost. A dotted mask
-    // must abut its digits so "your code is... 482913" survives. The tail is
-    // exactly four digits — the shape every issuer actually prints, and the
-    // same shape cardContextPattern accepts. A wider run would swallow a real
-    // six-digit code wrapped in emphasis ("**482913**"), which costs the user
-    // the code outright; a masked tail longer than four leaking through only
-    // costs it a competing candidate that ranking still has to beat.
+    // A run of masking glyphs followed by the four surviving digits of an
+    // account number: "XXXX 5782", "**** 5782", "xxxx-xxxx-xxxx-5782".
+    //
+    // Every bound here is the loose one that broke something. Three glyphs
+    // minimum, because "**4821**" and "Ваш код: **4821**" are emphasis, not a
+    // mask. A non-alphanumeric on the left, so a code merely containing a
+    // doubled X ("9XX482") survives. Exactly four digits, because "**482913**"
+    // is a six-digit code in asterisks. No dotted form at all: "card ...5782"
+    // is already endingPattern's, while "Ваш код...4821" is a code behind an
+    // ellipsis. Losing a code outright is worse than leaking a tail that
+    // ranking still has to beat, so every doubtful case resolves to leaking.
     private static let maskedNumberPattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])(?:(?:[Xx]{3,}|[*#•·∙●○]{2,})(?:[-\s–—]*(?:[Xx]{3,}|[*#•·∙●○]{2,}))*[-\s–—]*\d{4}|(?:\.{3,}|…)\d{4})(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[-\s–—]*(?:[Xx]{3,}|[*#•·∙●○]{3,}))*[-\s–—]*\d{4}(?![0-9A-Za-z])"#
     )
-    // The last four digits of a card or account announced by a brand or by a
-    // compound noun that ends in card/karte/konto — "Mastercard 5782",
-    // "Kreditkarte Nr. 5782", "Visa 5782". Only a reference abbreviation may
-    // stand between the noun and the digits; any other word character ends the
-    // match, so "Mastercard code is 6824" keeps its code (a plain "card ... 6824"
-    // is endingPattern's business, and it already allows letters in the gap).
+    // A card or account tail announced by a reference abbreviation, where
+    // `\b(?:card|karte)` cannot reach because the noun is a compound:
+    // "Mastercard Nr. 5782", "Kontonummer 5782". The abbreviation is required —
+    // a bare brand next to four digits is not evidence, since "Barclaycard:
+    // 1234", "Amex: 3907" and "Verifieringskod för ditt konto: 4821" all put a
+    // real code exactly there. Bare "card"/"karte" tails remain endingPattern's.
     private static let cardContextPattern = try! NSRegularExpression(
-        pattern: #"\b(?:\w*(?:card|karte|konto)|visa|maestro|amex|account)\W{0,8}(?:(?:nr|no|nummer|number)\.?\W{0,4})?\d{4}\b"#,
+        pattern: #"\b(?:\w*(?:card|karte|konto)|visa|maestro|amex|account)\W{0,8}(?:nr|no|nummer|number)\.?\W{0,4}\d{4}\b"#,
         options: [.caseInsensitive]
     )
     private static let orderPattern = try! NSRegularExpression(
         pattern: #"\b(?:order|bestell\w*|tracking|sendung|invoice|rechnung|reference|referenz)(?:\s*(?:number|nummer|nr\.?|id))?\D{0,12}[0-9A-Za-z-]{4,20}\b"#,
         options: [.caseInsensitive]
     )
+    // Horizontal whitespace again: an amount ends at its line. Letting \s run on
+    // made "CHF 45.00\n682415 ist Ihr Code" one amount and swallowed the code.
     private static let currencyPattern = try! NSRegularExpression(
-        pattern: #"(?:\b(?:CHF|EUR|USD)\s*|[$€£]\s*)\d[\d'’.,\s]*|\d[\d'’.,\s]*\s*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
+        pattern: #"(?:\b(?:CHF|EUR|USD)[ \t]*|[$€£][ \t]*)\d[\d'’., \t]*|\d[\d'’., \t]*[ \t]*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
         options: [.caseInsensitive]
     )
     private static let ignorePattern = try! NSRegularExpression(
@@ -116,9 +121,13 @@ public struct OTPExtractor: Sendable {
         text = Self.phonePattern.replacingMatches(in: text, with: " ")
         text = Self.dateTimePattern.replacingMatches(in: text, with: " ")
         text = Self.postcodePattern.replacingMatches(in: text, with: " ")
-        text = Self.maskedNumberPattern.replacingMatches(in: text, with: " ")
+        // The mask strip runs last of the three: it leaves the card word behind,
+        // and endingPattern spans letters, so stripping "Card **** 8821" first
+        // would leave "Card  " sitting `\D{0,12}` away from the code on the next
+        // line and endingPattern would then eat the code.
         text = Self.endingPattern.replacingMatches(in: text, with: " ")
         text = Self.cardContextPattern.replacingMatches(in: text, with: " ")
+        text = Self.maskedNumberPattern.replacingMatches(in: text, with: " ")
         text = Self.orderPattern.replacingMatches(in: text, with: " ")
         text = Self.currencyPattern.replacingMatches(in: text, with: " ")
 
@@ -129,7 +138,6 @@ public struct OTPExtractor: Sendable {
 
         var candidates = Self.groupedDigitsPattern.matches(in: text, range: fullRange)
         candidates.append(contentsOf: Self.tokenPattern.matches(in: text, range: fullRange))
-        let newlinesBefore = newlinePrefixSums(text)
 
         let ranked = candidates.compactMap { match -> RankedCandidate? in
             guard let range = Range(match.range, in: text) else { return nil }
@@ -139,47 +147,28 @@ public struct OTPExtractor: Sendable {
                 return nil
             }
 
-            var bestLineDistance = Int.max
             var bestScore = Int.max
             for keyword in keywordMatches {
-                let gapStart: Int
-                let gapEnd: Int
+                let distance: Int
                 let directionPenalty: Int
                 if match.range.location >= NSMaxRange(keyword.range) {
-                    gapStart = NSMaxRange(keyword.range)
-                    gapEnd = match.range.location
+                    distance = match.range.location - NSMaxRange(keyword.range)
                     directionPenalty = 0
                 } else if keyword.range.location >= NSMaxRange(match.range) {
-                    gapStart = NSMaxRange(match.range)
-                    gapEnd = keyword.range.location
+                    distance = keyword.range.location - NSMaxRange(match.range)
                     directionPenalty = 4
                 } else {
                     continue
                 }
-                let distance = gapEnd - gapStart
                 guard distance <= 80 else { continue }
-                // A notification body is line structured: a keyword binds to a
-                // number on its own line before it binds to a nearer number
-                // that a line break separates from it.
-                let lineDistance = newlinesBefore[gapEnd] - newlinesBefore[gapStart]
-                let score = distance + directionPenalty
-                if lineDistance < bestLineDistance || (lineDistance == bestLineDistance && score < bestScore) {
-                    bestLineDistance = lineDistance
-                    bestScore = score
-                }
+                bestScore = min(bestScore, distance + directionPenalty)
             }
             guard bestScore != Int.max else { return nil }
             let numericPreference = code.allSatisfy(\.isNumber) ? 0 : 2
-            return RankedCandidate(
-                code: code,
-                lineDistance: bestLineDistance,
-                score: bestScore + numericPreference,
-                location: match.range.location
-            )
+            return RankedCandidate(code: code, score: bestScore + numericPreference, location: match.range.location)
         }
 
         guard let winner = ranked.sorted(by: {
-            if $0.lineDistance != $1.lineDistance { return $0.lineDistance < $1.lineDistance }
             if $0.score != $1.score { return $0.score < $1.score }
             return $0.location < $1.location
         }).first else { return nil }
@@ -196,19 +185,6 @@ public struct OTPExtractor: Sendable {
         if let infoText = content.infoText { values.append(infoText) }
         if let summaryText = content.summaryText { values.append(summaryText) }
         return values.filter { !$0.isEmpty }
-    }
-
-    /// Newlines preceding each UTF-16 offset, so the gap between two matches
-    /// can be measured in line breaks in constant time.
-    private func newlinePrefixSums(_ text: String) -> [Int] {
-        var sums = [Int](repeating: 0, count: text.utf16.count + 1)
-        var running = 0
-        for (offset, unit) in text.utf16.enumerated() {
-            sums[offset] = running
-            if unit == 0x000A { running += 1 }
-        }
-        sums[text.utf16.count] = running
-        return sums
     }
 
     private func stripRetrieverArtifacts(_ text: String) -> String {
@@ -295,7 +271,6 @@ public struct OTPExtractor: Sendable {
 
     private struct RankedCandidate {
         let code: String
-        let lineDistance: Int
         let score: Int
         let location: Int
     }

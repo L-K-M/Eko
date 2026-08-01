@@ -105,6 +105,22 @@ final class OTPExtractorTests: XCTestCase {
         )))
     }
 
+    // A mask run with no tail behind it must not send ICU exponential. Before
+    // the repeated group required a separator and was bounded, sixty X's in a
+    // body never returned, and NSRegularExpression cannot be interrupted. If
+    // that shape comes back this test stops finishing rather than failing,
+    // which is the loudest alarm available for a hang.
+    func testLongMaskRunDoesNotHangTheEngine() {
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "code " + String(repeating: "X", count: 1_000)
+        )))
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Mastercard " + String(repeating: "*", count: 1_000) + " code 682415"
+        )))
+        assertCode("682415", in: "Mastercard **** **** **** 1234\nYour code: 682415")
+        assertCode("682415", in: "Mastercard XXXX XXXX XXXX 5782\nYour code: 682415")
+    }
+
     func testMaskRunIsNeverACodeItself() {
         XCTAssertNil(extractor.extract(from: NotificationContent(text: "Code XXXX wurde verwendet")))
     }

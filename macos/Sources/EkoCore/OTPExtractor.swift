@@ -62,8 +62,16 @@ public struct OTPExtractor: Sendable {
     //
     // Losing a code outright is worse than leaking a tail that ranking still
     // has to beat, so every doubtful case resolves to leaking.
+    //
+    // The repeated group must consume a separator and is capped at three more
+    // groups. With an optional separator the alternatives could sit flush
+    // against each other, so one run of glyphs had exponentially many
+    // partitions into groups of three or more, and a body carrying sixty X's
+    // and no trailing digits never came back — ICU backtracks and has no
+    // timeout, which is why PLAN.md asks these patterns to stay linear. Three
+    // extra groups still spans a full "**** **** **** 1234".
     private static let maskedNumberPattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[- \t–—]*(?:[Xx]{3,}|[*#•·∙●○]{3,}))*[- \t–—]*\d{4}(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[- \t–—]+(?:[Xx]{3,}|[*#•·∙●○]{3,})){0,3}[- \t–—]*\d{4}(?![0-9A-Za-z])"#
     )
     // A card or account tail announced by a reference abbreviation, where
     // `\b(?:card|karte)` cannot reach because the noun is a compound:

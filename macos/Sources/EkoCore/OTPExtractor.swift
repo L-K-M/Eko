@@ -48,9 +48,14 @@ public struct OTPExtractor: Sendable {
     // A letter mask needs three glyphs and a non-alphanumeric on its left, so
     // an alphanumeric code merely containing a doubled X ("9XX482") survives;
     // one that *begins* with three of them is the accepted cost. A dotted mask
-    // must abut its digits so "your code is... 482913" survives.
+    // must abut its digits so "your code is... 482913" survives. The tail is
+    // exactly four digits — the shape every issuer actually prints, and the
+    // same shape cardContextPattern accepts. A wider run would swallow a real
+    // six-digit code wrapped in emphasis ("**482913**"), which costs the user
+    // the code outright; a masked tail longer than four leaking through only
+    // costs it a competing candidate that ranking still has to beat.
     private static let maskedNumberPattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])(?:(?:[Xx]{3,}|[*#•·∙●○]{2,})(?:[-\s–—]*(?:[Xx]{3,}|[*#•·∙●○]{2,}))*[-\s–—]*\d{2,8}|(?:\.{3,}|…)\d{2,8})(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])(?:(?:[Xx]{3,}|[*#•·∙●○]{2,})(?:[-\s–—]*(?:[Xx]{3,}|[*#•·∙●○]{2,}))*[-\s–—]*\d{4}|(?:\.{3,}|…)\d{4})(?![0-9A-Za-z])"#
     )
     // The last four digits of a card or account announced by a brand or by a
     // compound noun that ends in card/karte/konto — "Mastercard 5782",

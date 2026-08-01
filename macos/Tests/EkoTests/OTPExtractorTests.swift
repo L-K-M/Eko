@@ -124,6 +124,10 @@ final class OTPExtractorTests: XCTestCase {
         assertCode("9XX482", in: "Your verification code is 9XX482")
         assertCode("6824", in: "Your Mastercard code is 6824")
         assertCode("6824", in: "Karte gesperrt. Code Nr. 6824 zur Freigabe.")
+        // Emphasis glyphs hug the code in real SMS copy; only a four-digit
+        // tail is a card tail, so a six-digit code inside asterisks survives.
+        assertCode("482913", in: "**482913** is your verification code")
+        assertCode("482913", in: "XXX 482913 is your verification code")
     }
 
     private func assertCode(

@@ -220,3 +220,10 @@ cases:
     events:
       - text: "Terminal 4821\nYour code for confirming the payment transaction: 682415"
         expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: en-028-code-wrapped-in-emphasis
+    locale: en
+    source: sms
+    events:
+      - text: "**482913** is your verification code"
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}

@@ -57,8 +57,12 @@ public struct OTPExtractor: Sendable {
     // is already endingPattern's, while "Ваш код...4821" is a code behind an
     // ellipsis. Losing a code outright is worse than leaking a tail that
     // ranking still has to beat, so every doubtful case resolves to leaking.
+    // Horizontal whitespace between the glyphs and the digits, for the same
+    // reason amounts and phone numbers stop at the line break: an issuer keeps
+    // a masked tail on one line, so `\s` here only reached down and deleted the
+    // code beneath it ("Visa ****\n4821 ist Ihr Code").
     private static let maskedNumberPattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[-\s–—]*(?:[Xx]{3,}|[*#•·∙●○]{3,}))*[-\s–—]*\d{4}(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[- \t–—]*(?:[Xx]{3,}|[*#•·∙●○]{3,}))*[- \t–—]*\d{4}(?![0-9A-Za-z])"#
     )
     // A card or account tail announced by a reference abbreviation, where
     // `\b(?:card|karte)` cannot reach because the noun is a compound:

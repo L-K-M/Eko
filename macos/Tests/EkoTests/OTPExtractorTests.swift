@@ -71,6 +71,7 @@ final class OTPExtractorTests: XCTestCase {
         XCTAssertNil(extractor.extract(from: NotificationContent(text: "Shipping ETA 4829")))
     }
 
+<<<<<<< HEAD
     func testMaskedCardTailDoesNotOutrankThePaymentCode() {
         assertCode("682415", in: """
         CHF 118.01
@@ -185,6 +186,29 @@ final class OTPExtractorTests: XCTestCase {
         assertCode("1234", in: "Barclaycard: 1234 is your verification code.")
         assertCode("3907", in: "Amex: 3907 is your one-time code.")
         assertCode("4821", in: "Verifieringskod foer ditt konto: 4821")
+    }
+
+    // Regression: the domain sub-patterns used to nest quantifiers
+    // (`(?:seg\.)+tld`), which a backtracking engine evaluates in 2^(dot count)
+    // paths when the overall match fails. Notification text is wire data, so a
+    // dotted line was a remote hang of the ingest actor. These inputs are
+    // pathological enough that the old patterns would never finish; with the
+    // unrolled patterns they complete in microseconds. The generous time budget
+    // only guards against accidental reintroduction of super-linear matching.
+    func testOriginBoundDottedLineDoesNotHang() {
+        let dots = String(repeating: "a.", count: 2_000)
+        let content = NotificationContent(bigText: "intro\n@\(dots)")
+        let start = ContinuousClock.now
+        XCTAssertNil(extractor.extract(from: content))
+        XCTAssertLessThan(start.duration(to: ContinuousClock.now), .seconds(10))
+    }
+
+    func testDomainScrubbingDottedTextDoesNotHang() {
+        let dots = String(repeating: "a.", count: 400)
+        let content = NotificationContent(text: "code 123456 visit \(dots)")
+        let start = ContinuousClock.now
+        _ = extractor.extract(from: content)
+        XCTAssertLessThan(start.duration(to: ContinuousClock.now), .seconds(10))
     }
 
     private func assertCode(

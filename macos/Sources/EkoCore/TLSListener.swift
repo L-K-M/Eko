@@ -211,21 +211,31 @@ private final class ConnectionLimiter: @unchecked Sendable {
     private let lock = NSLock()
     private var unauthenticatedCount = 0
     private var attempts: [String: [Date]] = [:]
+    private var allAttempts: [Date] = []
     private let maximumUnauthenticated = 8
     private let maximumAttemptsPerMinute = 12
+    // Per-source throttling is keyed on an address the attacker rotates freely
+    // (IPv6 privacy addresses, multiple hosts). This source-independent ceiling
+    // bounds how fast the unauthenticated slots can be churned in total, so a
+    // half-open flood cannot starve a legitimate phone indefinitely.
+    private let maximumTotalAttemptsPerMinute = 60
 
     func begin(source: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        let cutoff = Date().addingTimeInterval(-60)
+        let now = Date()
+        let cutoff = now.addingTimeInterval(-60)
+        allAttempts = allAttempts.filter { $0 >= cutoff }
         var recent = attempts[source, default: []].filter { $0 >= cutoff }
         guard unauthenticatedCount < maximumUnauthenticated,
-              recent.count < maximumAttemptsPerMinute else {
+              recent.count < maximumAttemptsPerMinute,
+              allAttempts.count < maximumTotalAttemptsPerMinute else {
             attempts[source] = recent
             return false
         }
-        recent.append(Date())
+        recent.append(now)
         attempts[source] = recent
+        allAttempts.append(now)
         unauthenticatedCount += 1
         if attempts.count > 128 {
             attempts = attempts.filter { $0.value.contains(where: { $0 >= cutoff }) }

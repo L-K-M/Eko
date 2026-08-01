@@ -43,7 +43,7 @@ public struct OTPExtractor: Sendable {
         pattern: #"\b[A-Za-z]{1,2}\d[A-Za-z\d]?[ \t]+\d[A-Za-z]{2}\b"#
     )
     private static let endingPattern = try! NSRegularExpression(
-        pattern: #"\b(?:ending|ends?[ \t]+in|endziffer|letzte[nr]?[ \t]+ziffern?|card|karte)[^\d\n]{0,12}\d{4}\b"#,
+        pattern: #"\b(?:ending|ends?[ \t]+in|endziffer|endung|letzte[nr]?[ \t]+ziffern?|card|karte)[^\d\n]{0,12}\d{4}\b"#,
         options: [.caseInsensitive]
     )
     // A run of masking glyphs followed by the four surviving digits of an

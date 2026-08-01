@@ -100,6 +100,9 @@ final class OTPExtractorTests: XCTestCase {
         XCTAssertNil(extractor.extract(from: NotificationContent(
             text: "Account number 5782 was charged. No code needed."
         )))
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Karte mit der Endung 5782 wurde belastet."
+        )))
     }
 
     func testMaskRunIsNeverACodeItself() {
@@ -122,6 +125,7 @@ final class OTPExtractorTests: XCTestCase {
         assertCode("1234", in: "Card ending\n1234 is your code")
         assertCode("4821", in: "Bestellung\n4821 ist Ihr Code")
         assertCode("682415", in: "Rechnung\n682415 ist Ihr Code")
+        assertCode("682415", in: "Bestaetigungscode fuer Karte mit der Endung 5782\n682415")
     }
 
     func testCodeOnItsOwnLineStillWins() {

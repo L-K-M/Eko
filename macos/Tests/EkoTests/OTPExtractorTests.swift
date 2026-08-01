@@ -97,6 +97,12 @@ final class OTPExtractorTests: XCTestCase {
         XCTAssertNil(extractor.extract(from: NotificationContent(
             text: "Visa **** 4821 was charged USD 24.80. No code is needed."
         )))
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Mastercard Nr. 5782 wurde belastet. Kein Code noetig."
+        )))
+        XCTAssertNil(extractor.extract(from: NotificationContent(
+            text: "Account number 5782 was charged. No code needed."
+        )))
     }
 
     func testMaskRunIsNeverACodeItself() {
@@ -117,6 +123,7 @@ final class OTPExtractorTests: XCTestCase {
         assertCode("448291", in: "Ihr Code lautet 448291...")
         assertCode("9XX482", in: "Your verification code is 9XX482")
         assertCode("6824", in: "Your Mastercard code is 6824")
+        assertCode("6824", in: "Karte gesperrt. Code Nr. 6824 zur Freigabe.")
     }
 
     private func assertCode(

@@ -45,19 +45,21 @@ public struct OTPExtractor: Sendable {
     )
     // A run of masking glyphs followed by the surviving digits of an account
     // number: "XXXX 5782", "**** 5782", "xxxx-xxxx-xxxx-5782", "...5782".
-    // Letter masks need three glyphs and a non-alphanumeric on the left so a
-    // real alphanumeric code can never be swallowed; a dotted mask must abut
-    // its digits so "your code is... 482913" survives.
+    // A letter mask needs three glyphs and a non-alphanumeric on its left, so
+    // an alphanumeric code merely containing a doubled X ("9XX482") survives;
+    // one that *begins* with three of them is the accepted cost. A dotted mask
+    // must abut its digits so "your code is... 482913" survives.
     private static let maskedNumberPattern = try! NSRegularExpression(
         pattern: #"(?<![0-9A-Za-z])(?:(?:[Xx]{3,}|[*#•·∙●○]{2,})(?:[-\s–—]*(?:[Xx]{3,}|[*#•·∙●○]{2,}))*[-\s–—]*\d{2,8}|(?:\.{3,}|…)\d{2,8})(?![0-9A-Za-z])"#
     )
     // The last four digits of a card or account announced by a brand or by a
     // compound noun that ends in card/karte/konto — "Mastercard 5782",
-    // "Kreditkarte 5782", "Visa 5782". Unlike endingPattern this allows no
-    // word characters before the digits, so "Mastercard code is 6824" keeps
-    // its code.
+    // "Kreditkarte Nr. 5782", "Visa 5782". Only a reference abbreviation may
+    // stand between the noun and the digits; any other word character ends the
+    // match, so "Mastercard code is 6824" keeps its code (a plain "card ... 6824"
+    // is endingPattern's business, and it already allows letters in the gap).
     private static let cardContextPattern = try! NSRegularExpression(
-        pattern: #"\b(?:\w*(?:card|karte|konto)|visa|maestro|amex|account)\W{0,8}\d{4}\b"#,
+        pattern: #"\b(?:\w*(?:card|karte|konto)|visa|maestro|amex|account)\W{0,8}(?:(?:nr|no|nummer|number)\.?\W{0,4})?\d{4}\b"#,
         options: [.caseInsensitive]
     )
     private static let orderPattern = try! NSRegularExpression(

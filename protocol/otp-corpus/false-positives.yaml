@@ -273,3 +273,17 @@ cases:
     events:
       - text: "Visa **** 4821 was charged USD 24.80. No code is needed."
         expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-039-card-brand-reference-number
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Mastercard Nr. 5782 wurde belastet. Kein Code nötig."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
+
+  - id: fp-040-account-reference-number
+    locale: en
+    source: banking
+    events:
+      - text: "Account number 5782 was charged. No code needed."
+        expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}

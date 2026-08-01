@@ -6,7 +6,7 @@ import dev.eko.core.EkoJson
 import dev.eko.core.ProtocolException
 import dev.eko.core.EventKind
 import dev.eko.core.MAX_FRAME_LENGTH
-import dev.eko.outbox.ActiveNotificationEntity
+import dev.eko.outbox.ActiveNotificationHeader
 import dev.eko.outbox.BacklogSnapshot
 import dev.eko.outbox.FetchRecord
 import dev.eko.outbox.GapSpanEntity
@@ -63,20 +63,20 @@ internal object WireJson {
         put("unpair_id", unpairId)
     }
 
-    fun backlog(snapshot: BacklogSnapshot, syncId: String): List<OutboundFrame> = buildList {
+    fun backlogStart(snapshot: BacklogSnapshot, syncId: String): List<OutboundFrame> = buildList {
         add(OutboundFrame(buildJsonObject {
             put("type", "backlog_start")
             put("sync_id", syncId)
             put("from_seq", snapshot.replayFromSeq)
             put("replay_to_seq", snapshot.highWater)
-            put("event_count", snapshot.events.size)
+            put("event_count", snapshot.eventSeqs.size)
         }))
         snapshot.gaps.forEach { gap ->
             add(OutboundFrame(gap(gap, syncId), SequenceCoverage(gap.fromSeq, gap.toSeq)))
         }
-        snapshot.events.forEach { event ->
-            add(OutboundFrame(event(event, replayed = true, syncId = syncId), SequenceCoverage(event.seq, event.seq)))
-        }
+    }
+
+    fun backlogEnd(snapshot: BacklogSnapshot, syncId: String): List<OutboundFrame> = buildList {
         val activeChunks = boundedActiveChunks(syncId, snapshot.active)
         activeChunks.forEachIndexed { index, chunk ->
             add(OutboundFrame(activeChunk(syncId, index, chunk, index == activeChunks.lastIndex)))
@@ -87,6 +87,11 @@ internal object WireJson {
             put("state_seq", snapshot.highWater)
         }))
     }
+
+    // One replayed event per frame; pages are assembled by the session from
+    // EventRepository.replayPage so a long backlog never materializes at once.
+    fun backlogEvent(entity: OutboxEventEntity, syncId: String): OutboundFrame =
+        OutboundFrame(event(entity, replayed = true, syncId = syncId), SequenceCoverage(entity.seq, entity.seq))
 
     fun event(entity: OutboxEventEntity, replayed: Boolean, syncId: String? = null): JsonObject {
         if (replayed) require(syncId != null) { "Replayed events require their backlog sync ID" }
@@ -142,7 +147,7 @@ internal object WireJson {
     private fun activeChunk(
         syncId: String,
         index: Int,
-        active: List<ActiveNotificationEntity>,
+        active: List<ActiveNotificationHeader>,
         final: Boolean,
     ) = buildJsonObject {
         put("type", "active_chunk")
@@ -226,11 +231,11 @@ internal object WireJson {
 
     private fun boundedActiveChunks(
         syncId: String,
-        active: List<ActiveNotificationEntity>,
-    ): List<List<ActiveNotificationEntity>> {
+        active: List<ActiveNotificationHeader>,
+    ): List<List<ActiveNotificationHeader>> {
         if (active.isEmpty()) return listOf(emptyList())
-        val result = mutableListOf<List<ActiveNotificationEntity>>()
-        var current = mutableListOf<ActiveNotificationEntity>()
+        val result = mutableListOf<List<ActiveNotificationHeader>>()
+        var current = mutableListOf<ActiveNotificationHeader>()
         active.forEach { entry ->
             val candidate = current + entry
             val encodedBytes = activeChunk(syncId, result.size, candidate, final = false)

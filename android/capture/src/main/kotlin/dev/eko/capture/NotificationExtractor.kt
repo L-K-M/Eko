@@ -65,32 +65,50 @@ class NotificationExtractor(private val context: Context) {
         notification: Notification,
         isClearable: Boolean,
         groupKey: String?,
-    ) = NotificationSanitizer.sanitize(
-        RawNotification(
-            title = notification.extras.charSequence(Notification.EXTRA_TITLE),
-            text = notification.extras.charSequence(Notification.EXTRA_TEXT),
-            bigText = notification.extras.charSequence(Notification.EXTRA_BIG_TEXT),
-            subText = notification.extras.charSequence(Notification.EXTRA_SUB_TEXT),
-            infoText = notification.extras.charSequence(Notification.EXTRA_INFO_TEXT),
-            summaryText = notification.extras.charSequence(Notification.EXTRA_SUMMARY_TEXT),
-            textLines = notification.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
-                ?.map(CharSequence::toString),
-            messages = runCatching {
-                NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
-                    ?.messages
-                    ?.map { message ->
-                        MessageContent(
-                            sender = message.person?.name?.toString(),
-                            text = message.text.toString(),
-                            timestamp = message.timestamp.takeIf { it in 0..9_007_199_254_740_991L },
-                        )
-                    }
-            }.getOrNull(),
-            isClearable = isClearable,
-            isGroupSummary = notification.flags and Notification.FLAG_GROUP_SUMMARY != 0,
-            groupKey = groupKey,
-        ),
-    )
+    ): dev.eko.core.NotificationContent {
+        val isGroupSummary = notification.flags and Notification.FLAG_GROUP_SUMMARY != 0
+        // The first extras read unparcels the whole Bundle inside this process.
+        // A hostile notification can carry a Parcelable our classloader cannot
+        // resolve, which throws BadParcelableException (a RuntimeException) from
+        // any of these getters. Left unguarded that kills the listener process,
+        // and the poisoned notification crashes every reconciliation on restart —
+        // a repeatable crash loop. Degrade to metadata-only instead; the event is
+        // still captured (key, package, timestamps) with empty content.
+        val raw = try {
+            RawNotification(
+                title = notification.extras.charSequence(Notification.EXTRA_TITLE),
+                text = notification.extras.charSequence(Notification.EXTRA_TEXT),
+                bigText = notification.extras.charSequence(Notification.EXTRA_BIG_TEXT),
+                subText = notification.extras.charSequence(Notification.EXTRA_SUB_TEXT),
+                infoText = notification.extras.charSequence(Notification.EXTRA_INFO_TEXT),
+                summaryText = notification.extras.charSequence(Notification.EXTRA_SUMMARY_TEXT),
+                textLines = notification.extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+                    ?.map(CharSequence::toString),
+                messages = runCatching {
+                    NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
+                        ?.messages
+                        ?.map { message ->
+                            MessageContent(
+                                sender = message.person?.name?.toString(),
+                                text = message.text.toString(),
+                                timestamp = message.timestamp.takeIf { it in 0..9_007_199_254_740_991L },
+                            )
+                        }
+                }.getOrNull(),
+                isClearable = isClearable,
+                isGroupSummary = isGroupSummary,
+                groupKey = groupKey,
+            )
+        } catch (error: RuntimeException) {
+            CaptureDiagnostics.get(context).extractionFailure(error.javaClass.simpleName ?: "unknown")
+            RawNotification(
+                isClearable = isClearable,
+                isGroupSummary = isGroupSummary,
+                groupKey = groupKey,
+            )
+        }
+        return NotificationSanitizer.sanitize(raw)
+    }
 
     private fun resolveLabel(sbn: StatusBarNotification): String = runCatching {
         val info = context.packageManager.getApplicationInfo(sbn.packageName, 0)

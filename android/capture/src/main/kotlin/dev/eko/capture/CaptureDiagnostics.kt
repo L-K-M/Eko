@@ -17,6 +17,7 @@ data class CaptureHealth(
     val lastInterruptionFilter: Int = 0,
     val commitFailures: Long = 0,
     val reconciliationFailures: Long = 0,
+    val extractionFailures: Long = 0,
 )
 
 class CaptureDiagnostics private constructor(context: Context) {
@@ -32,6 +33,7 @@ class CaptureDiagnostics private constructor(context: Context) {
             lastInterruptionFilter = preferences.getInt("filter", 0),
             commitFailures = preferences.getLong("commit_failures", 0),
             reconciliationFailures = preferences.getLong("reconciliation_failures", 0),
+            extractionFailures = preferences.getLong("extraction_failures", 0),
         ),
     )
     val state: StateFlow<CaptureHealth> = mutable.asStateFlow()
@@ -74,6 +76,12 @@ class CaptureDiagnostics private constructor(context: Context) {
         val count = state.value.reconciliationFailures + 1
         update { it.copy(reconciliationFailures = count) }
         preferences.edit().putLong("reconciliation_failures", count).commit()
+    }
+
+    fun extractionFailure(kind: String) {
+        val count = state.value.extractionFailures + 1
+        update { it.copy(extractionFailures = count, lastTransition = "extraction_failure:$kind") }
+        preferences.edit().putLong("extraction_failures", count).commit()
     }
 
     fun interruptionFilter(filter: Int) {

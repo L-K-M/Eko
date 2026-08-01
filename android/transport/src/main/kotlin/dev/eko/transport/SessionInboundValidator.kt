@@ -78,7 +78,10 @@ internal class SessionInboundValidator(
             ) throw ProtocolException("Unpair identities do not match the authenticated connection")
             InboundControl.Unpair(unpairId, initiatorId, peerId)
         }
-        "error" -> InboundControl.ErrorFrame(message.strictString("code"), message.strictBoolean("fatal"))
+        // The code is peer-controlled text that flows into UI state and the
+        // diagnostics log ring; bound it so a peer cannot stuff up-to-frame-size
+        // strings into either.
+        "error" -> InboundControl.ErrorFrame(message.strictString("code").take(MAX_ERROR_CODE_CHARS), message.strictBoolean("fatal"))
         in OTHER_STATE_TYPES -> throw ProtocolException("Frame '$type' is not valid in the current session state")
         else -> {
             if ("ext_types" !in capabilities) {
@@ -95,6 +98,7 @@ internal class SessionInboundValidator(
     }
 
     private companion object {
+        const val MAX_ERROR_CODE_CHARS = 256
         val RESTRICTED_UNPAIR_TYPES = setOf("unpair", "unpair_ack", "error")
         val OTHER_STATE_TYPES = setOf(
             "hello", "welcome", "pair_request", "pair_commit", "pair_reveal", "pair_result",

@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 MAX_FRAME_LENGTH = 1_048_576
+MAX_JSON_DEPTH = 64
 JSON_FRAME_TYPE = 0x01
 BINARY_FRAME_TYPE = 0x02
 
@@ -87,6 +88,25 @@ def _object_without_duplicates(pairs: Iterable[Tuple[str, Any]]) -> Dict[str, An
     return result
 
 
+def _enforce_json_depth_limit(value: Any) -> None:
+    """Reject nesting deeper than the protocol's hard bound.
+
+    Iterative on purpose: a recursive walk would itself be limited by the
+    interpreter's recursion limit. Levels count enclosing arrays/objects, so
+    a member of the top-level object is at level 1 — matching both app
+    implementations.
+    """
+    stack: List[Tuple[Any, int]] = [(value, 0)]
+    while stack:
+        node, level = stack.pop()
+        if level > MAX_JSON_DEPTH:
+            raise ProtocolError(f"JSON nesting exceeds {MAX_JSON_DEPTH} levels")
+        if isinstance(node, dict):
+            stack.extend((item, level + 1) for item in node.values())
+        elif isinstance(node, list):
+            stack.extend((item, level + 1) for item in node)
+
+
 def decode_json_payload(frame_type: int, payload: bytes) -> Dict[str, Any]:
     if frame_type != JSON_FRAME_TYPE:
         raise ProtocolError(f"expected JSON frame, received type 0x{frame_type:02x}")
@@ -98,10 +118,13 @@ def decode_json_payload(frame_type: int, payload: bytes) -> Dict[str, Any]:
         message = json.loads(text, object_pairs_hook=_object_without_duplicates)
     except ProtocolError:
         raise
+    except RecursionError as exc:
+        raise ProtocolError(f"JSON nesting exceeds {MAX_JSON_DEPTH} levels") from exc
     except (json.JSONDecodeError, ValueError) as exc:
         raise ProtocolError(f"invalid JSON payload: {exc}") from exc
     if not isinstance(message, dict):
         raise ProtocolError("JSON frame root must be an object")
+    _enforce_json_depth_limit(message)
     if not isinstance(message.get("type"), str):
         raise ProtocolError("JSON message must have a string type")
     return message

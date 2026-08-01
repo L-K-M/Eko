@@ -1138,7 +1138,8 @@ the M1 soak asserts against every committed event, not just the end state.
   the extracted code, and banking-style TAN messages are never auto-copied.
 - Codes are written with `org.nspasteboard.ConcealedType` alongside the string type so
   clipboard managers skip history (whether macOS 26's built-in clipboard history honors it is
-  unconfirmed — tracked as an open question).
+  unconfirmed — tracked as an open question), and with `org.nspasteboard.TransientType`
+  so Universal Clipboard never syncs them to other iCloud devices.
 - Auto-clear after 2 min: record `changeCount` at copy, clear only if unchanged. No
   "restore previous clipboard" feature — macOS 26 pasteboard privacy alerts on programmatic
   reads.

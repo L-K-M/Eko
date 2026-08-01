@@ -545,7 +545,7 @@ public actor SessionManager {
             try store.savePairingAttempt(initialAttempt)
         }
 
-        guard let requestFrame = try await receivePairingMessage(from: transport, duration: .seconds(10)),
+        guard let requestFrame = try await receivePairingMessage(from: transport, duration: .seconds(10), attemptExpiresAt: expiry),
               case .pairRequest(let request) = requestFrame,
               request.attemptID == attemptID,
               request.role == .phone,
@@ -571,7 +571,7 @@ public actor SessionManager {
             commitment: localCommitment.hexLowercased
         )))
 
-        guard let commitFrame = try await receivePairingMessage(from: transport, duration: .seconds(10)),
+        guard let commitFrame = try await receivePairingMessage(from: transport, duration: .seconds(10), attemptExpiresAt: expiry),
               case .pairCommit(let peerCommitMessage) = commitFrame,
               peerCommitMessage.attemptID == attemptID,
               peerCommitMessage.deviceID == hello.deviceID,
@@ -580,6 +580,9 @@ public actor SessionManager {
         }
         if let resumed, !resumed.peerCommitment.isEmpty,
            !EkoCrypto.constantTimeEqual(resumed.peerCommitment, peerCommitment) {
+            // Tamper evidence on a resumed attempt is fatal to the attempt
+            // (protocol §7.4), not just to this connection.
+            try store.deletePairingAttempt(id: attemptID)
             throw EkoCoreError.protocolViolation("resumed pairing commitment changed")
         }
         try store.savePairingAttempt(PersistedPairingAttempt(
@@ -608,21 +611,27 @@ public actor SessionManager {
             deviceID: localIdentity.fingerprint,
             nonce: localNonce.hexLowercased
         )))
-        guard let revealFrame = try await receivePairingMessage(from: transport, duration: .seconds(10)),
+        guard let revealFrame = try await receivePairingMessage(from: transport, duration: .seconds(10), attemptExpiresAt: expiry),
               case .pairReveal(let peerReveal) = revealFrame,
               peerReveal.attemptID == attemptID,
               peerReveal.deviceID == hello.deviceID,
-              let peerNonce = Data(hex: peerReveal.nonce), peerNonce.count == 32,
-              try PairingSAS.verify(
-                commitment: peerCommitment,
-                attemptID: attemptID,
-                certificateDER: peerCertificateDER,
-                revealedNonce: peerNonce
-              ) else {
+              let peerNonce = Data(hex: peerReveal.nonce), peerNonce.count == 32 else {
+            throw EkoCoreError.protocolViolation("peer pairing reveal is invalid")
+        }
+        guard try PairingSAS.verify(
+            commitment: peerCommitment,
+            attemptID: attemptID,
+            certificateDER: peerCertificateDER,
+            revealedNonce: peerNonce
+        ) else {
+            // A commitment mismatch is fatal and the attempt cannot be resumed
+            // (protocol §7.4): destroy it rather than let the peer retry.
+            try store.deletePairingAttempt(id: attemptID)
             throw EkoCoreError.protocolViolation("peer pairing reveal does not match its commitment")
         }
         if let resumed, !resumed.peerNonce.isEmpty,
            !EkoCrypto.constantTimeEqual(resumed.peerNonce, peerNonce) {
+            try store.deletePairingAttempt(id: attemptID)
             throw EkoCoreError.protocolViolation("resumed pairing nonce changed")
         }
 
@@ -709,7 +718,7 @@ public actor SessionManager {
             throw EkoCoreError.pairingRejected
         }
 
-        guard let resultFrame = try await receivePairingMessage(from: transport, duration: .seconds(30)),
+        guard let resultFrame = try await receivePairingMessage(from: transport, duration: .seconds(30), attemptExpiresAt: expiry),
                case .pairResult(let peerResult) = resultFrame,
                peerResult.attemptID == attemptID,
                peerResult.deviceID == hello.deviceID,
@@ -754,7 +763,7 @@ public actor SessionManager {
             try store.deletePairingAttempt(id: attemptID)
             throw EkoCoreError.pairingExpired
         }
-        guard let readyFrame = try await receivePairingMessage(from: transport, duration: .seconds(30)),
+        guard let readyFrame = try await receivePairingMessage(from: transport, duration: .seconds(30), attemptExpiresAt: expiry),
               case .pairResult(let ready) = readyFrame,
               ready.attemptID == attemptID,
               ready.deviceID == hello.deviceID,
@@ -769,6 +778,7 @@ public actor SessionManager {
             throw EkoCoreError.pairingExpired
         }
         if let priorCursor = persisted.initialCursor, priorCursor != initialCursor {
+            try store.deletePairingAttempt(id: attemptID)
             throw EkoCoreError.protocolViolation("resumed pairing changed initial_cursor")
         }
         persisted = PersistedPairingAttempt(
@@ -927,9 +937,14 @@ public actor SessionManager {
 
     private func receivePairingMessage(
         from transport: any SessionTransport,
-        duration: Duration
+        duration: Duration,
+        attemptExpiresAt: Date
     ) async throws -> WireMessage? {
         while true {
+            // Each loop iteration re-arms the receive timeout, so a peer sending
+            // pings or non-fatal errors could otherwise hold a pairing-stage
+            // connection open past the attempt's own expiry. Enforce it here.
+            if clock.now() >= attemptExpiresAt { throw EkoCoreError.pairingExpired }
             guard let message = try await receiveWithTimeout(from: transport, duration: duration) else {
                 return nil
             }

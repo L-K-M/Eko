@@ -7,6 +7,11 @@ public enum ProtocolLimits {
     public static let maximumDisplayNameScalars = 256
     public static let maximumCapabilities = 64
     public static let maximumActiveEntriesPerChunk = 4_096
+    // Total bound across all chunks of one snapshot. Chunk count is peer-controlled
+    // and unbounded by the wire format, so without a total cap a peer can grow the
+    // Mac's heap without limit and force one enormous reconcile transaction. Four
+    // chunks' worth is far beyond any real phone's active-notification set.
+    public static let maximumActiveSnapshotEntries = 16_384
     public static let maximumFetchKeys = 128
 }
 

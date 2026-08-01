@@ -77,7 +77,7 @@ final class SessionSemanticsTests: XCTestCase {
         ))))
     }
 
-    func testActiveSnapshotAcrossManyChunksHasNoTotalCap() throws {
+    func testActiveSnapshotAcrossManyChunksUpToTotalCap() throws {
         var state = SessionStateMachine(cursor: 1, generation: testGenerationA, negotiatedCapabilities: [])
         _ = try state.accept(.backlogStart(BacklogStartMessage(
             syncID: testSyncID,
@@ -85,8 +85,8 @@ final class SessionSemanticsTests: XCTestCase {
             replayToSequence: 1,
             eventCount: 0
         )))
-        let chunkCount = 3
-        let perChunk = 4_096
+        let chunkCount = ProtocolLimits.maximumActiveSnapshotEntries / ProtocolLimits.maximumActiveEntriesPerChunk
+        let perChunk = ProtocolLimits.maximumActiveEntriesPerChunk
         for index in 0..<chunkCount {
             let entries = (0..<perChunk).map {
                 ActiveEntry(
@@ -108,6 +108,38 @@ final class SessionSemanticsTests: XCTestCase {
         }
         XCTAssertEqual(completion.activeEntries.count, chunkCount * perChunk)
         XCTAssertEqual(state.phase, .live)
+    }
+
+    func testActiveSnapshotBeyondTotalCapIsRejected() throws {
+        var state = SessionStateMachine(cursor: 1, generation: testGenerationA, negotiatedCapabilities: [])
+        _ = try state.accept(.backlogStart(BacklogStartMessage(
+            syncID: testSyncID,
+            fromSequence: 2,
+            replayToSequence: 1,
+            eventCount: 0
+        )))
+        let fullChunks = ProtocolLimits.maximumActiveSnapshotEntries / ProtocolLimits.maximumActiveEntriesPerChunk
+        for index in 0..<fullChunks {
+            let entries = (0..<ProtocolLimits.maximumActiveEntriesPerChunk).map {
+                ActiveEntry(
+                    key: "chunk-\(index)-key-\($0)",
+                    contentHash: String(repeating: "a", count: 64),
+                    stateSequence: 1
+                )
+            }
+            _ = try state.accept(.activeChunk(ActiveChunkMessage(
+                syncID: testSyncID,
+                index: Int64(index),
+                final: false,
+                active: entries
+            )))
+        }
+        XCTAssertThrowsError(try state.accept(.activeChunk(ActiveChunkMessage(
+            syncID: testSyncID,
+            index: Int64(fullChunks),
+            final: true,
+            active: [ActiveEntry(key: "one-too-many", contentHash: String(repeating: "a", count: 64), stateSequence: 1)]
+        ))))
     }
 
     func testLiveSequenceMustBeContiguous() throws {

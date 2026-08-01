@@ -165,6 +165,10 @@ final class OTPExtractorTests: XCTestCase {
         // mask, and a mask tail is four digits, so neither length is eaten.
         assertCode("482913", in: "**482913** is your verification code")
         assertCode("4821", in: "Doğrulama kodu: **4821**")
+        // Three glyphs is bold-italic, and a card tail is never masked from
+        // the right, so a closing run marks emphasis rather than a mask.
+        assertCode("4821", in: "***4821*** is your verification code")
+        assertCode("4821", in: "•••4821••• ist Ihr Code")
         assertCode("482913", in: "XXX 482913 is your verification code")
         assertCode("4821", in: "Ihr Code...4821")
         // A brand next to four digits is not evidence of a card tail: the

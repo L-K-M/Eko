@@ -70,8 +70,14 @@ public struct OTPExtractor: Sendable {
     // and no trailing digits never came back — ICU backtracks and has no
     // timeout, which is why PLAN.md asks these patterns to stay linear. Three
     // extra groups still spans a full "**** **** **** 1234".
+    //
+    // Nor may a mask glyph follow the digits. A tail is the end of the number,
+    // so nothing masks it from the right; emphasis, on the other hand, closes
+    // the way it opened, and three glyphs is enough to be bold-italic
+    // ("***4821***", "•••4821•••") — which the three-glyph minimum alone did
+    // not save.
     private static let maskedNumberPattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[- \t–—]+(?:[Xx]{3,}|[*#•·∙●○]{3,})){0,3}[- \t–—]*\d{4}(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[- \t–—]+(?:[Xx]{3,}|[*#•·∙●○]{3,})){0,3}[- \t–—]*\d{4}(?![0-9A-Za-z*#•·∙●○])"#
     )
     // A card or account tail announced by a reference abbreviation, where
     // `\b(?:card|karte)` cannot reach because the noun is a compound:
@@ -280,7 +286,8 @@ public struct OTPExtractor: Sendable {
             return false
         }
         if digits.isEmpty {
-            // A single repeated glyph is a mask remnant ("XXXX"), never a code.
+            // A single repeated glyph is a mask remnant ("XXXX"); no OTP format
+            // in the corpus, and none known, spells a code as one repeated letter.
             guard Set(code.lowercased()).count > 1 else { return false }
             return code == code.uppercased() && code.contains(where: \.isLetter)
         }

@@ -574,13 +574,24 @@ async fn enrol_device(
     State(state): State<AppState>,
     Json(body): Json<Enrol>,
 ) -> ApiResult<Json<AccountCreated>> {
-    if body.device_id.trim().is_empty() || body.device_id.len() > MAX_DEVICE_ID_BYTES {
+    // Trimmed before it is stored, for the reason create_account trims a
+    // username: validating the trimmed form and storing the raw one lets
+    // "phone-1" and " phone-1 " be two devices that read as one.
+    let device_id = body.device_id.trim();
+    if device_id.is_empty() || device_id.len() > MAX_DEVICE_ID_BYTES {
         return Err(bad("device_id must be 1-128 characters"));
     }
     // device_id was bounded and these were not, though they are stored beside it
     // and handed back by list_devices.
     if body.name.len() > 256 || body.platform.len() > 64 {
         return Err(bad("name must be <=256 and platform <=64 bytes"));
+    }
+    // Bounded before the decode allocates, like deposit and device_auth. This
+    // endpoint validates its enrolment token further down, inside the
+    // transaction, so everything above that point runs for an anonymous caller.
+    // A SEC1 P-256 point is 65 bytes uncompressed, 33 compressed.
+    if !encoded_fits(&body.public_key, 65) {
+        return Err(bad("public_key too large"));
     }
     let key = b64()
         .decode(body.public_key.as_bytes())
@@ -617,7 +628,7 @@ async fn enrol_device(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             account_id,
-            body.device_id,
+            device_id,
             key,
             body.name,
             body.platform,

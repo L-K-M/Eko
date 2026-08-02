@@ -15,8 +15,11 @@ use sha2::{Digest, Sha256};
 /// Domain separation for the device challenge signature.
 pub const AUTH_CONTEXT: &[u8] = b"eko-relay-auth-v1";
 
-pub fn b64() -> base64::engine::general_purpose::GeneralPurpose {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD
+/// Borrowed, not returned by value: `GeneralPurpose` carries its encode and
+/// decode tables inline, so returning it copied a few hundred bytes on every
+/// token minted and every envelope decoded.
+pub fn b64() -> &'static base64::engine::general_purpose::GeneralPurpose {
+    &base64::engine::general_purpose::URL_SAFE_NO_PAD
 }
 
 pub fn hash_password(password: &str) -> Result<String, String> {
@@ -72,6 +75,9 @@ pub fn verify_password(password: &str, stored: &str) -> bool {
     }
 }
 
+/// `thread_rng` rather than `OsRng`, deliberately: it is a CSPRNG seeded from
+/// the OS and reseeded periodically, and it does not pay a syscall per call.
+/// `OsRng` appears above only because `SaltString::generate` asks for it.
 pub fn random_bytes(n: usize) -> Vec<u8> {
     let mut buf = vec![0u8; n];
     rand::thread_rng().fill_bytes(&mut buf);

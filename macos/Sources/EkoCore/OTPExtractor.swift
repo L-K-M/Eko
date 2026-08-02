@@ -96,7 +96,7 @@ public struct OTPExtractor: Sendable {
     // Horizontal whitespace again: an amount ends at its line. Letting \s run on
     // made "CHF 45.00\n682415 ist Ihr Code" one amount and swallowed the code.
     private static let currencyPattern = try! NSRegularExpression(
-        pattern: #"(?:\b(?:CHF|EUR|USD)[ \t]*|[$€£][ \t]*)\d[\d'’., \t]*|\d[\d'’., \t]*[ \t]*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
+        pattern: #"(?:\b(?:CHF|EUR|USD)[ \t]*|[$€£][ \t]*)\d[\d'’., \t]*|\d[\d'’., \t]*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
         options: [.caseInsensitive]
     )
     private static let ignorePattern = try! NSRegularExpression(

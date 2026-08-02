@@ -2,7 +2,7 @@
 name = "eko-relay"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.90"
 description = "Self-hosted store-and-forward relay for Eko. Carries opaque end-to-end encrypted envelopes; never sees notification content."
 license = "MIT"
 
@@ -22,13 +22,14 @@ sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
 thiserror = "2"
+subtle = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 hex = "0.4"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
-tempdir = "0.3"
+tempfile = "3"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [profile.release]

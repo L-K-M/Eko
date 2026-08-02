@@ -106,7 +106,35 @@ async fn main() {
         .ok();
 }
 
+/// Docker and Kubernetes send SIGTERM, not SIGINT. Listening only for ctrl_c
+/// meant the relay never drained in production - it was killed at the end of
+/// the termination grace period instead.
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            // Losing the handler must not take the process with it; fall back
+            // to ctrl_c being the only way out.
+            Err(e) => {
+                tracing::error!("cannot install SIGTERM handler: {e}");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
     tracing::info!("shutting down");
 }

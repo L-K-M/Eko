@@ -128,7 +128,10 @@ of truth and the resume protocol heals a lost relay database.
 ## Development
 
 ```sh
-cargo test          # unit + full HTTP integration suite
-cargo clippy --all-targets
+# Exactly what the `Relay server` CI job runs.
+cargo fmt --check
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+
 docker compose config    # validate the compose file
 ```

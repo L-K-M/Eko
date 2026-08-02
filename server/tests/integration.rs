@@ -19,11 +19,37 @@ fn b64() -> base64::engine::general_purpose::GeneralPurpose {
 
 struct Harness {
     app: axum::Router,
-    _dir: tempdir::TempDir,
+    _dir: tempfile::TempDir,
+}
+
+fn config_for(path: &str, registration: RegistrationOverride, bootstrap: Option<&str>) -> Config {
+    Config {
+        bind: "127.0.0.1:0".into(),
+        database: path.to_string(),
+        registration,
+        bootstrap_token: bootstrap.map(|s| s.to_string()),
+        max_envelope_bytes: 1_048_576,
+        retention_days: 30,
+        account_quota_bytes: 1024 * 1024,
+        token_ttl_secs: 3600,
+    }
+}
+
+/// A second router over the *same* database with different configuration, which
+/// is what "boot open, set up, then set closed and recreate" actually looks
+/// like to an operator.
+fn reopen(h: &Harness, registration: RegistrationOverride) -> axum::Router {
+    let path = h._dir.path().join("relay.db");
+    let config = config_for(&path.to_string_lossy(), registration, None);
+    let pool = eko_relay::db::open(&config.database).unwrap();
+    eko_relay::app(AppState {
+        pool,
+        config: Arc::new(config),
+    })
 }
 
 fn harness(registration: RegistrationOverride, bootstrap: Option<&str>) -> Harness {
-    let dir = tempdir::TempDir::new("eko-relay-test").unwrap();
+    let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("relay.db");
     let config = Config {
         bind: "127.0.0.1:0".into(),
@@ -237,18 +263,96 @@ async fn environment_override_cannot_be_reopened_through_the_api() {
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
 
-    // And with an account present, an admin flipping the flag cannot undo it.
+    // The property the name actually promises: with an admin already present
+    // and the environment forcing closed, that admin cannot reopen. Set up
+    // through an unset router, then reopen the same database as closed.
     let h = harness(RegistrationOverride::Unset, None);
     let owner = first_account(&h.app, None).await;
-    let (_, body) = call(
-        &h.app,
+    let locked = reopen(&h, RegistrationOverride::Closed);
+
+    let (status, body) = call(
+        &locked,
         "PATCH",
         "/api/v1/admin/settings",
         Some(&owner),
         Some(json!({"registration_open": true})),
     )
     .await;
-    assert_eq!(body["forced_by_environment"], json!(false));
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["registration_open"],
+        json!(false),
+        "the admin must not be able to reopen a locked deployment"
+    );
+    assert_eq!(body["forced_by_environment"], json!(true));
+
+    // And the lock is real, not just reported: creation is still refused.
+    let (status, _) = call(
+        &locked,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "after", "password": "correct horse battery"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+/// Deposits must not be able to race past the account quota.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_deposits_cannot_exceed_the_quota() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    let (_, mac) = enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    // Quota is 1 MiB and each envelope is 64 KiB, so 16 fit; the rest must be
+    // refused however concurrently they arrive.
+    let mut joins = Vec::new();
+    for _ in 0..40 {
+        let app = h.app.clone();
+        let phone = phone.clone();
+        joins.push(tokio::spawn(async move {
+            call(
+                &app,
+                "POST",
+                "/api/v1/queues/mac-1/envelopes",
+                Some(&phone),
+                Some(json!({
+                    "aad": b64().encode(b""),
+                    "body": b64().encode(vec![0u8; 65536]),
+                })),
+            )
+            .await
+            .0
+        }));
+    }
+    let mut accepted = 0;
+    for j in joins {
+        if j.await.unwrap() == StatusCode::OK {
+            accepted += 1;
+        }
+    }
+
+    let (status, list) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes?after=0&limit=500",
+        Some(&mac),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "drain must succeed: {list}");
+    let items = list.as_array().unwrap();
+    assert!(!items.is_empty(), "some deposits should have been accepted");
+    let stored: i64 = items
+        .iter()
+        .map(|e| b64().decode(e["body"].as_str().unwrap()).unwrap().len() as i64)
+        .sum();
+    assert!(
+        stored <= 1024 * 1024,
+        "stored {stored} bytes against a 1 MiB quota (accepted {accepted})"
+    );
 }
 
 #[tokio::test]

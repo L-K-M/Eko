@@ -96,11 +96,24 @@ async fn main() {
             loop {
                 tick.tick().await;
                 let pool = pool.clone();
-                let removed =
-                    tokio::task::spawn_blocking(move || eko_relay::routes::sweep(&pool, days))
-                        .await
-                        .unwrap_or(Ok(0))
-                        .unwrap_or(0);
+                // Both failure modes were swallowed. A sweep that fails every
+                // hour is invisible until the disk fills, which is the one
+                // outcome the retention window exists to prevent.
+                let removed = match tokio::task::spawn_blocking(move || {
+                    eko_relay::routes::sweep(&pool, days)
+                })
+                .await
+                {
+                    Ok(Ok(n)) => n,
+                    Ok(Err(e)) => {
+                        tracing::error!(error = ?e, "retention sweep failed");
+                        0
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "retention sweep task did not finish");
+                        0
+                    }
+                };
                 if removed > 0 {
                     tracing::info!(removed, "retention sweep");
                 }

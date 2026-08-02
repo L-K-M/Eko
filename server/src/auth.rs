@@ -74,7 +74,9 @@ pub fn random_bytes(n: usize) -> Vec<u8> {
 }
 
 /// Opaque bearer token. Only its SHA-256 is stored, so a database leak does not
-/// yield usable tokens.
+/// yield usable tokens. The digest is of the *encoded* string, which is what
+/// arrives in the Authorization header - `bearer()` hashes the header value
+/// directly, so both sides agree without decoding.
 pub fn new_token() -> (String, Vec<u8>) {
     let raw = random_bytes(32);
     let encoded = b64().encode(&raw);

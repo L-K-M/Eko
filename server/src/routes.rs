@@ -601,25 +601,33 @@ async fn device_auth(
         .map_err(|_| bad("signature must be base64url"))?;
 
     let c = conn(&state.pool)?;
-    let row: Option<(String, i64, Option<i64>)> = c
+    // Claim the nonce in one statement. Reading it, checking it in Rust and
+    // then burning it with a separate UPDATE is the same check-then-act shape
+    // as the races elsewhere in this file, and here it is a replay: concurrent
+    // requests carrying one intercepted (nonce, signature) pair all saw
+    // consumed_at IS NULL and all minted a token. SQLite serialises writes to
+    // the row, so with the conditions in the UPDATE only the first caller
+    // matches and every racer gets no row back.
+    //
+    // Still burned *before* the signature is verified, so a bad signature
+    // cannot be retried against the same challenge.
+    let now = now_ms();
+    let claimed: Option<i64> = c
         .query_row(
-            "SELECT device_id, expires_at, consumed_at FROM auth_nonce WHERE nonce = ?1",
-            params![nonce],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            "UPDATE auth_nonce SET consumed_at = ?1
+             WHERE nonce = ?2
+               AND consumed_at IS NULL
+               AND expires_at >= ?1
+               AND device_id = ?3
+             RETURNING 1",
+            params![now, nonce, body.device_id],
+            |r| r.get(0),
         )
         .optional()
         .map_err(|_| internal())?;
-    let (nonce_device, expires_at, consumed_at) = row.ok_or_else(unauthorized)?;
-    if consumed_at.is_some() || expires_at < now_ms() || nonce_device != body.device_id {
+    if claimed.is_none() {
         return Err(unauthorized());
     }
-    // Burn the nonce before verifying, so a signature-verification failure
-    // cannot be retried against the same challenge.
-    c.execute(
-        "UPDATE auth_nonce SET consumed_at = ?1 WHERE nonce = ?2",
-        params![now_ms(), nonce],
-    )
-    .map_err(|_| internal())?;
 
     let device: Option<(i64, Vec<u8>, Option<i64>)> = c
         .query_row(
@@ -915,20 +923,41 @@ pub struct SweepError;
 
 pub fn sweep(pool: &Pool, retention_days: i64) -> Result<usize, SweepError> {
     let c = pool.get().map_err(|_| SweepError)?;
-    let cutoff = now_ms() - retention_days * 86_400_000;
+    // EKO_RETENTION_DAYS is an operator string parsed straight into an i64, and
+    // both of its bad values delete rather than keep: a negative one puts the
+    // cutoff in the future and takes every envelope including the ones that
+    // arrived a second ago, and one large enough to overflow the multiply wraps
+    // to the same place. Neither is worth a panic, but neither may run - the
+    // safe reading of an unusable retention is "keep everything".
+    let Some(cutoff) = retention_days
+        .checked_mul(86_400_000)
+        .and_then(|window| now_ms().checked_sub(window))
+        .filter(|_| retention_days > 0)
+    else {
+        tracing::warn!(
+            retention_days,
+            "unusable retention, skipping sweep; expected a positive number of days"
+        );
+        return Ok(0);
+    };
     let removed = c
         .execute(
             "DELETE FROM envelope WHERE created_at < ?1",
             params![cutoff],
         )
         .map_err(|_| SweepError)?;
-    c.execute(
-        "DELETE FROM auth_nonce WHERE expires_at < ?1",
-        params![now_ms()],
-    )
-    .ok();
-    c.execute("DELETE FROM token WHERE expires_at < ?1", params![now_ms()])
-        .ok();
+    // Best effort, deliberately: expired nonces and tokens are already refused
+    // on use, so failing to collect them is untidy rather than unsafe. Logged
+    // because a cleanup that fails every hour is a database problem whose only
+    // other symptom is a table growing without bound.
+    for (what, sql) in [
+        ("auth_nonce", "DELETE FROM auth_nonce WHERE expires_at < ?1"),
+        ("token", "DELETE FROM token WHERE expires_at < ?1"),
+    ] {
+        if let Err(e) = c.execute(sql, params![now_ms()]) {
+            tracing::warn!(error = %e, table = what, "retention sweep cleanup failed");
+        }
+    }
     Ok(removed)
 }
 
@@ -1070,6 +1099,72 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM queue", [], |r| r.get(0))
             .unwrap();
         assert_eq!(rows, 1, "exactly one queue row must exist");
+    }
+
+    /// EKO_RETENTION_DAYS is operator input. Both of its bad values move the
+    /// cutoff into the future, which deletes everything rather than nothing.
+    #[test]
+    fn an_unusable_retention_keeps_everything_instead_of_wiping_it() {
+        for days in [-1, 0, i64::MAX, i64::MAX / 86_400_000 + 1] {
+            let (_dir, pool) = pool_with_account();
+            let c = pool.get().unwrap();
+            c.execute(
+                "INSERT INTO queue (id, account_id, sender, recipient, created_at)
+                 VALUES (1, 1, 'a', 'b', ?1)",
+                params![now_ms()],
+            )
+            .unwrap();
+            c.execute(
+                "INSERT INTO envelope (queue_id, envelope_id, aad, body, byte_len, created_at)
+                 VALUES (1, 1, x'00', x'00', 1, ?1)",
+                params![now_ms()],
+            )
+            .unwrap();
+            drop(c);
+
+            assert_eq!(sweep(&pool, days).unwrap(), 0, "days = {days}");
+            let left: i64 = pool
+                .get()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM envelope", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(left, 1, "a fresh envelope survived days = {days}");
+        }
+    }
+
+    /// The ordinary case must still collect what is genuinely past retention.
+    #[test]
+    fn a_sane_retention_still_prunes_old_envelopes() {
+        let (_dir, pool) = pool_with_account();
+        let c = pool.get().unwrap();
+        c.execute(
+            "INSERT INTO queue (id, account_id, sender, recipient, created_at)
+             VALUES (1, 1, 'a', 'b', 0)",
+            [],
+        )
+        .unwrap();
+        let old = now_ms() - 40 * 86_400_000;
+        c.execute(
+            "INSERT INTO envelope (queue_id, envelope_id, aad, body, byte_len, created_at)
+             VALUES (1, 1, x'00', x'00', 1, ?1)",
+            params![old],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO envelope (queue_id, envelope_id, aad, body, byte_len, created_at)
+             VALUES (1, 2, x'00', x'00', 1, ?1)",
+            params![now_ms()],
+        )
+        .unwrap();
+        drop(c);
+
+        assert_eq!(sweep(&pool, 30).unwrap(), 1);
+        let left: i64 = pool
+            .get()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM envelope", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 1, "only the 40-day-old envelope should go");
     }
 
     /// Queues are directional, and a repeat lookup must be stable.

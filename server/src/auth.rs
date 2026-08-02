@@ -108,21 +108,21 @@ mod tests {
             &public,
             &nonce,
             "device-a",
-            &sig.to_der().as_bytes().to_vec()
+            sig.to_der().as_bytes()
         ));
         // Same signature must not authenticate a different device.
         assert!(!verify_device_signature(
             &public,
             &nonce,
             "device-b",
-            &sig.to_der().as_bytes().to_vec()
+            sig.to_der().as_bytes()
         ));
         // Nor a different nonce.
         assert!(!verify_device_signature(
             &public,
             &random_bytes(32),
             "device-a",
-            &sig.to_der().as_bytes().to_vec()
+            sig.to_der().as_bytes()
         ));
     }
 

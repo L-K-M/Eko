@@ -11,7 +11,6 @@ pub mod db;
 pub mod routes;
 
 use axum::Router;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 #[derive(Clone)]

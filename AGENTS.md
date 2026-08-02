@@ -13,7 +13,8 @@ operational guides and release checklists.
   nothing is published yet — a tag still produces a release, but an unsigned
   one. See [CICD.md](CICD.md).
 - The monorepo layout is `android/` (Gradle, six modules), `macos/` (SwiftPM
-  package + XcodeGen app), `protocol/` (schemas, vectors, OTP corpus),
+  package + XcodeGen app), `server/` (Rust relay, proposed - see
+  `docs/relay/ARCHITECTURE.md`), `protocol/` (schemas, vectors, OTP corpus),
   `docs/`, `tools/` (dependency-free Python reference model), and `scripts/`.
 - Do not add placeholder CI that cannot pass. A new CI job lands with the
   reproducible local command it runs, not before it.
@@ -29,9 +30,10 @@ python3 scripts/check-protocol.py                     # schemas, vectors, corpus
 python3 -m unittest discover -s tools/tests -v        # reference model
 (cd android && ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug)
 (cd macos && ./Scripts/verify-macos.sh)               # macOS only; generate, lint, swift test, xcodebuild test
+(cd server && cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked)
 ```
 
-Those four verification commands are exactly what `.github/workflows/ci.yml`
+Those five verification commands are exactly what `.github/workflows/ci.yml`
 runs, so a green local run means a green CI run. Run the ones your change
 touches; run the protocol checker whenever anything under `protocol/` moves,
 because both apps consume those files.

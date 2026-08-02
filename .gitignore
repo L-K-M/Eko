@@ -37,3 +37,10 @@ __pycache__/
 *.env
 .env.*
 *.profraw
+
+# Relay server
+server/target/
+server/.env
+server/*.db
+server/*.db-wal
+server/*.db-shm

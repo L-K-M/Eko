@@ -501,8 +501,15 @@ async fn revoke_device(
     if n == 0 {
         return Err(ApiError::new(StatusCode::NOT_FOUND, "no such device"));
     }
-    c.execute("DELETE FROM token WHERE subject = ?1", params![device_id])
-        .map_err(|_| internal())?;
+    // `is_device = 1` is load-bearing, not hygiene. User sessions live in this
+    // same table under subject "user:<account_id>", and device_id is free text,
+    // so a device named "user:1" made this delete another account's session -
+    // revoking your own device logged out whoever owns account 1.
+    c.execute(
+        "DELETE FROM token WHERE subject = ?1 AND is_device = 1",
+        params![device_id],
+    )
+    .map_err(|_| internal())?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1027,6 +1034,11 @@ pub fn sweep(pool: &Pool, retention_days: i64) -> Result<usize, SweepError> {
     for (what, sql) in [
         ("auth_nonce", "DELETE FROM auth_nonce WHERE expires_at < ?1"),
         ("token", "DELETE FROM token WHERE expires_at < ?1"),
+        // One-hour TTL, refused on use once past it, and nothing collected them.
+        (
+            "enrolment_token",
+            "DELETE FROM enrolment_token WHERE expires_at < ?1",
+        ),
     ] {
         if let Err(e) = c.execute(sql, params![now_ms()]) {
             tracing::warn!(error = %e, table = what, "retention sweep cleanup failed");

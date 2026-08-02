@@ -124,6 +124,20 @@ Acknowledged envelopes are deleted immediately; the retention sweep only catches
 what was never drained. Envelope ids stay monotonic across pruning, because the
 recipient rejects a sequence that goes backwards.
 
+## Rate limiting is the proxy's job
+
+Two endpoints are unauthenticated by necessity: `/api/v1/devices/challenge`
+issues a nonce to anyone, because one that only answers for enrolled devices is
+a device-existence oracle, and `/api/v1/devices/auth` has to accept a signature
+before it knows who is signing. Both write. Their inputs are bounded and the
+retention sweep collects expired nonces, so the ceiling on abuse is rows that
+live at most two minutes - but nothing here limits the *rate*.
+
+That is deliberate. A per-IP limiter inside the relay would be the wrong place
+for it: behind a reverse proxy it sees one address, and this is a service you
+are told above to put behind a reverse proxy. Set the limit there - Caddy's
+`rate_limit`, nginx's `limit_req`, or whatever your edge already runs.
+
 ## Operating notes
 
 The container runs as uid 10001 with a read-only root filesystem, no

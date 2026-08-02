@@ -15,15 +15,24 @@ fn healthcheck(bind: &str) -> ! {
     // container that reported unhealthy forever with nothing to say about why -
     // and the server refuses that same value outright, so there is no
     // configuration this rejects that the server would have accepted.
-    let port = match bind.parse::<std::net::SocketAddr>() {
-        Ok(a) => a.port(),
+    let parsed = match bind.parse::<SocketAddr>() {
+        Ok(a) => a,
         Err(e) => {
-            // Before tracing is initialised, so stderr rather than a span.
+            // Before tracing is initialised, so stderr rather than a span. Any
+            // warning Config::from_env logs on the way here is dropped for the
+            // same reason; the server proper prints them at startup.
             eprintln!("healthcheck: EKO_BIND {bind:?} is not a socket address: {e}");
             std::process::exit(1);
         }
     };
-    let target = format!("127.0.0.1:{port}");
+    // Loopback of the family the server is actually listening on. Dual-stack
+    // Linux lets an IPv6 socket answer on 127.0.0.1, which is why hardcoding it
+    // worked, but EKO_BIND=[::1]:8080 listens on IPv6 loopback only - the probe
+    // would then fail forever against a server that is fine.
+    let target = match parsed {
+        SocketAddr::V4(_) => format!("127.0.0.1:{}", parsed.port()),
+        SocketAddr::V6(_) => format!("[::1]:{}", parsed.port()),
+    };
     let deadline = std::time::Duration::from_secs(3);
     let code = (|| -> Option<()> {
         let addr: SocketAddr = target.parse().ok()?;

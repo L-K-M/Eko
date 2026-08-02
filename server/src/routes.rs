@@ -172,6 +172,12 @@ fn device_from(state: &AppState, headers: &HeaderMap) -> ApiResult<DeviceSubject
     if is_device == 0 || expires_at < now_ms() {
         return Err(unauthorized());
     }
+    // No account-existence check to match `user_from`'s, and none is needed:
+    // `token.account_id` and `device.account_id` are both ON DELETE CASCADE and
+    // foreign keys are on for every pooled connection, so removing an account
+    // takes its device tokens with it and the lookup above finds nothing.
+    // `user_from` checks because it also needs `is_admin` from that row.
+    //
     // A revoked device keeps no access even while its token is unexpired.
     let revoked: Option<Option<i64>> = c
         .query_row(
@@ -449,10 +455,18 @@ async fn mint_enrolment_token(
     headers: HeaderMap,
 ) -> ApiResult<Json<EnrolmentToken>> {
     let user = user_from(&state, &headers)?;
-    let c = conn(&state.pool)?;
+    let mut c = conn(&state.pool)?;
     // One row per call, an hour before the sweep collects it, and any account on
     // a shared deployment can call it. A household needs a handful at once.
-    let outstanding: i64 = c
+    //
+    // BEGIN IMMEDIATE for the same reason as create_account, enrol_device and
+    // deposit: counting, deciding and inserting as three loose statements is the
+    // check-then-act shape this file keeps finding, and it overshot the cap by
+    // exactly the number of concurrent callers.
+    let tx = c
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| internal())?;
+    let outstanding: i64 = tx
         .query_row(
             "SELECT COUNT(*) FROM enrolment_token
              WHERE account_id = ?1 AND consumed_at IS NULL AND expires_at >= ?2",
@@ -468,11 +482,12 @@ async fn mint_enrolment_token(
     }
     let (token, digest) = auth::new_token();
     let expires_at = now_ms() + 3600 * 1000;
-    c.execute(
+    tx.execute(
         "INSERT INTO enrolment_token (token_hash, account_id, expires_at) VALUES (?1, ?2, ?3)",
         params![digest, user.account_id, expires_at],
     )
     .map_err(|_| internal())?;
+    tx.commit().map_err(|_| internal())?;
     Ok(Json(EnrolmentToken { token, expires_at }))
 }
 

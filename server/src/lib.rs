@@ -31,7 +31,7 @@ pub enum RegistrationOverride {
     Closed,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     pub bind: String,
     pub database: String,
@@ -44,6 +44,27 @@ pub struct Config {
     pub retention_days: i64,
     pub account_quota_bytes: i64,
     pub token_ttl_secs: i64,
+}
+
+/// Written out rather than derived so `bootstrap_token` cannot be printed. It
+/// is the credential that claims an unclaimed deployment, and a derived Debug
+/// would put it in the log the first time anyone writes `config = ?config`.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("bind", &self.bind)
+            .field("database", &self.database)
+            .field("registration", &self.registration)
+            .field(
+                "bootstrap_token",
+                &self.bootstrap_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("max_envelope_bytes", &self.max_envelope_bytes)
+            .field("retention_days", &self.retention_days)
+            .field("account_quota_bytes", &self.account_quota_bytes)
+            .field("token_ttl_secs", &self.token_ttl_secs)
+            .finish()
+    }
 }
 
 impl Config {

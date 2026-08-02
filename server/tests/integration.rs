@@ -1194,3 +1194,175 @@ async fn revoking_a_device_cannot_log_out_another_account() {
         "victim was logged out by another account's revocation: {body}"
     );
 }
+
+/// The TTL is checked on every authenticated request, and nothing exercised it.
+/// Expiry is set by inserting a token that has already lapsed, so the test does
+/// not depend on waiting for wall-clock time to pass.
+#[tokio::test]
+async fn an_expired_token_is_refused_on_both_subject_kinds() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+
+    // Both tokens work while they are live.
+    let (status, _) = call(&h.app, "GET", "/api/v1/account/devices", Some(&owner), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes",
+        Some(&phone),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "device token works while live: {body}"
+    );
+
+    // Age both of them out.
+    let pool = eko_relay::db::open(&h._dir.path().join("relay.db").to_string_lossy()).unwrap();
+    let expired = pool
+        .get()
+        .unwrap()
+        .execute("UPDATE token SET expires_at = 1", [])
+        .unwrap();
+    assert!(
+        expired >= 2,
+        "expected a user and a device token, got {expired}"
+    );
+
+    let (status, body) = call(&h.app, "GET", "/api/v1/account/devices", Some(&owner), None).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "expired user token: {body}"
+    );
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        Some(json!({"aad": b64().encode(b""), "body": b64().encode(b"x")})),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "expired device token: {body}"
+    );
+}
+
+/// RFC 6750 makes the scheme case-insensitive.
+#[tokio::test]
+async fn the_bearer_scheme_is_matched_case_insensitively() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    for scheme in ["Bearer", "bearer", "BEARER"] {
+        let req = Request::builder()
+            .method("GET")
+            .uri("/api/v1/account/devices")
+            .header("authorization", format!("{scheme} {owner}"))
+            .body(Body::empty())
+            .unwrap();
+        let res = h.app.clone().oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK, "scheme {scheme:?}");
+    }
+}
+
+/// Storing the untrimmed name made " alice " and "alice" two accounts.
+#[tokio::test]
+async fn a_username_is_canonicalised_before_it_is_stored() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let _ = first_account(&h.app, None).await;
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "  alice  ", "password": "a long enough password"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The same name without the padding is the same account, not a new one.
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "alice", "password": "a long enough password"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "should collide: {body}");
+
+    // And it can log in either way.
+    for name in ["alice", " alice "] {
+        let (status, body) = call(
+            &h.app,
+            "POST",
+            "/api/v1/accounts/login",
+            None,
+            Some(json!({"username": name, "password": "a long enough password"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "login as {name:?}: {body}");
+    }
+}
+
+/// A GET must not create rows; draining a queue nobody has deposited into is
+/// simply empty.
+#[tokio::test]
+async fn draining_an_untouched_queue_creates_nothing() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    let (_, mac) = enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    let (status, body) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes",
+        Some(&mac),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body.as_array().unwrap().len(), 0);
+
+    let pool = eko_relay::db::open(&h._dir.path().join("relay.db").to_string_lossy()).unwrap();
+    let queues: i64 = pool
+        .get()
+        .unwrap()
+        .query_row("SELECT COUNT(*) FROM queue", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(queues, 0, "a GET created {queues} queue row(s)");
+}
+
+/// One account should not be able to fill the shared table with tokens it never
+/// uses.
+#[tokio::test]
+async fn outstanding_enrolment_tokens_are_capped() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let mut refused = false;
+    for i in 0..40 {
+        let (status, _) = call(
+            &h.app,
+            "POST",
+            "/api/v1/account/enrolment-tokens",
+            Some(&owner),
+            Some(json!({})),
+        )
+        .await;
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            refused = true;
+            assert!(i >= 8, "cap should leave room for real use, refused at {i}");
+            break;
+        }
+        assert_eq!(status, StatusCode::OK);
+    }
+    assert!(refused, "unused enrolment tokens must be bounded");
+}

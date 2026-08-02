@@ -13,8 +13,6 @@ pub type PooledConn = r2d2::PooledConnection<SqliteConnectionManager>;
 
 const SCHEMA: &str = r#"
 PRAGMA journal_mode = WAL;
-PRAGMA foreign_keys = ON;
-PRAGMA synchronous = FULL;
 
 CREATE TABLE IF NOT EXISTS account (
     id            INTEGER PRIMARY KEY,
@@ -101,10 +99,28 @@ CREATE TABLE IF NOT EXISTS token (
 "#;
 
 pub fn open(path: &str) -> anyhow_lite::Result<Pool> {
+    // foreign_keys, synchronous and busy_timeout are per-connection, so setting
+    // them in the schema batch would only ever configure the one connection
+    // that ran it. Enforcement currently survives that mistake because
+    // rusqlite's bundled SQLite is built with SQLITE_DEFAULT_FOREIGN_KEYS=1 -
+    // an implicit dependency on a crate feature flag rather than on anything
+    // this code says. with_init makes it true by construction on every
+    // connection the pool hands out.
+    //
+    // busy_timeout matters for the IMMEDIATE transactions in routes.rs: without
+    // it a second concurrent writer fails instantly with SQLITE_BUSY instead of
+    // waiting its turn.
+    let configure = |c: &mut Connection| {
+        c.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA synchronous = FULL;
+             PRAGMA busy_timeout = 5000;",
+        )
+    };
     let manager = if path == ":memory:" {
-        SqliteConnectionManager::memory()
+        SqliteConnectionManager::memory().with_init(configure)
     } else {
-        SqliteConnectionManager::file(path)
+        SqliteConnectionManager::file(path).with_init(configure)
     };
     // A relay serves a household, not a fleet; a small pool is ample and keeps
     // SQLite's writer lock contention trivially bounded.

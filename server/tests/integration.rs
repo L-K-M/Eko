@@ -617,3 +617,140 @@ async fn unauthenticated_and_user_tokens_cannot_touch_queues() {
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+// ----------------------------------------------------- concurrency ---
+
+/// The first account becomes admin and controls registration and enrolment, so
+/// two requests both seeing an empty table would be a privilege escalation.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn concurrent_first_accounts_produce_exactly_one_admin() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let mut joins = Vec::new();
+    for i in 0..12 {
+        let app = h.app.clone();
+        joins.push(tokio::spawn(async move {
+            call(
+                &app,
+                "POST",
+                "/api/v1/accounts",
+                None,
+                Some(json!({
+                    "username": format!("racer-{i}"),
+                    "password": "correct horse battery",
+                })),
+            )
+            .await
+        }));
+    }
+    let mut admins = 0;
+    let mut created = 0;
+    for j in joins {
+        let (status, body) = j.await.unwrap();
+        if status == StatusCode::OK {
+            created += 1;
+            if body["is_admin"] == json!(true) {
+                admins += 1;
+            }
+        }
+    }
+    assert!(created > 0, "at least one account should have been created");
+    assert_eq!(admins, 1, "exactly one account may be admin, got {admins}");
+}
+
+/// A single-use enrolment token must stay single-use when several devices race
+/// for it, or an intercepted token enrols a rogue device beside the real one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn an_enrolment_token_survives_concurrent_use_exactly_once() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, tok) = call(
+        &h.app,
+        "POST",
+        "/api/v1/admin/enrolment-tokens",
+        Some(&owner),
+        Some(json!({})),
+    )
+    .await;
+    let token = tok["token"].as_str().unwrap().to_string();
+
+    let mut joins = Vec::new();
+    for i in 0..12 {
+        let app = h.app.clone();
+        let token = token.clone();
+        joins.push(tokio::spawn(async move {
+            let signing = SigningKey::random(&mut rand::thread_rng());
+            let public = VerifyingKey::from(&signing)
+                .to_encoded_point(false)
+                .as_bytes()
+                .to_vec();
+            call(
+                &app,
+                "POST",
+                "/api/v1/devices/enrol",
+                None,
+                Some(json!({
+                    "token": token,
+                    "device_id": format!("racer-{i}"),
+                    "public_key": b64().encode(&public),
+                    "name": "racer",
+                    "platform": "android",
+                })),
+            )
+            .await
+        }));
+    }
+    let mut ok = 0;
+    for j in joins {
+        if j.await.unwrap().0 == StatusCode::OK {
+            ok += 1;
+        }
+    }
+    assert_eq!(ok, 1, "one token must enrol exactly one device, got {ok}");
+
+    let (_, devices) = call(&h.app, "GET", "/api/v1/admin/devices", Some(&owner), None).await;
+    assert_eq!(devices.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn an_oversized_aad_is_refused_and_aad_counts_against_quota() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        Some(json!({
+            "aad": b64().encode(vec![0u8; 4097]),
+            "body": b64().encode(b"x"),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "aad must be bounded");
+
+    // An accepted aad is billed: the quota is 1 MiB in the harness, so ~300
+    // envelopes of 4 KiB aad each must eventually be refused rather than stored
+    // for free.
+    let mut refused = false;
+    for _ in 0..400 {
+        let (status, _) = call(
+            &h.app,
+            "POST",
+            "/api/v1/queues/mac-1/envelopes",
+            Some(&phone),
+            Some(json!({
+                "aad": b64().encode(vec![0u8; 4096]),
+                "body": b64().encode(b"x"),
+            })),
+        )
+        .await;
+        if status == StatusCode::INSUFFICIENT_STORAGE {
+            refused = true;
+            break;
+        }
+    }
+    assert!(refused, "aad bytes must count against the account quota");
+}

@@ -86,7 +86,10 @@ async fn call(
     let bytes = axum::body::to_bytes(res.into_body(), 8 * 1024 * 1024)
         .await
         .unwrap();
-    let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    // A 500 that answers with plain text used to arrive here as `null`, so the
+    // assertion that followed reported nothing about what actually happened.
+    let value = serde_json::from_slice(&bytes)
+        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()));
     (status, value)
 }
 
@@ -146,11 +149,7 @@ async fn authenticate(app: &axum::Router, signing: &SigningKey, device_id: &str)
     assert_eq!(status, StatusCode::OK, "challenge: {ch}");
     let nonce = b64().decode(ch["nonce"].as_str().unwrap()).unwrap();
 
-    let mut message = Vec::new();
-    message.extend_from_slice(b"eko-relay-auth-v1");
-    message.extend_from_slice(&nonce);
-    message.extend_from_slice(device_id.as_bytes());
-    let sig: Signature = signing.sign(&message);
+    let sig: Signature = signing.sign(&eko_relay::auth::auth_message(&nonce, device_id));
 
     let (status, body) = call(
         app,
@@ -350,6 +349,11 @@ async fn concurrent_deposits_cannot_exceed_the_quota() {
         accepted,
         items.len(),
         "every accepted deposit must appear in the drain"
+    );
+    // That comparison is only meaningful while one page holds everything.
+    assert!(
+        items.len() < 500,
+        "the drain page was truncated at its limit"
     );
 }
 
@@ -1074,8 +1078,9 @@ fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
         .unwrap();
 
     let racers = 3;
+    let hold = std::time::Duration::from_millis(300);
     let gate = Arc::new(std::sync::Barrier::new(racers + 1));
-    let handles: Vec<std::thread::JoinHandle<StatusCode>> = (0..racers)
+    let handles: Vec<std::thread::JoinHandle<(StatusCode, std::time::Duration)>> = (0..racers)
         .map(|_| {
             let app = h.app.clone();
             let (nonce_b64, sig_b64) = (nonce_b64.clone(), sig_b64.clone());
@@ -1086,18 +1091,21 @@ fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
                     .build()
                     .unwrap();
                 gate.wait();
-                rt.block_on(call(
-                    &app,
-                    "POST",
-                    "/api/v1/devices/auth",
-                    None,
-                    Some(json!({
-                        "device_id": "phone-1",
-                        "nonce": nonce_b64,
-                        "signature": sig_b64,
-                    })),
-                ))
-                .0
+                let started = std::time::Instant::now();
+                let status = rt
+                    .block_on(call(
+                        &app,
+                        "POST",
+                        "/api/v1/devices/auth",
+                        None,
+                        Some(json!({
+                            "device_id": "phone-1",
+                            "nonce": nonce_b64,
+                            "signature": sig_b64,
+                        })),
+                    ))
+                    .0;
+                (status, started.elapsed())
             })
         })
         .collect();
@@ -1107,12 +1115,14 @@ fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
     // Comfortably inside the 5 s busy_timeout: past that the racers stop waiting
     // on the lock and fail with "database is locked", which tests the harness
     // rather than the handler.
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    std::thread::sleep(hold);
     let escaped = handles.iter().filter(|h| h.is_finished()).count();
     held.rollback().unwrap();
     drop(blocker);
 
-    let codes: Vec<StatusCode> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let finished: Vec<(StatusCode, std::time::Duration)> =
+        handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let codes: Vec<StatusCode> = finished.iter().map(|(s, _)| *s).collect();
     let minted = codes.iter().filter(|s| **s == StatusCode::OK).count();
 
     // The security property.
@@ -1133,6 +1143,18 @@ fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
             .iter()
             .all(|s| *s == StatusCode::OK || *s == StatusCode::UNAUTHORIZED),
         "losers must be refused on the merits, not time out on the lock: {codes:?}"
+    );
+    // "Nobody had finished" is also true of a thread that had not yet reached
+    // the database. Each racer's own elapsed time is the direct evidence: one
+    // that never contended answers in microseconds, whereas one parked on the
+    // write lock cannot return before the lock is dropped. Half the hold is a
+    // generous floor for "it waited".
+    let floor = hold / 2;
+    let hurried: Vec<_> = finished.iter().filter(|(_, d)| *d < floor).collect();
+    assert!(
+        hurried.is_empty(),
+        "every racer must have waited on the lock; these returned too fast to \
+         have contended: {hurried:?} (floor {floor:?})"
     );
 }
 
@@ -1359,7 +1381,11 @@ async fn outstanding_enrolment_tokens_are_capped() {
         .await;
         if status == StatusCode::TOO_MANY_REQUESTS {
             refused = true;
-            assert!(i >= 8, "cap should leave room for real use, refused at {i}");
+            assert_eq!(
+                i as i64,
+                eko_relay::routes::MAX_OUTSTANDING_ENROLMENT_TOKENS,
+                "refusal must land exactly on the documented cap"
+            );
             break;
         }
         assert_eq!(status, StatusCode::OK);

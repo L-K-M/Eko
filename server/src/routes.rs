@@ -278,13 +278,8 @@ async fn login(
         return Err(unauthorized());
     }
     let subject = format!("user:{account_id}");
-    let (token, expires_at) = issue_token(
-        &c,
-        account_id,
-        &subject,
-        false,
-        state.config.token_ttl_secs,
-    )?;
+    let (token, expires_at) =
+        issue_token(&c, account_id, &subject, false, state.config.token_ttl_secs)?;
     Ok(Json(TokenResponse { token, expires_at }))
 }
 
@@ -315,7 +310,11 @@ async fn patch_settings(
     c.execute(
         "INSERT INTO setting (key, value) VALUES ('registration_open', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![if body.registration_open { "true" } else { "false" }],
+        params![if body.registration_open {
+            "true"
+        } else {
+            "false"
+        }],
     )
     .map_err(|_| internal())?;
     // Report what is actually in force, not what was requested: an env override
@@ -823,12 +822,20 @@ async fn set_cursor(
 
 // ------------------------------------------------------------- lifecycle ---
 
-pub fn sweep(pool: &Pool, retention_days: i64) -> Result<usize, ()> {
-    let c = pool.get().map_err(|_| ())?;
+/// The sweep is best effort and its only consumer logs a count, so the cause
+/// is deliberately not propagated.
+#[derive(Debug)]
+pub struct SweepError;
+
+pub fn sweep(pool: &Pool, retention_days: i64) -> Result<usize, SweepError> {
+    let c = pool.get().map_err(|_| SweepError)?;
     let cutoff = now_ms() - retention_days * 86_400_000;
     let removed = c
-        .execute("DELETE FROM envelope WHERE created_at < ?1", params![cutoff])
-        .map_err(|_| ())?;
+        .execute(
+            "DELETE FROM envelope WHERE created_at < ?1",
+            params![cutoff],
+        )
+        .map_err(|_| SweepError)?;
     c.execute(
         "DELETE FROM auth_nonce WHERE expires_at < ?1",
         params![now_ms()],
@@ -862,14 +869,14 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/v1/admin/enrolment-tokens", post(mint_enrolment_token))
         .route("/api/v1/admin/devices", get(list_devices))
-        .route("/api/v1/admin/devices/{device_id}", axum::routing::delete(revoke_device))
+        .route(
+            "/api/v1/admin/devices/{device_id}",
+            axum::routing::delete(revoke_device),
+        )
         .route("/api/v1/devices/enrol", post(enrol_device))
         .route("/api/v1/devices/challenge", post(device_challenge))
         .route("/api/v1/devices/auth", post(device_auth))
-        .route(
-            "/api/v1/queues/{peer}/envelopes",
-            post(deposit).get(drain),
-        )
+        .route("/api/v1/queues/{peer}/envelopes", post(deposit).get(drain))
         .route("/api/v1/queues/{peer}/cursor", post(set_cursor))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)

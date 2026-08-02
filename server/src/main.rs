@@ -70,10 +70,11 @@ async fn main() {
             loop {
                 tick.tick().await;
                 let pool = pool.clone();
-                let removed = tokio::task::spawn_blocking(move || eko_relay::routes::sweep(&pool, days))
-                    .await
-                    .unwrap_or(Ok(0))
-                    .unwrap_or(0);
+                let removed =
+                    tokio::task::spawn_blocking(move || eko_relay::routes::sweep(&pool, days))
+                        .await
+                        .unwrap_or(Ok(0))
+                        .unwrap_or(0);
                 if removed > 0 {
                     tracing::info!(removed, "retention sweep");
                 }

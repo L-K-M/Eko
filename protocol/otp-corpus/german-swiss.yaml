@@ -251,4 +251,6 @@ cases:
     source: banking
     events:
       - text: "Ihr Code fuer die Zahlung CHF\u00A04829 lautet 682415"
-        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+        # auto_copy_allowed is false because "Zahlung" and "CHF" both make this
+        # banking-style, and a payment code is shown but never auto-copied.
+        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}

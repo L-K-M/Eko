@@ -281,14 +281,14 @@ cases:
       - text: "Account number 5782 was charged. No code needed."
         expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
 
-  - id: fp-036-german-file-extension
+  - id: fp-040-german-file-extension
     locale: de
     source: other
     events:
       - text: "Die Endung der Datei war 1234."
         expected: {code: null, tier: none, banner: false, panel: false, auto_copy_allowed: false}
 
-  - id: fp-037-masked-card-no-separator
+  - id: fp-041-masked-card-no-separator
     locale: de-CH
     source: banking
     events:

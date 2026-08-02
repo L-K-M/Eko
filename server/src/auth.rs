@@ -45,9 +45,18 @@ pub fn dummy_password_hash() -> &'static str {
     static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     DUMMY.get_or_init(|| {
         hash_password(&b64().encode(random_bytes(32)))
-            .unwrap_or_else(|_| String::from("$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA"))
+            .unwrap_or_else(|_| String::from(FALLBACK_DUMMY_HASH))
     })
 }
+
+/// Used only if `hash_password` itself fails. A real Argon2id hash of a
+/// throwaway string, not a hand-written stand-in: the previous placeholder had
+/// a 4-byte salt and 4-byte output, and `PasswordHash::new` rejects it with
+/// "output size too short". `verify_password` would then return early on the
+/// unknown-username path without doing any Argon2 work, which is exactly the
+/// timing signal this whole mechanism exists to remove.
+const FALLBACK_DUMMY_HASH: &str =
+    "$argon2id$v=19$m=19456,t=2,p=1$ZWtvLXJlbGF5LWR1bW15LXYx$HP5jDkUdp9JOFsaRUYusNsQFwh4hlnlxjncUBHyvvJE";
 
 pub fn verify_password(password: &str, stored: &str) -> bool {
     match PasswordHash::new(stored) {
@@ -162,7 +171,21 @@ mod tests {
         // timing defence would silently stop working.
         let dummy = dummy_password_hash();
         assert!(dummy.starts_with("$argon2"));
+        assert!(PasswordHash::new(dummy).is_ok());
         assert!(!verify_password("anything at all", dummy));
+    }
+
+    /// The branch above almost never runs, so testing `dummy_password_hash()`
+    /// only ever exercises the live `hash_password` path and says nothing about
+    /// the constant behind it. Assert the constant itself: the one it replaced
+    /// looked plausible and did not parse.
+    #[test]
+    fn the_fallback_dummy_hash_parses_too() {
+        assert!(
+            PasswordHash::new(FALLBACK_DUMMY_HASH).is_ok(),
+            "fallback must parse or the timing defence silently stops working"
+        );
+        assert!(!verify_password("anything at all", FALLBACK_DUMMY_HASH));
     }
 
     #[test]

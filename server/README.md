@@ -114,6 +114,12 @@ docker compose --profile tls up -d
 | `EKO_MAX_ENVELOPE_BYTES` | `1048576` | matches the protocol frame limit |
 | `EKO_TOKEN_TTL_SECS` | `86400` | bearer token lifetime |
 
+The four numeric settings take positive numbers only. Anything else - a
+negative, a zero, a typo - is refused with a warning and the default is used,
+because each of them had a wrong-but-plausible behaviour otherwise: `-1` bytes
+became an unlimited envelope, a negative quota refused every deposit, and a
+negative lifetime expired tokens as they were issued.
+
 Acknowledged envelopes are deleted immediately; the retention sweep only catches
 what was never drained. Envelope ids stay monotonic across pruning, because the
 recipient rejects a sequence that goes backwards.

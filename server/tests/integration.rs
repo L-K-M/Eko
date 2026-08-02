@@ -385,6 +385,66 @@ async fn weak_credentials_are_refused() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Bounded above as well. This is the one endpoint an unauthenticated caller
+    // can make run Argon2 at will, so it must not also choose how much of it.
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "owner", "password": "x".repeat(1025)})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "oversized password");
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts/login",
+        None,
+        Some(json!({"username": "owner", "password": "x".repeat(100_000)})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "oversized login password");
+}
+
+/// `device_id` was bounded and its two free-text neighbours were not, though
+/// they sit in the same row and come back out of `list_devices`.
+#[tokio::test]
+async fn device_name_and_platform_are_bounded() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (status, tok) = call(
+        &h.app,
+        "POST",
+        "/api/v1/account/enrolment-tokens",
+        Some(&owner),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "mint: {tok}");
+
+    let signing = SigningKey::random(&mut rand::thread_rng());
+    let public = VerifyingKey::from(&signing)
+        .to_encoded_point(false)
+        .as_bytes()
+        .to_vec();
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/enrol",
+        None,
+        Some(json!({
+            "token": tok["token"],
+            "device_id": "phone-1",
+            "public_key": b64().encode(&public),
+            "name": "n".repeat(257),
+            "platform": "android",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "oversized name: {body}");
 }
 
 #[tokio::test]
@@ -532,7 +592,7 @@ async fn devices_of_another_account_are_not_reachable() {
     let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
 
     // A second account with its own device.
-    call(
+    let (status, body) = call(
         &h.app,
         "POST",
         "/api/v1/accounts",
@@ -540,6 +600,7 @@ async fn devices_of_another_account_are_not_reachable() {
         Some(json!({"username": "stranger", "password": "stranger password!!"})),
     )
     .await;
+    assert_eq!(status, StatusCode::OK, "stranger account: {body}");
     let (_, stranger) = call(
         &h.app,
         "POST",
@@ -769,7 +830,7 @@ async fn concurrent_first_accounts_produce_exactly_one_admin() {
 async fn an_enrolment_token_survives_concurrent_use_exactly_once() {
     let h = harness(RegistrationOverride::Unset, None);
     let owner = first_account(&h.app, None).await;
-    let (_, tok) = call(
+    let (status, tok) = call(
         &h.app,
         "POST",
         "/api/v1/account/enrolment-tokens",
@@ -777,6 +838,7 @@ async fn an_enrolment_token_survives_concurrent_use_exactly_once() {
         Some(json!({})),
     )
     .await;
+    assert_eq!(status, StatusCode::OK, "mint enrolment token: {tok}");
     let token = tok["token"].as_str().unwrap().to_string();
 
     let mut joins = Vec::new();
@@ -951,8 +1013,9 @@ async fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .unwrap();
 
-    // One short of the app pool: each request holds a connection for its body.
-    let racers = 7;
+    // One short of the app pool: each request holds a connection for its whole
+    // body, and a racer blocked in pool.get() is queueing, not racing.
+    let racers = eko_relay::db::MAX_POOL_CONNECTIONS as usize - 1;
     let gate = Arc::new(tokio::sync::Barrier::new(racers + 1));
     let mut joins = Vec::new();
     for _ in 0..racers {

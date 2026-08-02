@@ -27,6 +27,28 @@ pub fn hash_password(password: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Compares without short-circuiting. The bootstrap token is the most
+/// privileged credential the relay has, and `==` on `&str` returns as soon as
+/// two bytes differ.
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    use subtle::ConstantTimeEq;
+    if a.len() != b.len() {
+        return false;
+    }
+    a.ct_eq(b).into()
+}
+
+/// A valid hash of a value nobody knows, computed once. Verifying against it
+/// costs the same as verifying a real one, which is what keeps a missing
+/// username indistinguishable from a wrong password.
+pub fn dummy_password_hash() -> &'static str {
+    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DUMMY.get_or_init(|| {
+        hash_password(&b64().encode(random_bytes(32)))
+            .unwrap_or_else(|_| String::from("$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA"))
+    })
+}
+
 pub fn verify_password(password: &str, stored: &str) -> bool {
     match PasswordHash::new(stored) {
         Ok(parsed) => Argon2::default()
@@ -124,6 +146,23 @@ mod tests {
             "device-a",
             sig.to_der().as_bytes()
         ));
+    }
+
+    #[test]
+    fn constant_time_eq_matches_ordinary_equality() {
+        assert!(constant_time_eq(b"abcdef", b"abcdef"));
+        assert!(!constant_time_eq(b"abcdef", b"abcdeg"));
+        assert!(!constant_time_eq(b"abcdef", b"abcde"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn the_dummy_hash_is_a_usable_argon2_hash() {
+        // If it did not parse, verify_password would return early and the login
+        // timing defence would silently stop working.
+        let dummy = dummy_password_hash();
+        assert!(dummy.starts_with("$argon2"));
+        assert!(!verify_password("anything at all", dummy));
     }
 
     #[test]

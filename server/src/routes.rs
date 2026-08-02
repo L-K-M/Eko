@@ -240,7 +240,7 @@ async fn create_account(
     if first {
         if let Some(expected) = state.config.bootstrap_token.as_deref() {
             match body.bootstrap_token.as_deref() {
-                Some(given) if given == expected => {}
+                Some(given) if auth::constant_time_eq(given.as_bytes(), expected.as_bytes()) => {}
                 _ => return Err(forbidden("bootstrap token required")),
             }
         }
@@ -292,8 +292,15 @@ async fn login(
         )
         .optional()
         .map_err(|_| internal())?;
-    let (account_id, hash) = row.ok_or_else(unauthorized)?;
-    if !auth::verify_password(&body.password, &hash) {
+    // Verify in both branches. Returning early on an unknown username made a
+    // missing account answer in microseconds and a wrong password answer in
+    // however long Argon2 takes, which enumerates usernames by stopwatch.
+    let (account_id, hash) = match row {
+        Some(found) => found,
+        None => (-1, auth::dummy_password_hash().to_string()),
+    };
+    let password_ok = auth::verify_password(&body.password, &hash);
+    if !password_ok || account_id < 0 {
         return Err(unauthorized());
     }
     let subject = format!("user:{account_id}");
@@ -712,17 +719,26 @@ async fn deposit(
         ));
     }
 
-    let c = conn(&state.pool)?;
-    require_same_account_peer(&c, device.account_id, &peer)?;
+    let mut c = conn(&state.pool)?;
+    // The same check-then-act shape as create_account and enrol_device: the
+    // quota total, the sequence allocation and the insert have to be one
+    // atomic step, or concurrent deposits each read the same total, each pass,
+    // and the account stores well past its ceiling.
+    let tx = c
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| internal())?;
+    require_same_account_peer(&tx, device.account_id, &peer)?;
 
-    let used: i64 = c
+    // A database error here previously read as "zero bytes stored", which
+    // disables the quota rather than reporting a fault.
+    let used: i64 = tx
         .query_row(
             "SELECT COALESCE(SUM(e.byte_len), 0) FROM envelope e
              JOIN queue q ON q.id = e.queue_id WHERE q.account_id = ?1",
             params![device.account_id],
             |r| r.get(0),
         )
-        .unwrap_or(0);
+        .map_err(|_| internal())?;
     let stored_len = (sealed.len() + aad.len()) as i64;
     if used + stored_len > state.config.account_quota_bytes {
         return Err(ApiError::new(
@@ -731,10 +747,10 @@ async fn deposit(
         ));
     }
 
-    let qid = queue_id(&c, device.account_id, &device.device_id, &peer)?;
+    let qid = queue_id(&tx, device.account_id, &device.device_id, &peer)?;
     // Monotonic per queue. The relay orders by this and nothing else; Eko's own
     // sequence numbers are inside the ciphertext and never seen here.
-    let next: i64 = c
+    let next: i64 = tx
         .query_row(
             "UPDATE queue SET next_envelope_id = next_envelope_id + 1
              WHERE id = ?1 RETURNING next_envelope_id - 1",
@@ -742,12 +758,13 @@ async fn deposit(
             |r| r.get(0),
         )
         .map_err(|_| internal())?;
-    c.execute(
+    tx.execute(
         "INSERT INTO envelope (queue_id, envelope_id, aad, body, byte_len, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![qid, next, aad, sealed, stored_len, now_ms()],
     )
     .map_err(|_| internal())?;
+    tx.commit().map_err(|_| internal())?;
 
     Ok(Json(Deposited { envelope_id: next }))
 }

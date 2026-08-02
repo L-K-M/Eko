@@ -51,6 +51,18 @@ impl Config {
         let registration = match std::env::var("EKO_REGISTRATION").ok().as_deref() {
             Some("open") => RegistrationOverride::Open,
             Some("closed") => RegistrationOverride::Closed,
+            // A typo here fails open. Someone writing EKO_REGISTRATION=close
+            // means to lock the deployment down and instead gets the database
+            // toggle, which on a fresh server means registration is open. Say
+            // so rather than let a silent fallback pass for a lock.
+            Some(other) if !other.is_empty() => {
+                tracing::warn!(
+                    value = other,
+                    "EKO_REGISTRATION is neither \"open\" nor \"closed\"; ignoring it and \
+                     following the admin toggle instead"
+                );
+                RegistrationOverride::Unset
+            }
             _ => RegistrationOverride::Unset,
         };
         Config {

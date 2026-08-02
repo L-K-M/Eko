@@ -481,8 +481,10 @@ async fn a_cursor_never_moves_backwards() {
     let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
     let (_, mac) = enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
 
+    // Asserted, not fired and forgotten: if the setup silently fails, the real
+    // assertions below still "pass" for entirely the wrong reason.
     for _ in 0..2 {
-        call(
+        let (status, body) = call(
             &h.app,
             "POST",
             "/api/v1/queues/mac-1/envelopes",
@@ -490,8 +492,9 @@ async fn a_cursor_never_moves_backwards() {
             Some(json!({"aad": b64().encode(b""), "body": b64().encode(b"x")})),
         )
         .await;
+        assert_eq!(status, StatusCode::OK, "deposit: {body}");
     }
-    call(
+    let (status, body) = call(
         &h.app,
         "POST",
         "/api/v1/queues/phone-1/cursor",
@@ -499,6 +502,7 @@ async fn a_cursor_never_moves_backwards() {
         Some(json!({"acked_envelope_id": 2})),
     )
     .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "ack: {body}");
     // A stale client replaying an old ack must not resurrect anything.
     let (status, _) = call(
         &h.app,
@@ -904,4 +908,85 @@ async fn an_ordinary_account_manages_its_own_devices_but_not_the_deployment() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+}
+
+/// One intercepted (nonce, signature) pair must mint exactly one token. The
+/// nonce was read, validated in Rust, and burned by a separate unconditional
+/// UPDATE, so concurrent replays all saw `consumed_at IS NULL` and all
+/// succeeded - the single-use challenge became multi-use.
+///
+/// Forced, not hoped for, the same way as the queue race: an outside writer
+/// holds the database's write lock, so every racer gets past the SELECT (WAL
+/// never blocks readers) and parks on the UPDATE. Releasing the lock then runs
+/// all the burns back to back, which is precisely the interleave the bug needs.
+#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+async fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (signing, _) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+
+    // A single challenge, signed once - what an interceptor would have.
+    let (status, ch) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/challenge",
+        None,
+        Some(json!({"device_id": "phone-1"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "challenge: {ch}");
+    let nonce_b64 = ch["nonce"].as_str().unwrap().to_string();
+    let mut message = Vec::new();
+    message.extend_from_slice(b"eko-relay-auth-v1");
+    message.extend_from_slice(&b64().decode(&nonce_b64).unwrap());
+    message.extend_from_slice(b"phone-1");
+    let sig: Signature = signing.sign(&message);
+    let sig_b64 = b64().encode(sig.to_der().as_bytes());
+
+    // A second pool over the same file, holding the write lock.
+    let blocker_pool =
+        eko_relay::db::open(&h._dir.path().join("relay.db").to_string_lossy()).unwrap();
+    let mut blocker = blocker_pool.get().unwrap();
+    let held = blocker
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+
+    // One short of the app pool: each request holds a connection for its body.
+    let racers = 7;
+    let gate = Arc::new(tokio::sync::Barrier::new(racers + 1));
+    let mut joins = Vec::new();
+    for _ in 0..racers {
+        let app = h.app.clone();
+        let (nonce_b64, sig_b64) = (nonce_b64.clone(), sig_b64.clone());
+        let gate = gate.clone();
+        joins.push(tokio::spawn(async move {
+            gate.wait().await;
+            call(
+                &app,
+                "POST",
+                "/api/v1/devices/auth",
+                None,
+                Some(json!({
+                    "device_id": "phone-1",
+                    "nonce": nonce_b64,
+                    "signature": sig_b64,
+                })),
+            )
+            .await
+            .0
+        }));
+    }
+
+    gate.wait().await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    held.rollback().unwrap();
+    drop(blocker);
+
+    let mut minted = 0;
+    for j in joins {
+        if j.await.unwrap() == StatusCode::OK {
+            minted += 1;
+        }
+    }
+    assert_eq!(minted, 1, "a single challenge minted {minted} tokens");
 }

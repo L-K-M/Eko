@@ -1,0 +1,5 @@
+# Automatic HTTPS in front of the relay. Used only with `--profile tls`.
+{$EKO_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy relay:8080
+}

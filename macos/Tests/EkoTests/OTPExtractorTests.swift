@@ -114,9 +114,17 @@ final class OTPExtractorTests: XCTestCase {
         XCTAssertNil(extractor.extract(from: NotificationContent(
             text: "code " + String(repeating: "X", count: 1_000)
         )))
-        XCTAssertNil(extractor.extract(from: NotificationContent(
-            text: "Mastercard " + String(repeating: "*", count: 1_000) + " code 682415"
-        )))
+        // Sixty glyphs is past where the pre-fix pattern stopped coming back —
+        // forty-eight took 6.6 s and fifty-two never finished — and short enough
+        // to leave the code inside the 1 000-character cap. Asserting the code
+        // is *found* keeps this about linearity: the previous version asserted
+        // nil on a 1 023-character input, which only held because truncation
+        // removed the keyword, so raising the cap would have failed it for a
+        // reason that has nothing to do with backtracking.
+        assertCode(
+            "682415",
+            in: "Mastercard " + String(repeating: "*", count: 60) + "\nYour code: 682415"
+        )
         assertCode("682415", in: "Mastercard **** **** **** 1234\nYour code: 682415")
         assertCode("682415", in: "Mastercard XXXX XXXX XXXX 5782\nYour code: 682415")
     }

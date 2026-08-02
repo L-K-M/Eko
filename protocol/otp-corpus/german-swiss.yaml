@@ -240,3 +240,15 @@ cases:
     events:
       - text: "Mastercard 5782\n682415 ist Ihr Code"
         expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  # \u00A0 is deliberate and written as an escape rather than pasted: Swiss and
+  # German banking notifications separate an amount from its currency with a
+  # no-break or narrow-no-break space, and a cleanup pass that only knows " "
+  # and "\t" leaves the amount standing - where, sitting closer to the keyword
+  # than the code does, it wins.
+  - id: de-023-nbsp-amount-does-not-outrank-the-code
+    locale: de-CH
+    source: banking
+    events:
+      - text: "Ihr Code fuer die Zahlung CHF\u00A04829 lautet 682415"
+        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}

@@ -30,20 +30,25 @@ public struct OTPExtractor: Sendable {
     private static let quotedPattern = try! NSRegularExpression(
         pattern: #"\"[^\"\n]{0,120}\"|“[^”\n]{0,120}”|«[^»\n]{0,120}»"#
     )
-    // Horizontal whitespace only: a phone number never spans a line break, but
-    // a card tail and the code beneath it do, and \s would splice the two into
-    // one nine-digit "number" and delete both.
+    // `\h`, not `\s` and not `[ \t]`. These patterns delete what they match, so
+    // `\s` reached down a line and took the code with it. `[ \t]` fixed that and
+    // broke something else: `\s` had covered U+00A0 and the other Unicode
+    // spaces, and European banking notifications are full of them - a
+    // narrow-no-break space between "CHF" and the amount is the ordinary Swiss
+    // rendering. With `[ \t]` the amount stopped being stripped and started
+    // outranking the code. ICU's `\h` is exactly the set wanted: everything `\s`
+    // matches except the line breaks.
     private static let phonePattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])\+?\d(?:[ \t().-]*\d){8,}(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])\+?\d(?:[\h().-]*\d){8,}(?![0-9A-Za-z])"#
     )
     private static let dateTimePattern = try! NSRegularExpression(
         pattern: #"\b\d{1,2}:\d{2}(?::\d{2})?\b|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b"#
     )
     private static let postcodePattern = try! NSRegularExpression(
-        pattern: #"\b[A-Za-z]{1,2}\d[A-Za-z\d]?[ \t]+\d[A-Za-z]{2}\b"#
+        pattern: #"\b[A-Za-z]{1,2}\d[A-Za-z\d]?\h+\d[A-Za-z]{2}\b"#
     )
     private static let endingPattern = try! NSRegularExpression(
-        pattern: #"\b(?:ending|ends?[ \t]+in|endziffer|endung|letzte[nr]?[ \t]+ziffern?|card|karte)[^\d\n]{0,12}\d{4}\b"#,
+        pattern: #"\b(?:ending|ends?\h+in|endziffer|endung|letzte[nr]?\h+ziffern?|card|karte)[^\d\n]{0,12}\d{4}\b"#,
         options: [.caseInsensitive]
     )
     // A run of masking glyphs followed by the four surviving digits of an
@@ -77,7 +82,7 @@ public struct OTPExtractor: Sendable {
     // ("***4821***", "•••4821•••") — which the three-glyph minimum alone did
     // not save.
     private static let maskedNumberPattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[- \t–—]+(?:[Xx]{3,}|[*#•·∙●○]{3,})){0,3}[- \t–—]*\d{4}(?![0-9A-Za-z*#•·∙●○])"#
+        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[-\h–—]+(?:[Xx]{3,}|[*#•·∙●○]{3,})){0,3}[-\h–—]*\d{4}(?![0-9A-Za-z*#•·∙●○])"#
     )
     // A card or account tail announced by a reference abbreviation, where
     // `\b(?:card|karte)` cannot reach because the noun is a compound:
@@ -90,13 +95,13 @@ public struct OTPExtractor: Sendable {
         options: [.caseInsensitive]
     )
     private static let orderPattern = try! NSRegularExpression(
-        pattern: #"\b(?:order|bestell\w*|tracking|sendung|invoice|rechnung|reference|referenz)(?:[ \t]*(?:number|nummer|nr\.?|id))?[^\d\n]{0,12}[0-9A-Za-z-]{4,20}\b"#,
+        pattern: #"\b(?:order|bestell\w*|tracking|sendung|invoice|rechnung|reference|referenz)(?:\h*(?:number|nummer|nr\.?|id))?[^\d\n]{0,12}[0-9A-Za-z-]{4,20}\b"#,
         options: [.caseInsensitive]
     )
     // Horizontal whitespace again: an amount ends at its line. Letting \s run on
     // made "CHF 45.00\n682415 ist Ihr Code" one amount and swallowed the code.
     private static let currencyPattern = try! NSRegularExpression(
-        pattern: #"(?:\b(?:CHF|EUR|USD)[ \t]*|[$€£][ \t]*)\d[\d'’., \t]*|\d[\d'’., \t]*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
+        pattern: #"(?:\b(?:CHF|EUR|USD)\h*|[$€£]\h*)\d[\d'’.,\h]*|\d[\d'’.,\h]*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
         options: [.caseInsensitive]
     )
     private static let ignorePattern = try! NSRegularExpression(

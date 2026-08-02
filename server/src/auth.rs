@@ -27,9 +27,14 @@ pub fn hash_password(password: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Compares without short-circuiting. The bootstrap token is the most
-/// privileged credential the relay has, and `==` on `&str` returns as soon as
-/// two bytes differ.
+/// Compares byte *content* without short-circuiting - `==` on `&str` returns as
+/// soon as two bytes differ, and the bootstrap token is the most privileged
+/// credential the relay has.
+///
+/// Length is not treated as secret: unequal lengths return immediately, exactly
+/// as `subtle`'s own slice `ct_eq` does ("short-circuits if the lengths of the
+/// input slices are different"). Do not use this where the length itself is the
+/// secret.
 pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     use subtle::ConstantTimeEq;
     if a.len() != b.len() {

@@ -1022,33 +1022,48 @@ async fn an_ordinary_account_manages_its_own_devices_but_not_the_deployment() {
 /// UPDATE, so concurrent replays all saw `consumed_at IS NULL` and all
 /// succeeded - the single-use challenge became multi-use.
 ///
-/// Forced, not hoped for, the same way as the queue race: an outside writer
-/// holds the database's write lock, so every racer gets past the SELECT (WAL
-/// never blocks readers) and parks on the UPDATE. Releasing the lock then runs
-/// all the burns back to back, which is precisely the interleave the bug needs.
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
-    let h = harness(RegistrationOverride::Unset, None);
-    let owner = first_account(&h.app, None).await;
-    let (signing, _) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+/// Forced, not hoped for: an outside writer holds the database's write lock, so
+/// every racer gets past the read and parks on the UPDATE. Releasing the lock
+/// then runs all the burns back to back, which is the interleave the bug needs.
+///
+/// Real threads and a blocking barrier rather than tokio tasks. This runner has
+/// four cores shared with every other test in the binary, and with spawned tasks
+/// the last racer routinely had not issued its request before the others were
+/// done - the concurrency the test claimed to create was not there. A
+/// `std::sync::Barrier` cannot return until every thread has reached it, so
+/// participation is guaranteed by construction rather than waited for.
+#[test]
+fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
 
-    // A single challenge, signed once - what an interceptor would have.
-    let (status, ch) = call(
-        &h.app,
-        "POST",
-        "/api/v1/devices/challenge",
-        None,
-        Some(json!({"device_id": "phone-1"})),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "challenge: {ch}");
-    let nonce_b64 = ch["nonce"].as_str().unwrap().to_string();
-    let mut message = Vec::new();
-    message.extend_from_slice(b"eko-relay-auth-v1");
-    message.extend_from_slice(&b64().decode(&nonce_b64).unwrap());
-    message.extend_from_slice(b"phone-1");
-    let sig: Signature = signing.sign(&message);
-    let sig_b64 = b64().encode(sig.to_der().as_bytes());
+    let h = harness(RegistrationOverride::Unset, None);
+    let (nonce_b64, sig_b64) = rt.block_on(async {
+        let owner = first_account(&h.app, None).await;
+        let (signing, _) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+
+        // A single challenge, signed once - what an interceptor would have.
+        let (status, ch) = call(
+            &h.app,
+            "POST",
+            "/api/v1/devices/challenge",
+            None,
+            Some(json!({"device_id": "phone-1"})),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "challenge: {ch}");
+        let nonce_b64 = ch["nonce"].as_str().unwrap().to_string();
+
+        let mut message = Vec::new();
+        message.extend_from_slice(b"eko-relay-auth-v1");
+        message.extend_from_slice(&b64().decode(&nonce_b64).unwrap());
+        message.extend_from_slice(b"phone-1");
+        let sig: Signature = signing.sign(&message);
+        (nonce_b64, b64().encode(sig.to_der().as_bytes()))
+    });
 
     // A second pool over the same file, holding the write lock.
     let blocker_pool =
@@ -1058,52 +1073,124 @@ async fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .unwrap();
 
-    // One short of the app pool: each request holds a connection for its whole
-    // body, and a racer blocked in pool.get() is queueing, not racing.
-    let racers = eko_relay::db::MAX_POOL_CONNECTIONS as usize - 1;
-    let gate = Arc::new(tokio::sync::Barrier::new(racers + 1));
-    let mut joins = Vec::new();
-    for _ in 0..racers {
-        let app = h.app.clone();
-        let (nonce_b64, sig_b64) = (nonce_b64.clone(), sig_b64.clone());
-        let gate = gate.clone();
-        joins.push(tokio::spawn(async move {
-            gate.wait().await;
-            call(
-                &app,
-                "POST",
-                "/api/v1/devices/auth",
-                None,
-                Some(json!({
-                    "device_id": "phone-1",
-                    "nonce": nonce_b64,
-                    "signature": sig_b64,
-                })),
-            )
-            .await
-            .0
-        }));
-    }
+    let racers = 3;
+    let gate = Arc::new(std::sync::Barrier::new(racers + 1));
+    let handles: Vec<std::thread::JoinHandle<StatusCode>> = (0..racers)
+        .map(|_| {
+            let app = h.app.clone();
+            let (nonce_b64, sig_b64) = (nonce_b64.clone(), sig_b64.clone());
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                gate.wait();
+                rt.block_on(call(
+                    &app,
+                    "POST",
+                    "/api/v1/devices/auth",
+                    None,
+                    Some(json!({
+                        "device_id": "phone-1",
+                        "nonce": nonce_b64,
+                        "signature": sig_b64,
+                    })),
+                ))
+                .0
+            })
+        })
+        .collect();
 
-    gate.wait().await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    // minted == 1 is also what a run that never raced would report, so check
-    // the setup held: with the write lock still taken, every racer must be
-    // parked on its UPDATE. If any finished, it did not overlap the others and
-    // this run proves nothing.
-    let escaped = joins.iter().filter(|j| j.is_finished()).count();
+    // Returns only once every racer thread is running.
+    gate.wait();
+    // Comfortably inside the 5 s busy_timeout: past that the racers stop waiting
+    // on the lock and fail with "database is locked", which tests the harness
+    // rather than the handler.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let escaped = handles.iter().filter(|h| h.is_finished()).count();
+    held.rollback().unwrap();
+    drop(blocker);
+
+    let codes: Vec<StatusCode> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+    let minted = codes.iter().filter(|s| **s == StatusCode::OK).count();
+
+    // The security property.
+    assert_eq!(
+        minted, 1,
+        "a single challenge minted {minted} tokens: {codes:?}"
+    );
+    // And the evidence it was actually contended: nobody had finished while the
+    // lock was held, and every loser was turned away by the conditional UPDATE
+    // finding the nonce already claimed - a 401 - rather than by giving up on
+    // the lock, which would be a 500.
     assert_eq!(
         escaped, 0,
         "{escaped} racers finished before the lock was released; the race was not exercised"
     );
-    held.rollback().unwrap();
-    drop(blocker);
+    assert!(
+        codes
+            .iter()
+            .all(|s| *s == StatusCode::OK || *s == StatusCode::UNAUTHORIZED),
+        "losers must be refused on the merits, not time out on the lock: {codes:?}"
+    );
+}
 
-    let mut minted = 0;
-    for j in joins {
-        if j.await.unwrap() == StatusCode::OK {
-            minted += 1;
-        }
-    }
-    assert_eq!(minted, 1, "a single challenge minted {minted} tokens");
+/// Revoking a device deleted every token whose `subject` matched the device id.
+/// User sessions are stored in the same table under `user:<account_id>`, so a
+/// device *named* `user:1` reached across accounts: enrol it, revoke it, and the
+/// owner of account 1 is logged out. Device ids are free text and globally
+/// unique, and account ids are small integers, so nothing made that hard.
+#[tokio::test]
+async fn revoking_a_device_cannot_log_out_another_account() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let victim = first_account(&h.app, None).await;
+
+    // Second account, the attacker. Registration is still open.
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "attacker", "password": "attacker password!"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts/login",
+        None,
+        Some(json!({"username": "attacker", "password": "attacker password!"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "login: {body}");
+    let attacker = body["token"].as_str().unwrap().to_string();
+
+    // The victim is account 1, so their session token has subject "user:1".
+    enrol_and_auth(&h.app, &attacker, "user:1", "android").await;
+    let (status, _) = call(
+        &h.app,
+        "DELETE",
+        "/api/v1/account/devices/user:1",
+        Some(&attacker),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "revoke own device");
+
+    // The victim's session must be untouched.
+    let (status, body) = call(
+        &h.app,
+        "GET",
+        "/api/v1/account/devices",
+        Some(&victim),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "victim was logged out by another account's revocation: {body}"
+    );
 }

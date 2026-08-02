@@ -205,7 +205,13 @@ fn issue_token(
     ttl_secs: i64,
 ) -> ApiResult<(String, i64)> {
     let (token, digest) = auth::new_token();
-    let expires_at = now_ms() + ttl_secs * 1000;
+    // EKO_TOKEN_TTL_SECS is operator input and this is the same unchecked shape
+    // the retention sweep had: a large enough TTL wraps the multiply, lands a
+    // negative expires_at, and every token is expired the moment it is issued.
+    let expires_at = ttl_secs
+        .checked_mul(1000)
+        .and_then(|ms| now_ms().checked_add(ms))
+        .ok_or_else(internal)?;
     c.execute(
         "INSERT INTO token (token_hash, subject, account_id, is_device, expires_at)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -581,9 +587,12 @@ async fn enrol_device(
     if device_id.is_empty() || device_id.len() > MAX_DEVICE_ID_BYTES {
         return Err(bad("device_id must be 1-128 characters"));
     }
-    // device_id was bounded and these were not, though they are stored beside it
-    // and handed back by list_devices.
-    if body.name.len() > 256 || body.platform.len() > 64 {
+    // Trimmed and bounded together, for the same reason device_id above is:
+    // these are stored beside it and handed back by list_devices, so " Phone "
+    // and "Phone" would be two entries that display as one.
+    let name = body.name.trim();
+    let platform = body.platform.trim();
+    if name.len() > 256 || platform.len() > 64 {
         return Err(bad("name must be <=256 and platform <=64 bytes"));
     }
     // Bounded before the decode allocates, like deposit and device_auth. This
@@ -624,7 +633,7 @@ async fn enrol_device(
     }
 
     tx.execute(
-        "INSERT INTO device (account_id, device_id, public_key_der, name, platform, created_at)
+        "INSERT INTO device (account_id, device_id, public_key_sec1, name, platform, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             account_id,
@@ -748,7 +757,7 @@ async fn device_auth(
 
     let device: Option<(i64, Vec<u8>, Option<i64>)> = c
         .query_row(
-            "SELECT account_id, public_key_der, revoked_at FROM device WHERE device_id = ?1",
+            "SELECT account_id, public_key_sec1, revoked_at FROM device WHERE device_id = ?1",
             params![body.device_id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )

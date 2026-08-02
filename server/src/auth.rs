@@ -52,8 +52,10 @@ pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 pub fn dummy_password_hash() -> &'static str {
     static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     DUMMY.get_or_init(|| {
-        hash_password(&b64().encode(random_bytes(32)))
-            .unwrap_or_else(|_| String::from(FALLBACK_DUMMY_HASH))
+        hash_password(&b64().encode(random_bytes(32))).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "could not generate a dummy password hash; using the fallback");
+            String::from(FALLBACK_DUMMY_HASH)
+        })
     })
 }
 

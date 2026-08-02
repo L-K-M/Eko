@@ -968,6 +968,9 @@ async fn an_oversized_aad_is_refused_and_aad_counts_against_quota() {
             refused = true;
             break;
         }
+        // Anything other than a quota refusal or success would otherwise be
+        // swallowed by the loop and reported as "quota not enforced".
+        assert_eq!(status, StatusCode::OK, "deposit failed for another reason");
     }
     assert!(refused, "aad bytes must count against the account quota");
 }
@@ -1433,5 +1436,130 @@ async fn an_empty_device_id_is_refused_before_it_writes() {
     assert_eq!(
         nonces, 0,
         "a refused challenge still wrote {nonces} nonce(s)"
+    );
+}
+
+/// The cap added in an earlier round was itself a check-then-act: count, decide,
+/// insert, with nothing holding the three together. Concurrent mints all read
+/// the same count and all pass. Forced the same way as the other races here - an
+/// outside writer holds the write lock, so every racer gets past the read (WAL
+/// never blocks readers) and parks on its INSERT.
+#[test]
+fn concurrent_mints_cannot_overshoot_the_enrolment_cap() {
+    let cap = eko_relay::routes::MAX_OUTSTANDING_ENROLMENT_TOKENS;
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = rt.block_on(async {
+        let owner = first_account(&h.app, None).await;
+        // Fill to one below the cap, so a single winner reaches it exactly.
+        for i in 0..cap - 1 {
+            let (status, body) = call(
+                &h.app,
+                "POST",
+                "/api/v1/account/enrolment-tokens",
+                Some(&owner),
+                Some(json!({})),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "priming mint {i}: {body}");
+        }
+        owner
+    });
+
+    let blocker_pool =
+        eko_relay::db::open(&h._dir.path().join("relay.db").to_string_lossy()).unwrap();
+    let mut blocker = blocker_pool.get().unwrap();
+    let held = blocker
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .unwrap();
+
+    let racers = 3;
+    let gate = Arc::new(std::sync::Barrier::new(racers + 1));
+    let handles: Vec<std::thread::JoinHandle<StatusCode>> = (0..racers)
+        .map(|_| {
+            let app = h.app.clone();
+            let owner = owner.clone();
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap();
+                gate.wait();
+                rt.block_on(call(
+                    &app,
+                    "POST",
+                    "/api/v1/account/enrolment-tokens",
+                    Some(&owner),
+                    Some(json!({})),
+                ))
+                .0
+            })
+        })
+        .collect();
+
+    gate.wait();
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    held.rollback().unwrap();
+    drop(blocker);
+    let codes: Vec<StatusCode> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+
+    let outstanding: i64 = blocker_pool
+        .get()
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM enrolment_token WHERE consumed_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        outstanding <= cap,
+        "cap is {cap} but {outstanding} tokens are outstanding; racers got {codes:?}"
+    );
+}
+
+/// `device_from` does not re-check that the account exists, unlike `user_from`.
+/// That is safe because the foreign keys cascade — this pins it, since the
+/// reasoning is invisible at the call site.
+#[tokio::test]
+async fn deleting_an_account_takes_its_device_tokens_with_it() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    let (status, _) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "device token works beforehand");
+
+    let pool = eko_relay::db::open(&h._dir.path().join("relay.db").to_string_lossy()).unwrap();
+    pool.get()
+        .unwrap()
+        .execute("DELETE FROM account WHERE id = 1", [])
+        .unwrap();
+
+    let (status, body) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        None,
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "the cascade must have removed the device token: {body}"
     );
 }

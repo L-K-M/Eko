@@ -1366,3 +1366,46 @@ async fn outstanding_enrolment_tokens_are_capped() {
     }
     assert!(refused, "unused enrolment tokens must be bounded");
 }
+
+/// An empty device_id can never name a device — enrolment refuses one — but the
+/// two unauthenticated endpoints only checked the upper bound, so an empty id
+/// still wrote a nonce row that nothing could ever redeem.
+#[tokio::test]
+async fn an_empty_device_id_is_refused_before_it_writes() {
+    let h = harness(RegistrationOverride::Unset, None);
+
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/challenge",
+        None,
+        Some(json!({"device_id": ""})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "empty challenge: {body}");
+
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/auth",
+        None,
+        Some(json!({
+            "device_id": "",
+            "nonce": b64().encode([0u8; 32]),
+            "signature": b64().encode([0u8; 64]),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "empty auth: {body}");
+
+    let pool = eko_relay::db::open(&h._dir.path().join("relay.db").to_string_lossy()).unwrap();
+    let nonces: i64 = pool
+        .get()
+        .unwrap()
+        .query_row("SELECT COUNT(*) FROM auth_nonce", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        nonces, 0,
+        "a refused challenge still wrote {nonces} nonce(s)"
+    );
+}

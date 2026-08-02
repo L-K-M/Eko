@@ -508,8 +508,8 @@ async fn list_devices(
             })
         })
         .map_err(|_| internal())?
-        .filter_map(Result::ok)
-        .collect();
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| internal())?;
     Ok(Json(rows))
 }
 
@@ -641,8 +641,8 @@ async fn device_challenge(
     // caller's own input length is not an existence oracle - the answer does
     // not depend on anything stored - and a longer id could never name a device
     // anyway, because enrolment refuses one.
-    if body.device_id.len() > MAX_DEVICE_ID_BYTES {
-        return Err(bad("device_id too long"));
+    if body.device_id.is_empty() || body.device_id.len() > MAX_DEVICE_ID_BYTES {
+        return Err(bad("device_id must be 1-128 bytes"));
     }
     let c = conn(&state.pool)?;
     // Issue a nonce regardless of whether the device exists: a challenge that
@@ -677,9 +677,10 @@ async fn device_auth(
     // bounds is already not one.
     if !encoded_fits(&body.nonce, 64)
         || !encoded_fits(&body.signature, 256)
+        || body.device_id.is_empty()
         || body.device_id.len() > MAX_DEVICE_ID_BYTES
     {
-        return Err(bad("nonce, signature or device_id too long"));
+        return Err(bad("nonce, signature or device_id out of bounds"));
     }
     let nonce = b64()
         .decode(body.nonce.as_bytes())
@@ -984,8 +985,12 @@ async fn drain(
             })
         })
         .map_err(|_| internal())?
-        .filter_map(Result::ok)
-        .collect();
+        // Not filter_map(Result::ok). A row that failed to convert used to
+        // vanish from the response, and the client would then acknowledge past
+        // it - so a decoding fault silently deleted an envelope instead of
+        // reporting itself.
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| internal())?;
 
     c.execute(
         "UPDATE device SET last_seen_at = ?1 WHERE device_id = ?2",

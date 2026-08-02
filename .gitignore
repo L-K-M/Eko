@@ -36,6 +36,10 @@ __pycache__/
 *.key
 *.env
 .env.*
+# ...but a committed template is the opposite of a leaked credential, and
+# server/README.md opens by telling you to copy one. `.env.*` swallowed it.
+!.env.example
+!**/.env.example
 *.profraw
 
 # Relay server

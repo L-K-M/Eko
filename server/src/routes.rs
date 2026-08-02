@@ -19,6 +19,9 @@ use base64::Engine;
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+/// Bound on the decoded additional-authenticated-data of an envelope.
+pub const MAX_AAD_BYTES: usize = 4096;
+
 // ---------------------------------------------------------------- errors ---
 
 pub struct ApiError(StatusCode, &'static str);
@@ -90,13 +93,18 @@ fn user_from(state: &AppState, headers: &HeaderMap) -> ApiResult<UserSubject> {
     if is_device != 0 || expires_at < now_ms() {
         return Err(unauthorized());
     }
+    // A missing account row means the token outlived its account: 401. A
+    // database failure is infrastructure: 500. Collapsing both into 401 made an
+    // outage look like an auth problem.
     let is_admin: i64 = c
         .query_row(
             "SELECT is_admin FROM account WHERE id = ?1",
             params![account_id],
             |r| r.get(0),
         )
-        .map_err(|_| unauthorized())?;
+        .optional()
+        .map_err(|_| internal())?
+        .ok_or_else(unauthorized)?;
     Ok(UserSubject {
         account_id,
         is_admin: is_admin != 0,
@@ -176,9 +184,11 @@ fn registration_open(state: &AppState, c: &rusqlite::Connection) -> bool {
     stored.map(|v| v == "true").unwrap_or(true)
 }
 
-fn account_count(c: &rusqlite::Connection) -> i64 {
+/// Deliberately fallible. Defaulting to 0 on a database error would read as
+/// "no accounts exist", which is exactly the answer that grants admin.
+fn account_count(c: &rusqlite::Connection) -> ApiResult<i64> {
     c.query_row("SELECT COUNT(*) FROM account", [], |r| r.get(0))
-        .unwrap_or(0)
+        .map_err(|_| internal())
 }
 
 // ------------------------------------------------------------- accounts ---
@@ -207,15 +217,22 @@ async fn create_account(
     if body.password.len() < 12 {
         return Err(bad("password must be at least 12 characters"));
     }
-    let c = conn(&state.pool)?;
-    let existing = account_count(&c);
+    let mut c = conn(&state.pool)?;
+    // BEGIN IMMEDIATE takes the write lock before the count is read, so two
+    // concurrent first-account requests cannot both observe an empty table and
+    // both be granted admin. That account controls registration and device
+    // enrolment, so the race is a privilege escalation, not a cosmetic one.
+    let tx = c
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| internal())?;
+    let existing = account_count(&tx)?;
     let first = existing == 0;
 
     // Applies to the first account too. An environment override exists to lock
     // a deployment down, and a lock that still lets a stranger claim an
     // unclaimed server is not a lock. Setup means booting once with
     // EKO_REGISTRATION=open, not exempting the most valuable account.
-    if !registration_open(&state, &c) {
+    if !registration_open(&state, &tx) {
         return Err(forbidden("registration is closed"));
     }
     // The first account is the one that can claim the deployment, so it is the
@@ -230,7 +247,7 @@ async fn create_account(
     }
 
     let hash = auth::hash_password(&body.password).map_err(|_| internal())?;
-    c.execute(
+    tx.execute(
         "INSERT INTO account (username, password_hash, is_admin, created_at)
          VALUES (?1, ?2, ?3, ?4)",
         params![body.username, hash, first as i64, now_ms()],
@@ -242,8 +259,10 @@ async fn create_account(
             internal()
         }
     })?;
+    let account_id = tx.last_insert_rowid();
+    tx.commit().map_err(|_| internal())?;
     Ok(Json(AccountCreated {
-        account_id: c.last_insert_rowid(),
+        account_id,
         is_admin: first,
     }))
 }
@@ -448,9 +467,17 @@ async fn enrol_device(
         return Err(bad("public_key is not a valid P-256 point"));
     }
 
-    let c = conn(&state.pool)?;
+    let mut c = conn(&state.pool)?;
+    // Same shape of race as create_account: without the write lock held across
+    // the whole check-insert-consume, two concurrent requests can both see an
+    // unconsumed token and a single-use enrolment token becomes multi-use.
+    // A transaction rather than a conditional UPDATE, so that a failed device
+    // insert rolls back and does not burn the operator's token.
+    let tx = c
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| internal())?;
     let digest = auth::sha256(body.token.as_bytes());
-    let row: Option<(i64, i64, Option<i64>)> = c
+    let row: Option<(i64, i64, Option<i64>)> = tx
         .query_row(
             "SELECT account_id, expires_at, consumed_at FROM enrolment_token WHERE token_hash = ?1",
             params![digest],
@@ -463,7 +490,7 @@ async fn enrol_device(
         return Err(forbidden("bad token"));
     }
 
-    c.execute(
+    tx.execute(
         "INSERT INTO device (account_id, device_id, public_key_der, name, platform, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
@@ -482,13 +509,12 @@ async fn enrol_device(
             internal()
         }
     })?;
-    // Single use: consumed only after the device row committed, so a failed
-    // enrolment does not burn the operator's token.
-    c.execute(
+    tx.execute(
         "UPDATE enrolment_token SET consumed_at = ?1 WHERE token_hash = ?2",
         params![now_ms(), digest],
     )
     .map_err(|_| internal())?;
+    tx.commit().map_err(|_| internal())?;
 
     Ok(Json(AccountCreated {
         account_id,
@@ -670,6 +696,12 @@ async fn deposit(
 ) -> ApiResult<Json<Deposited>> {
     let device = device_from(&state, &headers)?;
     let aad = b64().decode(body.aad.as_bytes()).map_err(|_| bad("aad"))?;
+    // The envelope format puts a version, two device ids and a queue id in the
+    // aad; anything approaching this is not that. Unbounded, it was stored and
+    // billed to nobody.
+    if aad.len() > MAX_AAD_BYTES {
+        return Err(bad("aad too large"));
+    }
     let sealed = b64()
         .decode(body.body.as_bytes())
         .map_err(|_| bad("body"))?;
@@ -691,7 +723,8 @@ async fn deposit(
             |r| r.get(0),
         )
         .unwrap_or(0);
-    if used + sealed.len() as i64 > state.config.account_quota_bytes {
+    let stored_len = (sealed.len() + aad.len()) as i64;
+    if used + stored_len > state.config.account_quota_bytes {
         return Err(ApiError::new(
             StatusCode::INSUFFICIENT_STORAGE,
             "account quota exceeded",
@@ -709,11 +742,10 @@ async fn deposit(
             |r| r.get(0),
         )
         .map_err(|_| internal())?;
-    let len = sealed.len() as i64;
     c.execute(
         "INSERT INTO envelope (queue_id, envelope_id, aad, body, byte_len, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![qid, next, aad, sealed, len, now_ms()],
+        params![qid, next, aad, sealed, stored_len, now_ms()],
     )
     .map_err(|_| internal())?;
 

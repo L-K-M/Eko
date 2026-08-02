@@ -21,7 +21,8 @@ fn healthcheck(bind: &str) -> ! {
             .ok()?;
         let mut buf = String::new();
         stream.read_to_string(&mut buf).ok()?;
-        buf.starts_with("HTTP/1.0 200").then_some(())
+        // hyper may answer 1.0 or 1.1; the status is what matters.
+        (buf.starts_with("HTTP/1.0 200") || buf.starts_with("HTTP/1.1 200")).then_some(())
     })();
     std::process::exit(if code.is_some() { 0 } else { 1 });
 }

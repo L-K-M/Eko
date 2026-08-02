@@ -34,8 +34,10 @@ const MAX_USERNAME_BYTES: usize = 64;
 /// longer one cannot name a real device and needs no other handling.
 const MAX_DEVICE_ID_BYTES: usize = 128;
 
-/// Unconsumed, unexpired enrolment tokens one account may hold at once.
-const MAX_OUTSTANDING_ENROLMENT_TOKENS: i64 = 16;
+/// Unconsumed, unexpired enrolment tokens one account may hold at once. Public
+/// so the test that checks the bound can name it rather than hardcode a number
+/// that a later tuning would falsify.
+pub const MAX_OUTSTANDING_ENROLMENT_TOKENS: i64 = 16;
 
 /// Could `encoded` be base64 of at most `decoded_limit` bytes? base64url turns
 /// three bytes into four characters, so this is the cheap check that lets a
@@ -534,8 +536,8 @@ async fn revoke_device(
     // so a device named "user:1" made this delete another account's session -
     // revoking your own device logged out whoever owns account 1.
     c.execute(
-        "DELETE FROM token WHERE subject = ?1 AND is_device = 1",
-        params![device_id],
+        "DELETE FROM token WHERE subject = ?1 AND is_device = 1 AND account_id = ?2",
+        params![device_id, user.account_id],
     )
     .map_err(|_| internal())?;
     Ok(StatusCode::NO_CONTENT)

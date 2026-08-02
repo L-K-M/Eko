@@ -101,9 +101,21 @@ pub fn sha256(bytes: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Verify `sig` over `AUTH_CONTEXT || nonce || device_id` against a SEC1 public
-/// key. `device_id` is bound into the signed message so a signature captured
-/// for one device cannot be replayed as another.
+/// The bytes a device signs: `AUTH_CONTEXT || nonce || device_id`. Public
+/// because the tests were building this by hand from the same three literals,
+/// which meant a change to the format here would leave them passing against a
+/// server that no longer spoke it.
+pub fn auth_message(nonce: &[u8], device_id: &str) -> Vec<u8> {
+    let mut message = Vec::with_capacity(AUTH_CONTEXT.len() + nonce.len() + device_id.len());
+    message.extend_from_slice(AUTH_CONTEXT);
+    message.extend_from_slice(nonce);
+    message.extend_from_slice(device_id.as_bytes());
+    message
+}
+
+/// Verify `sig` over `auth_message` against a SEC1 public key. `device_id` is
+/// bound into the signed message so a signature captured for one device cannot
+/// be replayed as another.
 pub fn verify_device_signature(
     public_key_sec1: &[u8],
     nonce: &[u8],
@@ -116,11 +128,7 @@ pub fn verify_device_signature(
     let Ok(sig) = Signature::from_der(signature_der) else {
         return false;
     };
-    let mut message = Vec::with_capacity(AUTH_CONTEXT.len() + nonce.len() + device_id.len());
-    message.extend_from_slice(AUTH_CONTEXT);
-    message.extend_from_slice(nonce);
-    message.extend_from_slice(device_id.as_bytes());
-    key.verify(&message, &sig).is_ok()
+    key.verify(&auth_message(nonce, device_id), &sig).is_ok()
 }
 
 #[cfg(test)]
@@ -142,11 +150,7 @@ mod tests {
         let public = verifying.to_encoded_point(false).as_bytes().to_vec();
         let nonce = random_bytes(32);
 
-        let mut message = Vec::new();
-        message.extend_from_slice(AUTH_CONTEXT);
-        message.extend_from_slice(&nonce);
-        message.extend_from_slice(b"device-a");
-        let sig: Signature = signing.sign(&message);
+        let sig: Signature = signing.sign(&auth_message(&nonce, "device-a"));
 
         assert!(verify_device_signature(
             &public,

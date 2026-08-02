@@ -51,16 +51,7 @@ fn reopen(h: &Harness, registration: RegistrationOverride) -> axum::Router {
 fn harness(registration: RegistrationOverride, bootstrap: Option<&str>) -> Harness {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("relay.db");
-    let config = Config {
-        bind: "127.0.0.1:0".into(),
-        database: path.to_string_lossy().to_string(),
-        registration,
-        bootstrap_token: bootstrap.map(|s| s.to_string()),
-        max_envelope_bytes: 1_048_576,
-        retention_days: 30,
-        account_quota_bytes: 1024 * 1024,
-        token_ttl_secs: 3600,
-    };
+    let config = config_for(&path.to_string_lossy(), registration, bootstrap);
     let pool = eko_relay::db::open(&config.database).unwrap();
     let state = AppState {
         pool,
@@ -109,7 +100,7 @@ async fn enrol_and_auth(
     let (status, tok) = call(
         app,
         "POST",
-        "/api/v1/admin/enrolment-tokens",
+        "/api/v1/account/enrolment-tokens",
         Some(user_token),
         Some(json!({})),
     )
@@ -353,6 +344,13 @@ async fn concurrent_deposits_cannot_exceed_the_quota() {
         stored <= 1024 * 1024,
         "stored {stored} bytes against a 1 MiB quota (accepted {accepted})"
     );
+    // A 200 that stored nothing would still satisfy the ceiling above, so tie
+    // the two counts together: every acknowledged deposit must be drainable.
+    assert_eq!(
+        accepted,
+        items.len(),
+        "every accepted deposit must appear in the drain"
+    );
 }
 
 #[tokio::test]
@@ -574,7 +572,7 @@ async fn a_revoked_device_loses_access_immediately() {
     let (status, _) = call(
         &h.app,
         "DELETE",
-        "/api/v1/admin/devices/phone-1",
+        "/api/v1/account/devices/phone-1",
         Some(&owner),
         None,
     )
@@ -770,7 +768,7 @@ async fn an_enrolment_token_survives_concurrent_use_exactly_once() {
     let (_, tok) = call(
         &h.app,
         "POST",
-        "/api/v1/admin/enrolment-tokens",
+        "/api/v1/account/enrolment-tokens",
         Some(&owner),
         Some(json!({})),
     )
@@ -811,7 +809,7 @@ async fn an_enrolment_token_survives_concurrent_use_exactly_once() {
     }
     assert_eq!(ok, 1, "one token must enrol exactly one device, got {ok}");
 
-    let (_, devices) = call(&h.app, "GET", "/api/v1/admin/devices", Some(&owner), None).await;
+    let (_, devices) = call(&h.app, "GET", "/api/v1/account/devices", Some(&owner), None).await;
     assert_eq!(devices.as_array().unwrap().len(), 1);
 }
 
@@ -857,4 +855,53 @@ async fn an_oversized_aad_is_refused_and_aad_counts_against_quota() {
         }
     }
     assert!(refused, "aad bytes must count against the account quota");
+}
+
+/// The boundary the `/api/v1/account/...` paths encode: managing your own
+/// devices is not a privileged act, administering the deployment is. Enrolling
+/// a phone must work for an ordinary account, or a non-admin user could never
+/// use the relay at all; the registration toggle must not.
+#[tokio::test]
+async fn an_ordinary_account_manages_its_own_devices_but_not_the_deployment() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let _owner = first_account(&h.app, None).await;
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "guest", "password": "another long password"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts/login",
+        None,
+        Some(json!({"username": "guest", "password": "another long password"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "login: {body}");
+    let guest = body["token"].as_str().unwrap().to_string();
+
+    // Its own devices: allowed, and the whole enrol/auth handshake must work.
+    let (_, phone) = enrol_and_auth(&h.app, &guest, "guest-phone", "android").await;
+    assert!(!phone.is_empty());
+    let (status, devices) =
+        call(&h.app, "GET", "/api/v1/account/devices", Some(&guest), None).await;
+    assert_eq!(status, StatusCode::OK, "{devices}");
+    assert_eq!(devices.as_array().unwrap().len(), 1);
+
+    // The deployment: refused.
+    let (status, body) = call(
+        &h.app,
+        "PATCH",
+        "/api/v1/admin/settings",
+        Some(&guest),
+        Some(json!({"registration_open": false})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 }

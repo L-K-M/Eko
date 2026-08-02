@@ -110,10 +110,20 @@ pub fn open(path: &str) -> anyhow_lite::Result<Pool> {
     // busy_timeout matters for the IMMEDIATE transactions in routes.rs: without
     // it a second concurrent writer fails instantly with SQLITE_BUSY instead of
     // waiting its turn.
+    //
+    // NORMAL rather than FULL. Under WAL both are crash-safe - NORMAL cannot
+    // corrupt the database, it can only lose the last commits to a power cut -
+    // and FULL costs an fsync per commit. Measured on this container's
+    // filesystem, 4 KiB inserts: FULL p50 1.855 ms, NORMAL p50 0.035 ms. The
+    // relay is a hot path of small writes (deposit, cursor, nonce), and it is
+    // explicitly not the source of truth: the phone's outbox is, and the
+    // resume protocol heals a relay database lost outright. Paying 50x per
+    // commit to narrow a window that costs nothing to reopen is the wrong
+    // trade.
     let configure = |c: &mut Connection| {
         c.execute_batch(
             "PRAGMA foreign_keys = ON;
-             PRAGMA synchronous = FULL;
+             PRAGMA synchronous = NORMAL;
              PRAGMA busy_timeout = 5000;",
         )
     };

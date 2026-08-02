@@ -24,6 +24,7 @@ pub const MAX_AAD_BYTES: usize = 4096;
 
 // ---------------------------------------------------------------- errors ---
 
+#[derive(Debug)]
 pub struct ApiError(StatusCode, &'static str);
 
 impl ApiError {
@@ -207,32 +208,20 @@ pub struct AccountCreated {
     is_admin: bool,
 }
 
-async fn create_account(
-    State(state): State<AppState>,
-    Json(body): Json<CreateAccount>,
-) -> ApiResult<Json<AccountCreated>> {
-    if body.username.trim().is_empty() || body.username.len() > 64 {
-        return Err(bad("username must be 1-64 characters"));
-    }
-    if body.password.len() < 12 {
-        return Err(bad("password must be at least 12 characters"));
-    }
-    let mut c = conn(&state.pool)?;
-    // BEGIN IMMEDIATE takes the write lock before the count is read, so two
-    // concurrent first-account requests cannot both observe an empty table and
-    // both be granted admin. That account controls registration and device
-    // enrolment, so the race is a privilege escalation, not a cosmetic one.
-    let tx = c
-        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-        .map_err(|_| internal())?;
-    let existing = account_count(&tx)?;
-    let first = existing == 0;
-
+/// Decide whether this request may create an account, and whether it would be
+/// the first. Called twice per creation: once cheaply before the password is
+/// hashed, once inside the write transaction where the answer is binding.
+fn registration_gate(
+    state: &AppState,
+    c: &rusqlite::Connection,
+    body: &CreateAccount,
+) -> ApiResult<bool> {
+    let first = account_count(c)? == 0;
     // Applies to the first account too. An environment override exists to lock
     // a deployment down, and a lock that still lets a stranger claim an
     // unclaimed server is not a lock. Setup means booting once with
     // EKO_REGISTRATION=open, not exempting the most valuable account.
-    if !registration_open(&state, &tx) {
+    if !registration_open(state, c) {
         return Err(forbidden("registration is closed"));
     }
     // The first account is the one that can claim the deployment, so it is the
@@ -245,8 +234,40 @@ async fn create_account(
             }
         }
     }
+    Ok(first)
+}
 
+async fn create_account(
+    State(state): State<AppState>,
+    Json(body): Json<CreateAccount>,
+) -> ApiResult<Json<AccountCreated>> {
+    if body.username.trim().is_empty() || body.username.len() > 64 {
+        return Err(bad("username must be 1-64 characters"));
+    }
+    if body.password.len() < 12 {
+        return Err(bad("password must be at least 12 characters"));
+    }
+    let mut c = conn(&state.pool)?;
+    // Gate once here, before hashing. Argon2 is deliberately expensive, and an
+    // unauthenticated caller who fails the bootstrap check must not be able to
+    // spend a CPU core by asking. This read is advisory - it is not serialised
+    // against a concurrent first account - so it is repeated authoritatively
+    // inside the transaction below.
+    registration_gate(&state, &c, &body)?;
+    // Outside the transaction on purpose: hashing takes hundreds of
+    // milliseconds, and BEGIN IMMEDIATE holds the database's single write lock
+    // for its whole body. Hashing under it would stall every concurrent
+    // deposit and cursor update for the duration.
     let hash = auth::hash_password(&body.password).map_err(|_| internal())?;
+
+    // BEGIN IMMEDIATE takes the write lock before the count is read, so two
+    // concurrent first-account requests cannot both observe an empty table and
+    // both be granted admin. That account controls registration and device
+    // enrolment, so the race is a privilege escalation, not a cosmetic one.
+    let tx = c
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| internal())?;
+    let first = registration_gate(&state, &tx, &body)?;
     tx.execute(
         "INSERT INTO account (username, password_hash, is_admin, created_at)
          VALUES (?1, ?2, ?3, ?4)",
@@ -643,6 +664,9 @@ fn queue_id(
     sender: &str,
     recipient: &str,
 ) -> ApiResult<i64> {
+    // Read-only fast path. Every drain and every cursor update runs through
+    // here, and after the first envelope the row always exists, so the common
+    // case must not take the write lock.
     if let Some(id) = c
         .query_row(
             "SELECT id FROM queue WHERE sender = ?1 AND recipient = ?2",
@@ -654,12 +678,25 @@ fn queue_id(
     {
         return Ok(id);
     }
-    c.execute(
-        "INSERT INTO queue (account_id, sender, recipient, created_at) VALUES (?1, ?2, ?3, ?4)",
+    // The miss is racy: `drain` and `set_cursor` hold no transaction, so two
+    // first readers of the same queue both miss the SELECT and both insert.
+    // Plain INSERT gave the loser a UNIQUE violation, which `internal()` turned
+    // into a 500. Upserting makes create-or-get one statement; DO UPDATE rather
+    // than DO NOTHING because DO NOTHING returns no row for RETURNING to hand
+    // back.
+    c.query_row(
+        "INSERT INTO queue (account_id, sender, recipient, created_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(sender, recipient) DO UPDATE SET created_at = queue.created_at
+         RETURNING id",
         params![account_id, sender, recipient, now_ms()],
+        |r| r.get(0),
     )
-    .map_err(|_| internal())?;
-    Ok(c.last_insert_rowid())
+    // Deliberately the RETURNING value and not last_insert_rowid(): when the
+    // upsert takes the DO UPDATE branch nothing is inserted, and
+    // last_insert_rowid() would hand back whatever this pooled connection
+    // inserted last - a different queue's id, silently.
+    .map_err(|_| internal())
 }
 
 /// Both endpoints must be live devices of the caller's account.
@@ -907,7 +944,7 @@ async fn readyz(State(state): State<AppState>) -> ApiResult<&'static str> {
 }
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let routes = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/v1/accounts", post(create_account))
@@ -916,10 +953,18 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/admin/settings",
             patch(patch_settings).get(get_settings),
         )
-        .route("/api/v1/admin/enrolment-tokens", post(mint_enrolment_token))
-        .route("/api/v1/admin/devices", get(list_devices))
+        // Not under /admin: these manage the caller's *own* devices and are
+        // deliberately open to any account, because enrolling your phone is not
+        // a privileged act. Only deployment-wide state - the registration
+        // toggle above - is admin-gated. The old /admin/devices path implied a
+        // privilege boundary that the handlers never enforced and should not.
         .route(
-            "/api/v1/admin/devices/{device_id}",
+            "/api/v1/account/enrolment-tokens",
+            post(mint_enrolment_token),
+        )
+        .route("/api/v1/account/devices", get(list_devices))
+        .route(
+            "/api/v1/account/devices/{device_id}",
             axum::routing::delete(revoke_device),
         )
         .route("/api/v1/devices/enrol", post(enrol_device))
@@ -927,6 +972,138 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/devices/auth", post(device_auth))
         .route("/api/v1/queues/{peer}/envelopes", post(deposit).get(drain))
         .route("/api/v1/queues/{peer}/cursor", post(set_cursor))
+        .with_state(state);
+    with_shared_layers(routes)
+}
+
+/// The stack every route sits behind. Separate from `router` so a test can put
+/// a deliberately panicking handler behind exactly the same layers.
+fn with_shared_layers(router: Router) -> Router {
+    router
         .layer(tower_http::trace::TraceLayer::new_for_http())
-        .with_state(state)
+        // Outermost, so a panic anywhere below becomes a 500 for that one
+        // request instead of a dropped connection. Only reachable because the
+        // release profile unwinds; see the note in Cargo.toml.
+        .layer(tower_http::catch_panic::CatchPanicLayer::new())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Barrier};
+
+    fn pool_with_account() -> (tempfile::TempDir, crate::db::Pool) {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = crate::db::open(&dir.path().join("t.db").to_string_lossy()).unwrap();
+        pool.get()
+            .unwrap()
+            .execute(
+                "INSERT INTO account (id, username, password_hash, is_admin, created_at)
+                 VALUES (1, 'u', 'h', 1, 0)",
+                [],
+            )
+            .unwrap();
+        (dir, pool)
+    }
+
+    /// `drain` and `set_cursor` call `queue_id` with no transaction held, so
+    /// the first readers of a queue all miss the SELECT together. Check-then-
+    /// insert gave every loser a UNIQUE violation, which `internal()` reported
+    /// as a 500. Exercised here rather than over HTTP because the auth work a
+    /// request does first spreads the racers out far enough to hide it.
+    ///
+    /// The interleave is forced, not hoped for. An unheld write lock lets the
+    /// first racer finish SELECT *and* INSERT in tens of microseconds, so the
+    /// others never overlap it and the bug hides; holding the lock parks every
+    /// racer between its SELECT and its INSERT, which is exactly the state the
+    /// bug needs and no amount of concurrency reliably produces on its own.
+    #[test]
+    fn concurrent_first_lookups_create_one_queue_and_no_errors() {
+        let (_dir, pool) = pool_with_account();
+        // One short of the pool, because the lock holder below takes a
+        // connection too and a racer that blocks in `pool.get()` would never
+        // reach the barrier.
+        let racers = 7;
+        // +1 for this thread, which releases the lock once everyone is parked.
+        let gate = Arc::new(Barrier::new(racers + 1));
+
+        let mut blocker = pool.get().unwrap();
+        let held = blocker
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+
+        let handles: Vec<_> = (0..racers)
+            .map(|_| {
+                let pool = pool.clone();
+                let gate = gate.clone();
+                std::thread::spawn(move || {
+                    let c = pool.get().unwrap();
+                    gate.wait();
+                    // WAL never blocks readers, so the SELECT returns "missing"
+                    // for all of them; the INSERT then waits on busy_timeout.
+                    queue_id(&c, 1, "phone-1", "mac-1").map_err(|e| format!("{} {}", e.0, e.1))
+                })
+            })
+            .collect();
+
+        gate.wait();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        held.rollback().unwrap();
+        drop(blocker);
+
+        let ids: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let failed: Vec<_> = ids.iter().filter_map(|r| r.as_ref().err()).collect();
+        assert!(failed.is_empty(), "every racer must get an id: {failed:?}");
+
+        // This is also what pins the upsert to its RETURNING value: with
+        // last_insert_rowid() the losers take the DO UPDATE branch, insert
+        // nothing, and report whatever their connection inserted last - id 0 on
+        // a fresh one. Wrong queue, no error.
+        let ids: Vec<i64> = ids.into_iter().map(Result::unwrap).collect();
+        assert!(
+            ids.windows(2).all(|w| w[0] == w[1]),
+            "all racers must agree on one queue id, got {ids:?}"
+        );
+        let rows: i64 = pool
+            .get()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM queue", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "exactly one queue row must exist");
+    }
+
+    /// Queues are directional, and a repeat lookup must be stable.
+    #[test]
+    fn the_two_directions_are_distinct_stable_queues() {
+        let (_dir, pool) = pool_with_account();
+        let c = pool.get().unwrap();
+        let first = queue_id(&c, 1, "phone-1", "mac-1").unwrap();
+        let second = queue_id(&c, 1, "mac-1", "phone-1").unwrap();
+        assert_ne!(first, second);
+        assert_eq!(queue_id(&c, 1, "phone-1", "mac-1").unwrap(), first);
+    }
+
+    /// A panicking handler must fail one request, not the process. Note this
+    /// asserts the layer is wired; unwinding itself is what `panic = "abort"`
+    /// would defeat, which is why the release profile no longer sets it.
+    #[tokio::test]
+    async fn a_panicking_handler_becomes_a_500() {
+        use tower::ServiceExt;
+        // A named handler with a concrete return type: a bare `async { panic!()
+        // }` has no type for axum to turn into a response.
+        async fn boom() -> String {
+            panic!("deliberate")
+        }
+        let app = with_shared_layers(Router::new().route("/boom", get(boom)));
+        let res = app
+            .oneshot(
+                axum::http::Request::builder()
+                    .uri("/boom")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

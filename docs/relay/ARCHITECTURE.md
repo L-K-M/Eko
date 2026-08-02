@@ -222,8 +222,8 @@ already exists and adds no new secret to store.
 POST   /api/v1/accounts                     create account (gated)
 POST   /api/v1/accounts/login               -> user token
 PATCH  /api/v1/admin/settings               registration_open
-POST   /api/v1/admin/enrolment-tokens       mint single-use device token
-GET    /api/v1/admin/devices                list / revoke
+POST   /api/v1/account/enrolment-tokens     mint single-use device token
+GET    /api/v1/account/devices              list / revoke
 
 POST   /api/v1/devices/enrol                {token, device_id, public_key}
 POST   /api/v1/devices/challenge            -> nonce
@@ -237,6 +237,12 @@ GET    /api/v1/queues/{peer}/socket         WebSocket, live session channel
 GET    /healthz                             liveness, no auth
 GET    /readyz                              readiness incl. DB
 ```
+
+Only `/admin/` is admin-gated, and only deployment-wide state lives there. The
+`/account/` paths deliberately are not: enrolling your own phone is what an
+ordinary account is *for*, so requiring admin would leave a non-admin user
+unable to use the relay at all. Both are still scoped to the caller's account —
+a user can only ever see and revoke their own devices.
 
 Limits enforced server-side: envelope body ≤ 1 MiB (mirrors the §3 frame limit),
 per-device deposit rate limit, per-account storage quota, and a retention sweep

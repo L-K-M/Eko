@@ -70,10 +70,12 @@ create your account, then set `closed` and `docker compose up -d`.
 ## Adding devices
 
 With registration closed, devices join through single-use enrolment tokens rather
-than new accounts:
+than new accounts. These are `/account/` rather than `/admin/` endpoints on
+purpose: they only ever touch the caller's own devices, and adding your phone is
+not an administrative act. Closing registration is.
 
 ```sh
-curl -sX POST localhost:8080/api/v1/admin/enrolment-tokens \
+curl -sX POST localhost:8080/api/v1/account/enrolment-tokens \
   -H "authorization: Bearer $TOKEN" -H content-type:application/json -d '{}'
 ```
 
@@ -83,8 +85,8 @@ authenticates by signing a server nonce with that key. Devices never have
 passwords.
 
 ```sh
-curl -s localhost:8080/api/v1/admin/devices -H "authorization: Bearer $TOKEN"
-curl -sX DELETE localhost:8080/api/v1/admin/devices/phone-1 \
+curl -s localhost:8080/api/v1/account/devices -H "authorization: Bearer $TOKEN"
+curl -sX DELETE localhost:8080/api/v1/account/devices/phone-1 \
   -H "authorization: Bearer $TOKEN"      # revokes immediately, kills its tokens
 ```
 

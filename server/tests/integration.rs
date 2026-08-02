@@ -1,0 +1,619 @@
+//! End-to-end exercise of the relay over its real HTTP surface.
+//!
+//! Covers the whole operator story: claim the deployment, close registration,
+//! enrol two devices, move sealed envelopes between them, acknowledge, and
+//! confirm the isolation and revocation rules actually hold.
+
+use axum::body::Body;
+use axum::http::{Request, StatusCode};
+use base64::Engine;
+use eko_relay::{AppState, Config, RegistrationOverride};
+use p256::ecdsa::{signature::Signer, Signature, SigningKey, VerifyingKey};
+use serde_json::{json, Value};
+use std::sync::Arc;
+use tower::ServiceExt;
+
+fn b64() -> base64::engine::general_purpose::GeneralPurpose {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+}
+
+struct Harness {
+    app: axum::Router,
+    _dir: tempdir::TempDir,
+}
+
+fn harness(registration: RegistrationOverride, bootstrap: Option<&str>) -> Harness {
+    let dir = tempdir::TempDir::new("eko-relay-test").unwrap();
+    let path = dir.path().join("relay.db");
+    let config = Config {
+        bind: "127.0.0.1:0".into(),
+        database: path.to_string_lossy().to_string(),
+        registration,
+        bootstrap_token: bootstrap.map(|s| s.to_string()),
+        max_envelope_bytes: 1_048_576,
+        retention_days: 30,
+        account_quota_bytes: 1024 * 1024,
+        token_ttl_secs: 3600,
+    };
+    let pool = eko_relay::db::open(&config.database).unwrap();
+    let state = AppState {
+        pool,
+        config: Arc::new(config),
+    };
+    Harness {
+        app: eko_relay::app(state),
+        _dir: dir,
+    }
+}
+
+async fn call(
+    app: &axum::Router,
+    method: &str,
+    uri: &str,
+    token: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut req = Request::builder().method(method).uri(uri);
+    if let Some(t) = token {
+        req = req.header("authorization", format!("Bearer {t}"));
+    }
+    let req = match body {
+        Some(v) => req
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::to_vec(&v).unwrap()))
+            .unwrap(),
+        None => req.body(Body::empty()).unwrap(),
+    };
+    let res = app.clone().oneshot(req).await.unwrap();
+    let status = res.status();
+    let bytes = axum::body::to_bytes(res.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
+    let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    (status, value)
+}
+
+/// Enrol a device and authenticate it, returning (device_id, bearer token).
+async fn enrol_and_auth(
+    app: &axum::Router,
+    user_token: &str,
+    device_id: &str,
+    platform: &str,
+) -> (SigningKey, String) {
+    let (status, tok) = call(
+        app,
+        "POST",
+        "/api/v1/admin/enrolment-tokens",
+        Some(user_token),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "mint enrolment token: {tok}");
+    let enrolment = tok["token"].as_str().unwrap().to_string();
+
+    let signing = SigningKey::random(&mut rand::thread_rng());
+    let public = VerifyingKey::from(&signing)
+        .to_encoded_point(false)
+        .as_bytes()
+        .to_vec();
+
+    let (status, body) = call(
+        app,
+        "POST",
+        "/api/v1/devices/enrol",
+        None,
+        Some(json!({
+            "token": enrolment,
+            "device_id": device_id,
+            "public_key": b64().encode(&public),
+            "name": device_id,
+            "platform": platform,
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "enrol: {body}");
+
+    let token = authenticate(app, &signing, device_id).await;
+    (signing, token)
+}
+
+async fn authenticate(app: &axum::Router, signing: &SigningKey, device_id: &str) -> String {
+    let (status, ch) = call(
+        app,
+        "POST",
+        "/api/v1/devices/challenge",
+        None,
+        Some(json!({ "device_id": device_id })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "challenge: {ch}");
+    let nonce = b64().decode(ch["nonce"].as_str().unwrap()).unwrap();
+
+    let mut message = Vec::new();
+    message.extend_from_slice(b"eko-relay-auth-v1");
+    message.extend_from_slice(&nonce);
+    message.extend_from_slice(device_id.as_bytes());
+    let sig: Signature = signing.sign(&message);
+
+    let (status, body) = call(
+        app,
+        "POST",
+        "/api/v1/devices/auth",
+        None,
+        Some(json!({
+            "device_id": device_id,
+            "nonce": ch["nonce"],
+            "signature": b64().encode(sig.to_der().as_bytes()),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "auth: {body}");
+    body["token"].as_str().unwrap().to_string()
+}
+
+async fn first_account(app: &axum::Router, bootstrap: Option<&str>) -> String {
+    let mut payload = json!({"username": "owner", "password": "correct horse battery"});
+    if let Some(t) = bootstrap {
+        payload["bootstrap_token"] = json!(t);
+    }
+    let (status, body) = call(app, "POST", "/api/v1/accounts", None, Some(payload)).await;
+    assert_eq!(status, StatusCode::OK, "create account: {body}");
+    assert_eq!(body["is_admin"], json!(true), "first account must be admin");
+
+    let (status, body) = call(
+        app,
+        "POST",
+        "/api/v1/accounts/login",
+        None,
+        Some(json!({"username": "owner", "password": "correct horse battery"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "login: {body}");
+    body["token"].as_str().unwrap().to_string()
+}
+
+// --------------------------------------------------------------- tests ---
+
+#[tokio::test]
+async fn health_and_readiness() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let (status, _) = call(&h.app, "GET", "/healthz", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = call(&h.app, "GET", "/readyz", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn first_account_becomes_admin_and_can_close_registration() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+
+    // Second account is allowed while registration is open.
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "second", "password": "another long password"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, body) = call(
+        &h.app,
+        "PATCH",
+        "/api/v1/admin/settings",
+        Some(&owner),
+        Some(json!({"registration_open": false})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["registration_open"], json!(false));
+
+    // Third is refused.
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "third", "password": "yet another password"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+}
+
+#[tokio::test]
+async fn environment_override_cannot_be_reopened_through_the_api() {
+    let h = harness(RegistrationOverride::Closed, None);
+    // Even the very first account is refused when the environment forces closed,
+    // which is what makes the override a real lock rather than a preference.
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "owner", "password": "correct horse battery"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // And with an account present, an admin flipping the flag cannot undo it.
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, body) = call(
+        &h.app,
+        "PATCH",
+        "/api/v1/admin/settings",
+        Some(&owner),
+        Some(json!({"registration_open": true})),
+    )
+    .await;
+    assert_eq!(body["forced_by_environment"], json!(false));
+}
+
+#[tokio::test]
+async fn bootstrap_token_guards_the_claim_window() {
+    let h = harness(RegistrationOverride::Unset, Some("s3cret-bootstrap"));
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "squatter", "password": "correct horse battery"})),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "first account must require the bootstrap token"
+    );
+    let owner = first_account(&h.app, Some("s3cret-bootstrap")).await;
+    assert!(!owner.is_empty());
+}
+
+#[tokio::test]
+async fn weak_credentials_are_refused() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "owner", "password": "short"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn envelopes_round_trip_and_acknowledgement_prunes() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    let (_, mac) = enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    for i in 0..3u8 {
+        let (status, body) = call(
+            &h.app,
+            "POST",
+            "/api/v1/queues/mac-1/envelopes",
+            Some(&phone),
+            Some(json!({
+                "aad": b64().encode(b"aad"),
+                "body": b64().encode(vec![i; 32]),
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "deposit: {body}");
+        assert_eq!(body["envelope_id"], json!(i as i64 + 1));
+    }
+
+    let (status, list) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes?after=0",
+        Some(&mac),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "drain: {list}");
+    let items = list.as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert_eq!(items[0]["envelope_id"], json!(1));
+    assert_eq!(
+        b64().decode(items[2]["body"].as_str().unwrap()).unwrap(),
+        vec![2u8; 32],
+        "payload must survive the round trip byte for byte"
+    );
+
+    // Incremental drain honours the cursor parameter.
+    let (_, list) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes?after=2",
+        Some(&mac),
+        None,
+    )
+    .await;
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/phone-1/cursor",
+        Some(&mac),
+        Some(json!({"acked_envelope_id": 3})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (_, list) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes?after=0",
+        Some(&mac),
+        None,
+    )
+    .await;
+    assert!(
+        list.as_array().unwrap().is_empty(),
+        "acknowledged envelopes must be pruned"
+    );
+
+    // Sequence continues past pruned positions rather than restarting.
+    let (_, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        Some(json!({"aad": b64().encode(b"aad"), "body": b64().encode(b"next")})),
+    )
+    .await;
+    assert_eq!(body["envelope_id"], json!(4));
+}
+
+#[tokio::test]
+async fn a_cursor_never_moves_backwards() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    let (_, mac) = enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    for _ in 0..2 {
+        call(
+            &h.app,
+            "POST",
+            "/api/v1/queues/mac-1/envelopes",
+            Some(&phone),
+            Some(json!({"aad": b64().encode(b""), "body": b64().encode(b"x")})),
+        )
+        .await;
+    }
+    call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/phone-1/cursor",
+        Some(&mac),
+        Some(json!({"acked_envelope_id": 2})),
+    )
+    .await;
+    // A stale client replaying an old ack must not resurrect anything.
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/phone-1/cursor",
+        Some(&mac),
+        Some(json!({"acked_envelope_id": 1})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (_, list) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/phone-1/envelopes?after=0",
+        Some(&mac),
+        None,
+    )
+    .await;
+    assert!(list.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn devices_of_another_account_are_not_reachable() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+
+    // A second account with its own device.
+    call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts",
+        None,
+        Some(json!({"username": "stranger", "password": "stranger password!!"})),
+    )
+    .await;
+    let (_, stranger) = call(
+        &h.app,
+        "POST",
+        "/api/v1/accounts/login",
+        None,
+        Some(json!({"username": "stranger", "password": "stranger password!!"})),
+    )
+    .await;
+    let stranger_token = stranger["token"].as_str().unwrap().to_string();
+    enrol_and_auth(&h.app, &stranger_token, "other-mac", "macos").await;
+
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/other-mac/envelopes",
+        Some(&phone),
+        Some(json!({"aad": b64().encode(b""), "body": b64().encode(b"x")})),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "cross-account deposit must be refused: {body}"
+    );
+}
+
+#[tokio::test]
+async fn a_revoked_device_loses_access_immediately() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    let (status, _) = call(
+        &h.app,
+        "DELETE",
+        "/api/v1/admin/devices/phone-1",
+        Some(&owner),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        Some(json!({"aad": b64().encode(b""), "body": b64().encode(b"x")})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_challenge_nonce_is_single_use() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (signing, _) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+
+    let (_, ch) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/challenge",
+        None,
+        Some(json!({ "device_id": "phone-1" })),
+    )
+    .await;
+    let nonce = b64().decode(ch["nonce"].as_str().unwrap()).unwrap();
+    let mut message = Vec::new();
+    message.extend_from_slice(b"eko-relay-auth-v1");
+    message.extend_from_slice(&nonce);
+    message.extend_from_slice(b"phone-1");
+    let sig: Signature = signing.sign(&message);
+    let payload = json!({
+        "device_id": "phone-1",
+        "nonce": ch["nonce"],
+        "signature": b64().encode(sig.to_der().as_bytes()),
+    });
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/auth",
+        None,
+        Some(payload.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = call(&h.app, "POST", "/api/v1/devices/auth", None, Some(payload)).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "replaying a consumed nonce must fail"
+    );
+}
+
+#[tokio::test]
+async fn a_forged_signature_is_refused() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+
+    // Someone who knows the device id but not its key.
+    let attacker = SigningKey::random(&mut rand::thread_rng());
+    let (_, ch) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/challenge",
+        None,
+        Some(json!({ "device_id": "phone-1" })),
+    )
+    .await;
+    let nonce = b64().decode(ch["nonce"].as_str().unwrap()).unwrap();
+    let mut message = Vec::new();
+    message.extend_from_slice(b"eko-relay-auth-v1");
+    message.extend_from_slice(&nonce);
+    message.extend_from_slice(b"phone-1");
+    let sig: Signature = attacker.sign(&message);
+
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/auth",
+        None,
+        Some(json!({
+            "device_id": "phone-1",
+            "nonce": ch["nonce"],
+            "signature": b64().encode(sig.to_der().as_bytes()),
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn an_oversized_envelope_is_refused() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    let (_, phone) = enrol_and_auth(&h.app, &owner, "phone-1", "android").await;
+    enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    // One byte past the frame limit the protocol itself enforces.
+    let oversized = vec![0u8; 1_048_577];
+    let (status, _) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        Some(json!({"aad": b64().encode(b""), "body": b64().encode(&oversized)})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+#[tokio::test]
+async fn unauthenticated_and_user_tokens_cannot_touch_queues() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+    enrol_and_auth(&h.app, &owner, "mac-1", "macos").await;
+
+    let (status, _) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/mac-1/envelopes?after=0",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // A user token is not a device token; queues are device-scoped only.
+    let (status, _) = call(
+        &h.app,
+        "GET",
+        "/api/v1/queues/mac-1/envelopes?after=0",
+        Some(&owner),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

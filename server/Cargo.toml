@@ -1,0 +1,39 @@
+[package]
+name = "eko-relay"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+description = "Self-hosted store-and-forward relay for Eko. Carries opaque end-to-end encrypted envelopes; never sees notification content."
+license = "MIT"
+
+[dependencies]
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["rand_core"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+hex = "0.4"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempdir = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

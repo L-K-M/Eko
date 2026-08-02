@@ -1,0 +1,72 @@
+# Eko relay. `docker compose up -d` and the relay is on :8080.
+#
+# The relay carries end-to-end encrypted envelopes it cannot read, but it does
+# hold credentials and traffic metadata, so it runs unprivileged with a
+# read-only root filesystem and no capabilities.
+#
+# TLS: run `--profile tls` to get Caddy in front with automatic certificates,
+# or leave it off and put the relay behind a reverse proxy you already operate.
+# Do not expose :8080 to the internet without TLS in front of it: device bearer
+# tokens ride in the Authorization header.
+
+services:
+  relay:
+    build: .
+    image: eko-relay:latest
+    restart: unless-stopped
+    environment:
+      EKO_BIND: 0.0.0.0:8080
+      EKO_DATABASE: /data/relay.db
+      # Empty (the default) lets the admin toggle in the API govern, which is
+      # what you want almost always. Setting `open` or `closed` here overrides
+      # the database and the admin toggle stops having any effect - `closed`
+      # is the hard lock that even a compromised admin session cannot undo,
+      # and it applies to the very first account too, so an unclaimed server
+      # cannot be claimed by a stranger.
+      EKO_REGISTRATION: ${EKO_REGISTRATION:-}
+      # Required for the first account while registration is open. Generate with
+      # `openssl rand -base64 32` and put it in .env.
+      EKO_BOOTSTRAP_TOKEN: ${EKO_BOOTSTRAP_TOKEN:?set EKO_BOOTSTRAP_TOKEN in .env}
+      EKO_RETENTION_DAYS: ${EKO_RETENTION_DAYS:-30}
+      EKO_ACCOUNT_QUOTA_BYTES: ${EKO_ACCOUNT_QUOTA_BYTES:-536870912}
+      RUST_LOG: ${RUST_LOG:-eko_relay=info,tower_http=warn}
+    volumes:
+      - relay-data:/data
+    ports:
+      - "${EKO_PORT:-8080}:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/eko-relay", "--healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: [tls]
+    restart: unless-stopped
+    depends_on:
+      - relay
+    environment:
+      # Interpolation happens even for profile-gated services, so a required
+      # variable here would stop a plain `docker compose up` from parsing at
+      # all. Defaulted instead; set a real domain in .env for the tls profile.
+      EKO_DOMAIN: ${EKO_DOMAIN:-relay.localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  relay-data:
+  caddy-data:
+  caddy-config:

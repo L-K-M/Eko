@@ -445,6 +445,37 @@ async fn device_name_and_platform_are_bounded() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "oversized name: {body}");
+
+    // And platform, which the name of this test promised but did not check.
+    // Enrolment tokens are single-use, so the second attempt needs its own.
+    let (status, tok) = call(
+        &h.app,
+        "POST",
+        "/api/v1/account/enrolment-tokens",
+        Some(&owner),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "mint: {tok}");
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/enrol",
+        None,
+        Some(json!({
+            "token": tok["token"],
+            "device_id": "phone-2",
+            "public_key": b64().encode(&public),
+            "name": "phone",
+            "platform": "p".repeat(65),
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "oversized platform: {body}"
+    );
 }
 
 #[tokio::test]
@@ -755,6 +786,20 @@ async fn an_oversized_envelope_is_refused() {
     )
     .await;
     assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+
+    // And exactly at the limit is still accepted. The encoded-length pre-check
+    // that rejects before decoding has to be loose enough to let this through,
+    // or the limit it guards would be unreachable.
+    let at_limit = vec![0u8; 1_048_576];
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/queues/mac-1/envelopes",
+        Some(&phone),
+        Some(json!({"aad": b64().encode(b""), "body": b64().encode(&at_limit)})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "envelope at the limit: {body}");
 }
 
 #[tokio::test]
@@ -1042,6 +1087,15 @@ async fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
 
     gate.wait().await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // minted == 1 is also what a run that never raced would report, so check
+    // the setup held: with the write lock still taken, every racer must be
+    // parked on its UPDATE. If any finished, it did not overlap the others and
+    // this run proves nothing.
+    let escaped = joins.iter().filter(|j| j.is_finished()).count();
+    assert_eq!(
+        escaped, 0,
+        "{escaped} racers finished before the lock was released; the race was not exercised"
+    );
     held.rollback().unwrap();
     drop(blocker);
 

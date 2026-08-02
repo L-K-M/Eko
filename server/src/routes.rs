@@ -28,6 +28,21 @@ pub const MAX_AAD_BYTES: usize = 4096;
 /// every login attempt, and there is no reason to carry a megabyte of it.
 const PASSWORD_BYTES: std::ops::RangeInclusive<usize> = 12..=1024;
 
+const MAX_USERNAME_BYTES: usize = 64;
+
+/// Longest `device_id` anywhere. `enrol_device` has always enforced it, so a
+/// longer one cannot name a real device and needs no other handling.
+const MAX_DEVICE_ID_BYTES: usize = 128;
+
+/// Could `encoded` be base64 of at most `decoded_limit` bytes? base64url turns
+/// three bytes into four characters, so this is the cheap check that lets a
+/// decoded-size limit be enforced before anything is allocated. Deliberately
+/// generous: it rejects only what the real limit would reject anyway, and the
+/// exact check still runs afterwards.
+fn encoded_fits(encoded: &str, decoded_limit: usize) -> bool {
+    encoded.len() <= decoded_limit.saturating_add(2) / 3 * 4 + 4
+}
+
 // ---------------------------------------------------------------- errors ---
 
 #[derive(Debug)]
@@ -58,6 +73,20 @@ fn forbidden(msg: &'static str) -> ApiError {
 }
 fn internal() -> ApiError {
     ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal")
+}
+
+/// A unique-constraint violation is the caller's problem; anything else is
+/// ours. Matched on SQLite's error code rather than on the words in its message,
+/// which are not an interface.
+fn conflict_or_internal(e: rusqlite::Error, msg: &'static str) -> ApiError {
+    match e {
+        rusqlite::Error::SqliteFailure(f, _)
+            if f.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            ApiError::new(StatusCode::CONFLICT, msg)
+        }
+        _ => internal(),
+    }
 }
 
 fn conn(pool: &Pool) -> ApiResult<crate::db::PooledConn> {
@@ -247,7 +276,7 @@ async fn create_account(
     State(state): State<AppState>,
     Json(body): Json<CreateAccount>,
 ) -> ApiResult<Json<AccountCreated>> {
-    if body.username.trim().is_empty() || body.username.len() > 64 {
+    if body.username.trim().is_empty() || body.username.len() > MAX_USERNAME_BYTES {
         return Err(bad("username must be 1-64 characters"));
     }
     if !(PASSWORD_BYTES).contains(&body.password.len()) {
@@ -279,13 +308,7 @@ async fn create_account(
          VALUES (?1, ?2, ?3, ?4)",
         params![body.username, hash, first as i64, now_ms()],
     )
-    .map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
-            ApiError::new(StatusCode::CONFLICT, "username taken")
-        } else {
-            internal()
-        }
-    })?;
+    .map_err(|e| conflict_or_internal(e, "username taken"))?;
     let account_id = tx.last_insert_rowid();
     tx.commit().map_err(|_| internal())?;
     Ok(Json(AccountCreated {
@@ -314,7 +337,8 @@ async fn login(
     // caller can hit repeatedly, and it Argon2s on every attempt by design.
     // Rejecting on the caller's own input length tells them nothing they did
     // not already know, so it costs the unknown-username defence below nothing.
-    if !(PASSWORD_BYTES).contains(&body.password.len()) {
+    if body.username.len() > MAX_USERNAME_BYTES || !(PASSWORD_BYTES).contains(&body.password.len())
+    {
         return Err(unauthorized());
     }
     let c = conn(&state.pool)?;
@@ -498,7 +522,7 @@ async fn enrol_device(
     State(state): State<AppState>,
     Json(body): Json<Enrol>,
 ) -> ApiResult<Json<AccountCreated>> {
-    if body.device_id.trim().is_empty() || body.device_id.len() > 128 {
+    if body.device_id.trim().is_empty() || body.device_id.len() > MAX_DEVICE_ID_BYTES {
         return Err(bad("device_id must be 1-128 characters"));
     }
     // device_id was bounded and these were not, though they are stored beside it
@@ -548,13 +572,7 @@ async fn enrol_device(
             now_ms()
         ],
     )
-    .map_err(|e| {
-        if e.to_string().contains("UNIQUE") {
-            ApiError::new(StatusCode::CONFLICT, "device already enrolled")
-        } else {
-            internal()
-        }
-    })?;
+    .map_err(|e| conflict_or_internal(e, "device already enrolled"))?;
     tx.execute(
         "UPDATE enrolment_token SET consumed_at = ?1 WHERE token_hash = ?2",
         params![now_ms(), digest],
@@ -583,6 +601,14 @@ async fn device_challenge(
     State(state): State<AppState>,
     Json(body): Json<ChallengeRequest>,
 ) -> ApiResult<Json<ChallengeResponse>> {
+    // Unauthenticated, and it writes a row. Without this an anonymous caller
+    // could park megabyte strings in auth_nonce at will. Bounding on the
+    // caller's own input length is not an existence oracle - the answer does
+    // not depend on anything stored - and a longer id could never name a device
+    // anyway, because enrolment refuses one.
+    if body.device_id.len() > MAX_DEVICE_ID_BYTES {
+        return Err(bad("device_id too long"));
+    }
     let c = conn(&state.pool)?;
     // Issue a nonce regardless of whether the device exists: a challenge that
     // only succeeds for enrolled devices is a device-existence oracle.
@@ -611,6 +637,15 @@ async fn device_auth(
     State(state): State<AppState>,
     Json(body): Json<DeviceAuth>,
 ) -> ApiResult<Json<TokenResponse>> {
+    // Also unauthenticated, and also decoding caller-supplied base64. A nonce is
+    // 32 bytes and a DER P-256 signature at most 72, so anything near these
+    // bounds is already not one.
+    if !encoded_fits(&body.nonce, 64)
+        || !encoded_fits(&body.signature, 256)
+        || body.device_id.len() > MAX_DEVICE_ID_BYTES
+    {
+        return Err(bad("nonce, signature or device_id too long"));
+    }
     let nonce = b64()
         .decode(body.nonce.as_bytes())
         .map_err(|_| bad("nonce must be base64url"))?;
@@ -695,8 +730,8 @@ fn queue_id(
     // case must not take the write lock.
     if let Some(id) = c
         .query_row(
-            "SELECT id FROM queue WHERE sender = ?1 AND recipient = ?2",
-            params![sender, recipient],
+            "SELECT id FROM queue WHERE account_id = ?1 AND sender = ?2 AND recipient = ?3",
+            params![account_id, sender, recipient],
             |r| r.get::<_, i64>(0),
         )
         .optional()
@@ -765,6 +800,18 @@ async fn deposit(
     Json(body): Json<Deposit>,
 ) -> ApiResult<Json<Deposited>> {
     let device = device_from(&state, &headers)?;
+    // Bound the *encoded* strings before decoding them. The limits below are on
+    // the decoded bytes, so without this a caller can make the server allocate
+    // the decode buffer for a payload it is about to refuse.
+    if !encoded_fits(&body.aad, MAX_AAD_BYTES) {
+        return Err(bad("aad too large"));
+    }
+    if !encoded_fits(&body.body, state.config.max_envelope_bytes) {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "envelope too large",
+        ));
+    }
     let aad = b64().decode(body.aad.as_bytes()).map_err(|_| bad("aad"))?;
     // The envelope format puts a version, two device ids and a queue id in the
     // aad; anything approaching this is not that. Unbounded, it was stored and

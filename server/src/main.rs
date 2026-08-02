@@ -9,7 +9,20 @@ use std::sync::Arc;
 /// needs no curl and the container healthcheck exercises the database too.
 fn healthcheck(bind: &str) -> ! {
     use std::io::{Read, Write};
-    let port = bind.rsplit(':').next().unwrap_or("8080");
+    // Parsed exactly as `main` parses it below, because a bind this probe reads
+    // differently from the server is a probe of the wrong port. Splitting on the
+    // last colon and defaulting to 8080 meant a malformed EKO_BIND produced a
+    // container that reported unhealthy forever with nothing to say about why -
+    // and the server refuses that same value outright, so there is no
+    // configuration this rejects that the server would have accepted.
+    let port = match bind.parse::<std::net::SocketAddr>() {
+        Ok(a) => a.port(),
+        Err(e) => {
+            // Before tracing is initialised, so stderr rather than a span.
+            eprintln!("healthcheck: EKO_BIND {bind:?} is not a socket address: {e}");
+            std::process::exit(1);
+        }
+    };
     let target = format!("127.0.0.1:{port}");
     let deadline = std::time::Duration::from_secs(3);
     let code = (|| -> Option<()> {
@@ -56,16 +69,28 @@ async fn main() {
         }
     };
 
+    // Read out what is needed later, then move the config in rather than clone
+    // it. Parsing the bind here also means a bad EKO_BIND is reported before
+    // anything else starts.
+    let addr: SocketAddr = match config.bind.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::error!("bad EKO_BIND {}: {e}", config.bind);
+            std::process::exit(1);
+        }
+    };
+    let retention_days = config.retention_days;
+
     let state = AppState {
         pool: pool.clone(),
-        config: Arc::new(config.clone()),
+        config: Arc::new(config),
     };
 
     // Retention sweep. The relay's window is deliberately far longer than the
     // phone's 48 h; keeping it drained is the entire reliability argument.
     {
         let pool = pool.clone();
-        let days = config.retention_days;
+        let days = retention_days;
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
             loop {
@@ -82,14 +107,6 @@ async fn main() {
             }
         });
     }
-
-    let addr: SocketAddr = match config.bind.parse() {
-        Ok(a) => a,
-        Err(e) => {
-            tracing::error!("bad EKO_BIND {}: {e}", config.bind);
-            std::process::exit(1);
-        }
-    };
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,

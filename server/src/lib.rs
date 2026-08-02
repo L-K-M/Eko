@@ -72,7 +72,7 @@ impl Config {
             bootstrap_token: std::env::var("EKO_BOOTSTRAP_TOKEN")
                 .ok()
                 .filter(|t| !t.is_empty()),
-            max_envelope_bytes: env_num("EKO_MAX_ENVELOPE_BYTES", 1_048_576) as usize,
+            max_envelope_bytes: env_num::<usize>("EKO_MAX_ENVELOPE_BYTES", 1_048_576),
             retention_days: env_num("EKO_RETENTION_DAYS", 30),
             account_quota_bytes: env_num("EKO_ACCOUNT_QUOTA_BYTES", 512 * 1024 * 1024),
             token_ttl_secs: env_num("EKO_TOKEN_TTL_SECS", 24 * 3600),
@@ -84,13 +84,86 @@ fn env_or(key: &str, default: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
-fn env_num(key: &str, default: i64) -> i64 {
-    std::env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+/// Positive numbers only, parsed straight into the target type.
+///
+/// Every numeric setting here is a size, a count or a duration, so none of them
+/// mean anything at zero or below - but each one *did* something, and always
+/// the wrong thing. `EKO_MAX_ENVELOPE_BYTES=-1` went through `as usize` and
+/// became `usize::MAX`, removing the limit it was setting. A negative quota
+/// refuses every deposit; a negative TTL expires every token as it is issued.
+/// Parsing into `usize` rejects the first outright, and the range check catches
+/// the rest.
+fn env_num<T>(key: &str, default: T) -> T
+where
+    T: std::str::FromStr + PartialOrd + Default + Copy + std::fmt::Display,
+{
+    let Some(raw) = std::env::var(key).ok().filter(|v| !v.is_empty()) else {
+        return default;
+    };
+    match raw.parse::<T>() {
+        Ok(v) if v > T::default() => v,
+        _ => {
+            tracing::warn!(
+                key,
+                value = %raw,
+                %default,
+                "not a positive number, falling back to the default"
+            );
+            default
+        }
+    }
 }
 
 pub fn app(state: AppState) -> Router {
     routes::router(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each case uses its own key: env vars are process-global and the test
+    /// binary runs threads in parallel.
+    fn with_env(key: &str, value: Option<&str>, f: impl FnOnce()) {
+        match value {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+        f();
+        std::env::remove_var(key);
+    }
+
+    /// `-1` used to reach `usize` through an `as` cast and arrive as
+    /// `usize::MAX`, so the setting that bounds an envelope removed the bound.
+    #[test]
+    fn a_negative_size_does_not_become_an_enormous_one() {
+        with_env("EKO_TEST_NEG_USIZE", Some("-1"), || {
+            assert_eq!(env_num::<usize>("EKO_TEST_NEG_USIZE", 1_048_576), 1_048_576);
+        });
+    }
+
+    #[test]
+    fn non_positive_and_unparseable_numbers_fall_back() {
+        for (key, raw) in [
+            ("EKO_TEST_NUM_A", "-1"),
+            ("EKO_TEST_NUM_B", "0"),
+            ("EKO_TEST_NUM_C", "not a number"),
+            ("EKO_TEST_NUM_D", ""),
+        ] {
+            with_env(key, Some(raw), || {
+                assert_eq!(env_num::<i64>(key, 30), 30, "{key} = {raw:?}");
+            });
+        }
+    }
+
+    #[test]
+    fn a_positive_number_is_taken_as_given() {
+        with_env("EKO_TEST_NUM_OK", Some("7"), || {
+            assert_eq!(env_num::<i64>("EKO_TEST_NUM_OK", 30), 7);
+            assert_eq!(env_num::<usize>("EKO_TEST_NUM_OK", 30), 7);
+        });
+        with_env("EKO_TEST_NUM_UNSET", None, || {
+            assert_eq!(env_num::<i64>("EKO_TEST_NUM_UNSET", 30), 30);
+        });
+    }
 }

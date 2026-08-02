@@ -22,6 +22,12 @@ use serde::{Deserialize, Serialize};
 /// Bound on the decoded additional-authenticated-data of an envelope.
 pub const MAX_AAD_BYTES: usize = 4096;
 
+/// Accepted password length. The ceiling is not a strength policy - it bounds
+/// what an unauthenticated caller can make the server hash. Argon2's cost is
+/// mostly its memory parameters, but the password is still read and absorbed on
+/// every login attempt, and there is no reason to carry a megabyte of it.
+const PASSWORD_BYTES: std::ops::RangeInclusive<usize> = 12..=1024;
+
 // ---------------------------------------------------------------- errors ---
 
 #[derive(Debug)]
@@ -244,8 +250,8 @@ async fn create_account(
     if body.username.trim().is_empty() || body.username.len() > 64 {
         return Err(bad("username must be 1-64 characters"));
     }
-    if body.password.len() < 12 {
-        return Err(bad("password must be at least 12 characters"));
+    if !(PASSWORD_BYTES).contains(&body.password.len()) {
+        return Err(bad("password must be 12-1024 bytes"));
     }
     let mut c = conn(&state.pool)?;
     // Gate once here, before hashing. Argon2 is deliberately expensive, and an
@@ -304,6 +310,13 @@ async fn login(
     State(state): State<AppState>,
     Json(body): Json<Login>,
 ) -> ApiResult<Json<TokenResponse>> {
+    // Bounded before any work happens. This is the endpoint an unauthenticated
+    // caller can hit repeatedly, and it Argon2s on every attempt by design.
+    // Rejecting on the caller's own input length tells them nothing they did
+    // not already know, so it costs the unknown-username defence below nothing.
+    if !(PASSWORD_BYTES).contains(&body.password.len()) {
+        return Err(unauthorized());
+    }
     let c = conn(&state.pool)?;
     let row: Option<(i64, String)> = c
         .query_row(
@@ -487,6 +500,11 @@ async fn enrol_device(
 ) -> ApiResult<Json<AccountCreated>> {
     if body.device_id.trim().is_empty() || body.device_id.len() > 128 {
         return Err(bad("device_id must be 1-128 characters"));
+    }
+    // device_id was bounded and these were not, though they are stored beside it
+    // and handed back by list_devices.
+    if body.name.len() > 256 || body.platform.len() > 64 {
+        return Err(bad("name must be <=256 and platform <=64 bytes"));
     }
     let key = b64()
         .decode(body.public_key.as_bytes())
@@ -887,13 +905,21 @@ async fn set_cursor(
     Json(body): Json<CursorUpdate>,
 ) -> ApiResult<StatusCode> {
     let device = device_from(&state, &headers)?;
-    let c = conn(&state.pool)?;
+    let mut c = conn(&state.pool)?;
     require_same_account_peer(&c, device.account_id, &peer)?;
     let qid = queue_id(&c, device.account_id, &peer, &device.device_id)?;
+    // One transaction for the ack and the prune it authorises. Separately they
+    // take the write lock twice, and a failure between them advances the cursor
+    // while still reporting an error - self-healing on retry, but only because
+    // the cursor cannot move backwards. Atomic is cheaper and needs no such
+    // argument.
+    let tx = c
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| internal())?;
 
     // Never move a cursor backwards: a stale client must not resurrect pruned
     // positions or cause a re-delivery storm.
-    c.execute(
+    tx.execute(
         "INSERT INTO cursor (queue_id, reader_device, acked_envelope_id, updated_at)
          VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(queue_id, reader_device) DO UPDATE SET
@@ -905,11 +931,12 @@ async fn set_cursor(
 
     // Acknowledged envelopes are dead weight; drop them immediately rather than
     // waiting for the retention sweep.
-    c.execute(
+    tx.execute(
         "DELETE FROM envelope WHERE queue_id = ?1 AND envelope_id <= ?2",
         params![qid, body.acked_envelope_id],
     )
     .map_err(|_| internal())?;
+    tx.commit().map_err(|_| internal())?;
 
     Ok(StatusCode::NO_CONTENT)
 }

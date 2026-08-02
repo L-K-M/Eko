@@ -8,6 +8,12 @@
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 
+/// A relay serves a household, not a fleet; a small pool is ample and keeps
+/// SQLite's writer lock contention trivially bounded. Public because the
+/// concurrency tests size their bursts against it - a racer that blocks waiting
+/// for a connection is not racing anything.
+pub const MAX_POOL_CONNECTIONS: u32 = 8;
+
 pub type Pool = r2d2::Pool<SqliteConnectionManager>;
 pub type PooledConn = r2d2::PooledConnection<SqliteConnectionManager>;
 
@@ -132,10 +138,8 @@ pub fn open(path: &str) -> anyhow_lite::Result<Pool> {
     } else {
         SqliteConnectionManager::file(path).with_init(configure)
     };
-    // A relay serves a household, not a fleet; a small pool is ample and keeps
-    // SQLite's writer lock contention trivially bounded.
     let pool = r2d2::Pool::builder()
-        .max_size(8)
+        .max_size(MAX_POOL_CONNECTIONS)
         .build(manager)
         .map_err(|e| anyhow_lite::Error::msg(format!("pool: {e}")))?;
     let conn = pool

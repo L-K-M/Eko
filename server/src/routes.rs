@@ -34,6 +34,9 @@ const MAX_USERNAME_BYTES: usize = 64;
 /// longer one cannot name a real device and needs no other handling.
 const MAX_DEVICE_ID_BYTES: usize = 128;
 
+/// Unconsumed, unexpired enrolment tokens one account may hold at once.
+const MAX_OUTSTANDING_ENROLMENT_TOKENS: i64 = 16;
+
 /// Could `encoded` be base64 of at most `decoded_limit` bytes? base64url turns
 /// three bytes into four characters, so this is the cheap check that lets a
 /// decoded-size limit be enforced before anything is allocated. Deliberately
@@ -106,10 +109,15 @@ pub struct DeviceSubject {
 }
 
 fn bearer(headers: &HeaderMap) -> ApiResult<Vec<u8>> {
+    // RFC 6750 makes the scheme case-insensitive; strip_prefix("Bearer ") turned
+    // a client that sends "bearer" into an authentication failure.
     let raw = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
+        .and_then(|v| {
+            let (scheme, rest) = v.split_once(' ')?;
+            scheme.eq_ignore_ascii_case("bearer").then_some(rest)
+        })
         .ok_or_else(unauthorized)?;
     Ok(auth::sha256(raw.as_bytes()))
 }
@@ -276,8 +284,12 @@ async fn create_account(
     State(state): State<AppState>,
     Json(body): Json<CreateAccount>,
 ) -> ApiResult<Json<AccountCreated>> {
-    if body.username.trim().is_empty() || body.username.len() > MAX_USERNAME_BYTES {
-        return Err(bad("username must be 1-64 characters"));
+    // Trimmed before it is stored, not merely for the emptiness check: storing
+    // the untrimmed form made " alice " and "alice" two accounts that read as
+    // one. `login` trims the same way, so an existing name still matches.
+    let username = body.username.trim();
+    if username.is_empty() || username.len() > MAX_USERNAME_BYTES {
+        return Err(bad("username must be 1-64 bytes"));
     }
     if !(PASSWORD_BYTES).contains(&body.password.len()) {
         return Err(bad("password must be 12-1024 bytes"));
@@ -306,7 +318,7 @@ async fn create_account(
     tx.execute(
         "INSERT INTO account (username, password_hash, is_admin, created_at)
          VALUES (?1, ?2, ?3, ?4)",
-        params![body.username, hash, first as i64, now_ms()],
+        params![username, hash, first as i64, now_ms()],
     )
     .map_err(|e| conflict_or_internal(e, "username taken"))?;
     let account_id = tx.last_insert_rowid();
@@ -337,15 +349,15 @@ async fn login(
     // caller can hit repeatedly, and it Argon2s on every attempt by design.
     // Rejecting on the caller's own input length tells them nothing they did
     // not already know, so it costs the unknown-username defence below nothing.
-    if body.username.len() > MAX_USERNAME_BYTES || !(PASSWORD_BYTES).contains(&body.password.len())
-    {
+    let username = body.username.trim();
+    if username.len() > MAX_USERNAME_BYTES || !(PASSWORD_BYTES).contains(&body.password.len()) {
         return Err(unauthorized());
     }
     let c = conn(&state.pool)?;
     let row: Option<(i64, String)> = c
         .query_row(
             "SELECT id, password_hash FROM account WHERE username = ?1",
-            params![body.username],
+            params![username],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
@@ -436,6 +448,22 @@ async fn mint_enrolment_token(
 ) -> ApiResult<Json<EnrolmentToken>> {
     let user = user_from(&state, &headers)?;
     let c = conn(&state.pool)?;
+    // One row per call, an hour before the sweep collects it, and any account on
+    // a shared deployment can call it. A household needs a handful at once.
+    let outstanding: i64 = c
+        .query_row(
+            "SELECT COUNT(*) FROM enrolment_token
+             WHERE account_id = ?1 AND consumed_at IS NULL AND expires_at >= ?2",
+            params![user.account_id, now_ms()],
+            |r| r.get(0),
+        )
+        .map_err(|_| internal())?;
+    if outstanding >= MAX_OUTSTANDING_ENROLMENT_TOKENS {
+        return Err(ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "too many unused enrolment tokens; use or expire them first",
+        ));
+    }
     let (token, digest) = auth::new_token();
     let expires_at = now_ms() + 3600 * 1000;
     c.execute(
@@ -726,6 +754,24 @@ async fn device_auth(
 
 // --------------------------------------------------------------- queues ---
 
+/// Look the queue up without creating it. `drain` is a GET, and a GET that
+/// writes is a GET that a retry, a prefetch or a cache can turn into a row.
+/// There is nothing to return for a queue nobody has deposited into anyway.
+fn existing_queue_id(
+    c: &rusqlite::Connection,
+    account_id: i64,
+    sender: &str,
+    recipient: &str,
+) -> ApiResult<Option<i64>> {
+    c.query_row(
+        "SELECT id FROM queue WHERE account_id = ?1 AND sender = ?2 AND recipient = ?3",
+        params![account_id, sender, recipient],
+        |r| r.get(0),
+    )
+    .optional()
+    .map_err(|_| internal())
+}
+
 fn queue_id(
     c: &rusqlite::Connection,
     account_id: i64,
@@ -916,7 +962,9 @@ async fn drain(
     let c = conn(&state.pool)?;
     require_same_account_peer(&c, device.account_id, &peer)?;
     // Draining reads the queue written *by* the peer *for* this device.
-    let qid = queue_id(&c, device.account_id, &peer, &device.device_id)?;
+    let Some(qid) = existing_queue_id(&c, device.account_id, &peer, &device.device_id)? else {
+        return Ok(Json(Vec::new()));
+    };
     let limit = q.limit.clamp(1, 500);
 
     let mut stmt = c

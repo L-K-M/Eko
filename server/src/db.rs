@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS queue (
     -- Monotonic high-water, never derived from the envelope table: pruning
     -- empties that table and a MAX() over it would restart the sequence, which
     -- the recipient is required to reject as non-monotonic.
+    --
+    -- Seeded at 1, not 0, so the first envelope is id 1. deposit allocates with
+    -- `RETURNING next_envelope_id - 1`, which reads like it yields 0 for the
+    -- first one; it does not, because the UPDATE has already incremented. Ids
+    -- being 1-based is what lets drain default `after` to 0 and still return
+    -- everything.
     next_envelope_id INTEGER NOT NULL DEFAULT 1,
     UNIQUE(sender, recipient)
 );

@@ -139,10 +139,16 @@ async fn main() {
     };
     tracing::info!("listening on {addr}");
 
-    axum::serve(listener, app(state))
+    // Not `.ok()`. Graceful shutdown returns Ok, so the only way this is Err is
+    // a real serving failure - and swallowing it exited 0, which is
+    // indistinguishable from a clean stop to anything watching the container.
+    if let Err(e) = axum::serve(listener, app(state))
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .ok();
+    {
+        tracing::error!("serve failed: {e}");
+        std::process::exit(1);
+    }
 }
 
 /// Docker and Kubernetes send SIGTERM, not SIGINT. Listening only for ctrl_c

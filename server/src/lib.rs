@@ -150,8 +150,13 @@ mod tests {
             Some(v) => std::env::set_var(key, v),
             None => std::env::remove_var(key),
         }
-        f();
+        // Removed even if `f` panics: a failing assertion used to leave the
+        // variable set for whatever ran next.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
         std::env::remove_var(key);
+        if let Err(payload) = outcome {
+            std::panic::resume_unwind(payload);
+        }
     }
 
     /// `-1` used to reach `usize` through an `as` cast and arrive as

@@ -1563,3 +1563,76 @@ async fn deleting_an_account_takes_its_device_tokens_with_it() {
         "the cascade must have removed the device token: {body}"
     );
 }
+
+/// `enrol_device` validates its enrolment token inside the transaction further
+/// down, so everything before that runs for an anonymous caller — including the
+/// public_key decode, which had no bound. And the device_id was checked trimmed
+/// but stored raw, the same inconsistency create_account had for usernames.
+#[tokio::test]
+async fn enrolment_bounds_its_key_and_stores_the_trimmed_device_id() {
+    let h = harness(RegistrationOverride::Unset, None);
+    let owner = first_account(&h.app, None).await;
+
+    // No enrolment token, so this is refused for size before it is refused for
+    // auth — the point being that it is refused before it allocates.
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/enrol",
+        None,
+        Some(json!({
+            "token": "irrelevant",
+            "device_id": "phone-1",
+            "public_key": "A".repeat(200_000),
+            "name": "phone",
+            "platform": "android",
+        })),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "oversized public_key: {body}"
+    );
+    assert_eq!(body["error"], json!("public_key too large"));
+
+    // A padded device_id is stored as the trimmed form it was validated as.
+    let (status, tok) = call(
+        &h.app,
+        "POST",
+        "/api/v1/account/enrolment-tokens",
+        Some(&owner),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "mint: {tok}");
+    let signing = SigningKey::random(&mut rand::thread_rng());
+    let public = VerifyingKey::from(&signing)
+        .to_encoded_point(false)
+        .as_bytes()
+        .to_vec();
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/api/v1/devices/enrol",
+        None,
+        Some(json!({
+            "token": tok["token"],
+            "device_id": "  phone-1  ",
+            "public_key": b64().encode(&public),
+            "name": "phone",
+            "platform": "android",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "enrol: {body}");
+
+    let (status, devices) =
+        call(&h.app, "GET", "/api/v1/account/devices", Some(&owner), None).await;
+    assert_eq!(status, StatusCode::OK, "{devices}");
+    assert_eq!(
+        devices[0]["device_id"],
+        json!("phone-1"),
+        "device_id must be stored as validated, not padded: {devices}"
+    );
+}

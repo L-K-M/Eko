@@ -705,11 +705,7 @@ async fn a_challenge_nonce_is_single_use() {
     )
     .await;
     let nonce = b64().decode(ch["nonce"].as_str().unwrap()).unwrap();
-    let mut message = Vec::new();
-    message.extend_from_slice(b"eko-relay-auth-v1");
-    message.extend_from_slice(&nonce);
-    message.extend_from_slice(b"phone-1");
-    let sig: Signature = signing.sign(&message);
+    let sig: Signature = signing.sign(&eko_relay::auth::auth_message(&nonce, "phone-1"));
     let payload = json!({
         "device_id": "phone-1",
         "nonce": ch["nonce"],
@@ -751,11 +747,7 @@ async fn a_forged_signature_is_refused() {
     )
     .await;
     let nonce = b64().decode(ch["nonce"].as_str().unwrap()).unwrap();
-    let mut message = Vec::new();
-    message.extend_from_slice(b"eko-relay-auth-v1");
-    message.extend_from_slice(&nonce);
-    message.extend_from_slice(b"phone-1");
-    let sig: Signature = attacker.sign(&message);
+    let sig: Signature = attacker.sign(&eko_relay::auth::auth_message(&nonce, "phone-1"));
 
     let (status, _) = call(
         &h.app,
@@ -1064,11 +1056,10 @@ fn one_challenge_response_cannot_be_replayed_into_many_tokens() {
         assert_eq!(status, StatusCode::OK, "challenge: {ch}");
         let nonce_b64 = ch["nonce"].as_str().unwrap().to_string();
 
-        let mut message = Vec::new();
-        message.extend_from_slice(b"eko-relay-auth-v1");
-        message.extend_from_slice(&b64().decode(&nonce_b64).unwrap());
-        message.extend_from_slice(b"phone-1");
-        let sig: Signature = signing.sign(&message);
+        let sig: Signature = signing.sign(&eko_relay::auth::auth_message(
+            &b64().decode(&nonce_b64).unwrap(),
+            "phone-1",
+        ));
         (nonce_b64, b64().encode(sig.to_der().as_bytes()))
     });
 

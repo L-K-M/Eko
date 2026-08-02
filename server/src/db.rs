@@ -32,7 +32,10 @@ CREATE TABLE IF NOT EXISTS device (
     id             INTEGER PRIMARY KEY,
     account_id     INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
     device_id      TEXT    NOT NULL UNIQUE,
-    public_key_der BLOB    NOT NULL,
+    -- SEC1, not DER: the bytes are an uncompressed P-256 point, validated with
+    -- from_sec1_bytes and verified as the same. The column was called
+    -- public_key_der, which invited exactly the wrong decoder.
+    public_key_sec1 BLOB    NOT NULL,
     name           TEXT    NOT NULL,
     platform       TEXT    NOT NULL,
     created_at     INTEGER NOT NULL,

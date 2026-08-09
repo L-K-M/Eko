@@ -30,25 +30,78 @@ public struct OTPExtractor: Sendable {
     private static let quotedPattern = try! NSRegularExpression(
         pattern: #"\"[^\"\n]{0,120}\"|“[^”\n]{0,120}”|«[^»\n]{0,120}»"#
     )
+    // `\h`, not `\s` and not `[ \t]`. These patterns delete what they match, so
+    // `\s` reached down a line and took the code with it. `[ \t]` fixed that and
+    // broke something else: `\s` had covered U+00A0 and the other Unicode
+    // spaces, and European banking notifications are full of them - a
+    // narrow-no-break space between "CHF" and the amount is the ordinary Swiss
+    // rendering. With `[ \t]` the amount stopped being stripped and started
+    // outranking the code. ICU's `\h` is exactly the set wanted: everything `\s`
+    // matches except the line breaks.
     private static let phonePattern = try! NSRegularExpression(
-        pattern: #"(?<![0-9A-Za-z])\+?\d(?:[\s().-]*\d){8,}(?![0-9A-Za-z])"#
+        pattern: #"(?<![0-9A-Za-z])\+?\d(?:[\h().-]*\d){8,}(?![0-9A-Za-z])"#
     )
     private static let dateTimePattern = try! NSRegularExpression(
         pattern: #"\b\d{1,2}:\d{2}(?::\d{2})?\b|\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b"#
     )
     private static let postcodePattern = try! NSRegularExpression(
-        pattern: #"\b[A-Za-z]{1,2}\d[A-Za-z\d]?\s+\d[A-Za-z]{2}\b"#
+        pattern: #"\b[A-Za-z]{1,2}\d[A-Za-z\d]?\h+\d[A-Za-z]{2}\b"#
     )
     private static let endingPattern = try! NSRegularExpression(
-        pattern: #"\b(?:ending|ends?\s+in|endziffer|letzte[nr]?\s+ziffern?|card|karte)\D{0,12}\d{4}\b"#,
+        pattern: #"\b(?:ending|ends?\h+in|endziffer|endung|letzte[nr]?\h+ziffern?|card|karte)[^\d\n]{0,12}\d{4}\b"#,
+        options: [.caseInsensitive]
+    )
+    // A run of masking glyphs followed by the four surviving digits of an
+    // account number: "XXXX 5782", "**** 5782", "xxxx-xxxx-xxxx-5782".
+    //
+    // Every bound here is the loose one that broke something. Three glyphs
+    // minimum, because "**4821**" and "Ваш код: **4821**" are emphasis, not a
+    // mask. A non-alphanumeric on the left, so a code merely containing a
+    // doubled X ("9XX482") survives. Exactly four digits, because "**482913**"
+    // is a six-digit code in asterisks. No dotted form at all: "card ...5782"
+    // is already endingPattern's, while "Ваш код...4821" is a code behind an
+    // ellipsis — ASCII "..." and the single glyph "…" alike. Horizontal
+    // whitespace only between the glyphs and the digits, because an issuer
+    // keeps a masked tail on one line, so `\s` here only reached down and took
+    // the code beneath it ("Visa ****\n4821 ist Ihr Code").
+    //
+    // Losing a code outright is worse than leaking a tail that ranking still
+    // has to beat, so every doubtful case resolves to leaking.
+    //
+    // The repeated group must consume a separator and is capped at three more
+    // groups. With an optional separator the alternatives could sit flush
+    // against each other, so one run of glyphs had exponentially many
+    // partitions into groups of three or more, and a body carrying sixty X's
+    // and no trailing digits never came back — ICU backtracks and has no
+    // timeout, which is why PLAN.md asks these patterns to stay linear. Three
+    // extra groups still spans a full "**** **** **** 1234".
+    //
+    // Nor may a mask glyph follow the digits. A tail is the end of the number,
+    // so nothing masks it from the right; emphasis, on the other hand, closes
+    // the way it opened, and three glyphs is enough to be bold-italic
+    // ("***4821***", "•••4821•••") — which the three-glyph minimum alone did
+    // not save.
+    private static let maskedNumberPattern = try! NSRegularExpression(
+        pattern: #"(?<![0-9A-Za-z])(?:[Xx]{3,}|[*#•·∙●○]{3,})(?:[-\h–—]+(?:[Xx]{3,}|[*#•·∙●○]{3,})){0,3}[-\h–—]*\d{4}(?![0-9A-Za-z*#•·∙●○])"#
+    )
+    // A card or account tail announced by a reference abbreviation, where
+    // `\b(?:card|karte)` cannot reach because the noun is a compound:
+    // "Mastercard Nr. 5782", "Kontonummer 5782". The abbreviation is required —
+    // a bare brand next to four digits is not evidence, since "Barclaycard:
+    // 1234", "Amex: 3907" and "Verifieringskod för ditt konto: 4821" all put a
+    // real code exactly there. Bare "card"/"karte" tails remain endingPattern's.
+    private static let cardContextPattern = try! NSRegularExpression(
+        pattern: #"\b(?:\w*(?:card|karte|konto)|visa|maestro|amex|account)[^\w\n]{0,8}(?:nr|no|nummer|number)\.?[^\w\n]{0,4}\d{4}\b"#,
         options: [.caseInsensitive]
     )
     private static let orderPattern = try! NSRegularExpression(
-        pattern: #"\b(?:order|bestell\w*|tracking|sendung|invoice|rechnung|reference|referenz)(?:\s*(?:number|nummer|nr\.?|id))?\D{0,12}[0-9A-Za-z-]{4,20}\b"#,
+        pattern: #"\b(?:order|bestell\w*|tracking|sendung|invoice|rechnung|reference|referenz)(?:\h*(?:number|nummer|nr\.?|id))?[^\d\n]{0,12}[0-9A-Za-z-]{4,20}\b"#,
         options: [.caseInsensitive]
     )
+    // Horizontal whitespace again: an amount ends at its line. Letting \s run on
+    // made "CHF 45.00\n682415 ist Ihr Code" one amount and swallowed the code.
     private static let currencyPattern = try! NSRegularExpression(
-        pattern: #"(?:\b(?:CHF|EUR|USD)\s*|[$€£]\s*)\d[\d'’.,\s]*|\d[\d'’.,\s]*\s*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
+        pattern: #"(?:\b(?:CHF|EUR|USD)\h*|[$€£]\h*)\d[\d'’.,\h]*|\d[\d'’.,\h]*(?:\b(?:CHF|EUR|USD)\b|[$€£])"#,
         options: [.caseInsensitive]
     )
     private static let ignorePattern = try! NSRegularExpression(
@@ -92,7 +145,18 @@ public struct OTPExtractor: Sendable {
         text = Self.phonePattern.replacingMatches(in: text, with: " ")
         text = Self.dateTimePattern.replacingMatches(in: text, with: " ")
         text = Self.postcodePattern.replacingMatches(in: text, with: " ")
+        // The mask strip runs last of the three: it leaves the card word behind,
+        // and endingPattern's gap spans letters, so stripping "Card **** 8821"
+        // first would leave "Card  " within that gap of the following digits and
+        // endingPattern would then eat them.
+        //
+        // None of these three, nor the two below, may cross a newline: they
+        // delete what they match, and a payment notification puts the amount,
+        // the card and the code on lines of their own, so a pattern that runs
+        // past the line break takes the code with it.
         text = Self.endingPattern.replacingMatches(in: text, with: " ")
+        text = Self.cardContextPattern.replacingMatches(in: text, with: " ")
+        text = Self.maskedNumberPattern.replacingMatches(in: text, with: " ")
         text = Self.orderPattern.replacingMatches(in: text, with: " ")
         text = Self.currencyPattern.replacingMatches(in: text, with: " ")
 
@@ -227,6 +291,9 @@ public struct OTPExtractor: Sendable {
             return false
         }
         if digits.isEmpty {
+            // A single repeated glyph is a mask remnant ("XXXX"); no OTP format
+            // in the corpus, and none known, spells a code as one repeated letter.
+            guard Set(code.lowercased()).count > 1 else { return false }
             return code == code.uppercased() && code.contains(where: \.isLetter)
         }
         return true

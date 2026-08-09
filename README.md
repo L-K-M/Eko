@@ -6,7 +6,7 @@ live, and 2FA/OTP messages get a one-click **Copy code** action.
 
 [![CI](https://github.com/L-K-M/Eko/actions/workflows/ci.yml/badge.svg)](https://github.com/L-K-M/Eko/actions/workflows/ci.yml)
 
-**Source version:** v<!-- version -->1.0.0<!-- /version --> (no packaged GitHub Release is currently published)
+**Source version:** v<!-- version -->1.0.0<!-- /version --> · [Latest release](https://github.com/L-K-M/Eko/releases/latest)
 
 > [!IMPORTANT]
 > LLM Disclosure: Eko is being built with substantial help from large language models,

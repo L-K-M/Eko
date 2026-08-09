@@ -156,6 +156,9 @@ public struct SessionStateMachine: Sendable {
                 throw EkoCoreError.invalidState("active_chunk is out of order")
             }
             activeEntries.append(contentsOf: chunk.active)
+            guard activeEntries.count <= ProtocolLimits.maximumActiveSnapshotEntries else {
+                throw EkoCoreError.protocolViolation("active snapshot exceeds the total entry bound")
+            }
             for entry in chunk.active {
                 guard activeKeys.insert(entry.key).inserted,
                       entry.stateSequence <= replayToSequence else {

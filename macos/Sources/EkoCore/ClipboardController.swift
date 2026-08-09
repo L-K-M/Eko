@@ -12,6 +12,11 @@ public protocol PasteboardWriting: AnyObject {
 public final class SystemPasteboardWriter: PasteboardWriting {
     private let pasteboard: NSPasteboard
     private let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    // ConcealedType asks clipboard managers to skip history, but only TransientType
+    // keeps an item off Universal Clipboard — without it an OTP copied here can sync
+    // to every iCloud-signed-in device. Set both (the transient marker carries no
+    // data; it is a behavior flag only).
+    private let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 
     public init(pasteboard: NSPasteboard = .general) {
         self.pasteboard = pasteboard
@@ -24,6 +29,7 @@ public final class SystemPasteboardWriter: PasteboardWriting {
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
         pasteboard.setData(Data(), forType: concealedType)
+        pasteboard.setData(Data(), forType: transientType)
         return pasteboard.changeCount
     }
 

@@ -208,6 +208,9 @@ public actor DiagnosticsRecorder {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try encoder.encode(payload).write(to: url, options: [.atomic])
+        // The export may contain notification content (per-export opt-in); never
+        // leave it readable by other local users.
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     private static func safeCategory(_ category: String) -> String {

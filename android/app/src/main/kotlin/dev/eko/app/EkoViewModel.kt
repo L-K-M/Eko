@@ -202,6 +202,12 @@ class EkoViewModel(application: Application) : AndroidViewModel(application) {
                 val parsedPort = port.toInt()
                 val normalizedFingerprint = fingerprint?.trim()?.takeIf(String::isNotEmpty)?.lowercase()
                 if (normalizedFingerprint != null) require(Regex("^[0-9a-f]{64}$").matches(normalizedFingerprint))
+                // A token without the QR payload's fingerprint would pair against an
+                // unverified endpoint and disclose the bearer token (enforced again in
+                // LanPairingClient); fail here with an actionable message.
+                if (token?.trim().isNullOrEmpty().not() && normalizedFingerprint == null) {
+                    throw IllegalArgumentException(context.getString(R.string.pair_error_token_requires_fingerprint))
+                }
                 val handle = LanPairingClient(context).connect(
                     PairingConnectionRequest(
                         endpoint = PeerEndpoint(host.trim(), parsedPort),

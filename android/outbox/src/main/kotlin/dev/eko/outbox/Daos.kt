@@ -30,6 +30,12 @@ interface OutboxDao {
     @Query("SELECT * FROM outbox WHERE seq BETWEEN :fromSeq AND :toSeq ORDER BY seq")
     suspend fun between(fromSeq: Long, toSeq: Long): List<OutboxEventEntity>
 
+    @Query("SELECT seq FROM outbox WHERE seq BETWEEN :fromSeq AND :toSeq ORDER BY seq")
+    suspend fun seqsBetween(fromSeq: Long, toSeq: Long): List<Long>
+
+    @Query("SELECT * FROM outbox WHERE seq IN (:seqs) ORDER BY seq")
+    suspend fun bySeqs(seqs: List<Long>): List<OutboxEventEntity>
+
     @Query("SELECT * FROM outbox WHERE seq >= :fromSeq ORDER BY seq")
     suspend fun from(fromSeq: Long): List<OutboxEventEntity>
 
@@ -139,6 +145,11 @@ interface ActiveNotificationDao {
 
     @Query("SELECT * FROM active_notification ORDER BY `key`")
     suspend fun all(): List<ActiveNotificationEntity>
+
+    // Payload-free projection for backlog snapshots: the wire's active chunks
+    // carry only key/hash/state_seq, and the full payload can be large.
+    @Query("SELECT `key`, content_hash, last_seq FROM active_notification ORDER BY `key`")
+    suspend fun headers(): List<ActiveNotificationHeader>
 
     @Query("SELECT * FROM active_notification WHERE package_name = :packageName AND user_id = :userId")
     suspend fun forApp(packageName: String, userId: Int): List<ActiveNotificationEntity>

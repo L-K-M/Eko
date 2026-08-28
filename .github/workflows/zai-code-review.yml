@@ -38,7 +38,7 @@ jobs:
         # Pin privileged third-party actions to an immutable commit.
         # de35f1e = v0.0.12. Verify before bumping:
         #   git ls-remote https://github.com/L-K-M/zai-code-review 'refs/tags/v0.0.12^{}'
-        uses: L-K-M/zai-code-review@de35f1ea45de6cb7e59ea83c69503340f8c4906e
+        uses: L-K-M/zai-code-review@8e718ac45f13c5ae0e57b19a00afd54d42e5b8f7
         with:
           ZAI_API_KEY: ${{ env.ZAI_API_KEY }}
           ZAI_MODEL: glm-5.3

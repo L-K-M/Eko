@@ -87,7 +87,7 @@ jobs:
       # tampered gradle-wrapper.jar.
       - uses: gradle/actions/wrapper-validation@v5
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "17"

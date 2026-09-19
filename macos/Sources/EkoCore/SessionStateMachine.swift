@@ -155,13 +155,22 @@ public struct SessionStateMachine: Sendable {
                   chunk.index == nextActiveChunkIndex else {
                 throw EkoCoreError.invalidState("active_chunk is out of order")
             }
-            activeEntries.append(contentsOf: chunk.active)
+            guard activeEntries.count + chunk.active.count <= ProtocolLimits.maximumActiveSnapshotEntries else {
+                throw EkoCoreError.protocolViolation("active snapshot exceeds the total entry bound")
+            }
+            // Validate before mutating: a throw after append(contentsOf:)
+            // would leave activeEntries ahead of activeKeys. A duplicate inside
+            // the chunk itself is caught by chunkKeys.
+            var chunkKeys = Set<String>()
             for entry in chunk.active {
-                guard activeKeys.insert(entry.key).inserted,
-                      entry.stateSequence <= replayToSequence else {
+                guard entry.stateSequence <= replayToSequence,
+                      !activeKeys.contains(entry.key),
+                      chunkKeys.insert(entry.key).inserted else {
                     throw EkoCoreError.invalidState("active snapshot has duplicate or future state")
                 }
             }
+            activeEntries.append(contentsOf: chunk.active)
+            activeKeys.formUnion(chunkKeys)
             nextActiveChunkIndex += 1
             activeSnapshotFinished = chunk.final
             return .activeProgress

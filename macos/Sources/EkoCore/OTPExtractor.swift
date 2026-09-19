@@ -16,15 +16,21 @@ public struct OTPMatch: Codable, Equatable, Sendable {
 }
 
 public struct OTPExtractor: Sendable {
+    // The domain constructs are written in unrolled form
+    // (`seg(?:\.seg)*\.tld` rather than `(?:seg\.)+tld`) on purpose: NSRegularExpression
+    // is a backtracking engine, and the nested-quantifier form enumerates every
+    // partition of a dotted run — exponential time on adversarial notification text
+    // (wire data). The unrolled form is the same language with deterministic,
+    // linear matching.
     private static let originPattern = try! NSRegularExpression(
-        pattern: #"^\s*@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\s+#([0-9A-Za-z-]{3,10})(?:\s+(?:@|%)(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})?(?:\s+\S+)*\s*$"#,
+        pattern: #"^\s*@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\s+#([0-9A-Za-z-]{3,10})(?:\s+(?:@|%)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})?(?:\s+\S+)*\s*$"#,
         options: [.caseInsensitive]
     )
     private static let retrieverHashPattern = try! NSRegularExpression(
         pattern: #"^[A-Za-z0-9+/]{11}$"#
     )
     private static let domainPattern = try! NSRegularExpression(
-        pattern: #"\b(?:https?://)?(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}(?:/[^\s]*)?"#,
+        pattern: #"\b(?:https?://)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?:/[^\s]*)?"#,
         options: [.caseInsensitive]
     )
     private static let quotedPattern = try! NSRegularExpression(

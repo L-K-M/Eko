@@ -27,12 +27,6 @@ kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
     }
-    // AGP 9's legacy-DSL sourceSets["test"] accessor throws a
-    // ClassCastException even with android.newDsl=false, so the vectors go
-    // through the Kotlin source set, which still feeds unit-test resources.
-    sourceSets.named("test") {
-        resources.srcDir(rootProject.projectDir.resolve("../protocol/test-vectors"))
-    }
 }
 
 configurations.configureEach {

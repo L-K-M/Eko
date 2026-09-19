@@ -27,6 +27,12 @@ kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
     }
+    // AGP 9's legacy-DSL sourceSets["test"] accessor throws a
+    // ClassCastException even with android.newDsl=false, so the vectors go
+    // through the Kotlin source set, which still feeds unit-test resources.
+    sourceSets.named("test") {
+        resources.srcDir(rootProject.projectDir.resolve("../protocol/test-vectors"))
+    }
 }
 
 configurations.configureEach {
@@ -45,10 +51,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.conscrypt:conscrypt-android:2.6.1")
 
-    // AGP 9's legacy-DSL sourceSets["test"] accessor throws a
-    // ClassCastException even with android.newDsl=false; a files() dependency
-    // puts the vectors directory on the test classpath the same way srcDir did.
-    testImplementation(files(rootProject.projectDir.resolve("../protocol/test-vectors")))
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.7.0")
     testImplementation("org.robolectric:robolectric:4.17")

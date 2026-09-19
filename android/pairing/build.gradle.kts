@@ -23,13 +23,6 @@ android {
     testOptions.unitTests.isIncludeAndroidResources = true
 }
 
-// AGP 9's legacy-DSL sourceSets["test"] accessor throws a ClassCastException
-// even with android.newDsl=false; the Test classpath is the same mechanism
-// srcDir fed and is stable across AGP versions.
-tasks.withType<Test>().configureEach {
-    classpath += files(rootProject.projectDir.resolve("../protocol/test-vectors"))
-}
-
 kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_17
@@ -44,9 +37,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
+    // AGP 9's legacy-DSL sourceSets["test"] accessor throws a
+    // ClassCastException even with android.newDsl=false; a files() dependency
+    // puts the vectors directory on the test classpath the same way srcDir did.
+    testImplementation(files(rootProject.projectDir.resolve("../protocol/test-vectors")))
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.7.0")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

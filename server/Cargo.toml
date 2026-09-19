@@ -1,0 +1,54 @@
+[package]
+name = "eko-relay"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Self-hosted store-and-forward relay for Eko. Carries opaque end-to-end encrypted envelopes; never sees notification content."
+license = "MIT"
+
+[dependencies]
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "time"] }
+tower-http = { version = "0.6", features = ["trace", "limit", "catch-panic"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
+argon2 = "0.5"
+password-hash = { version = "0.5", features = ["rand_core"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+thiserror = "2"
+subtle = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+hex = "0.4"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+
+[profile.release]
+# 3, not "z". Size was the wrong thing to optimise for here, and measurably so -
+# same machine, same code, only this line changed:
+#
+#   base64 decode 64 KiB   92.75 us -> 27.94 us   (every deposit)
+#   argon2 verify          35.37 ms -> 23.34 ms   (every login)
+#   base64 encode 64 KiB   44.37 us -> 35.39 us
+#   binary                  2.75 MiB -> 4.16 MiB
+#
+# 1.4 MB in a container image against a 3.3x faster envelope decode is not a
+# close call. (SQLite is unaffected either way: it is C built by the cc crate,
+# which does not take this setting.)
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+# No panic = "abort". A relay exists to stay reachable, and abort turns any
+# panic on any request into a process death that drops every other in-flight
+# request with it - a remote crash oracle for whoever finds the panicking
+# input. Unwinding keeps the blast radius at one request, and CatchPanicLayer
+# in routes.rs turns it into a 500.

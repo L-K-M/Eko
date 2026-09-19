@@ -15,7 +15,7 @@ and Shortking the closest macOS one.
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| [`ci.yml`](.github/workflows/ci.yml) | PRs, pushes to `main`, manual dispatch, and `workflow_call` | Protocol artifacts, reference model, Android, macOS. |
+| [`ci.yml`](.github/workflows/ci.yml) | PRs, pushes to `main`, manual dispatch, and `workflow_call` | Protocol artifacts, reference model, relay server, Android, macOS. |
 | [`release.yml`](.github/workflows/release.yml) | Pushing a `v*` tag (e.g. `v1.2.0`) | Re-prove, version-gate, build, sign, publish. |
 | [`zai-code-review.yml`](.github/workflows/zai-code-review.yml) | Non-draft PRs from this repository | GLM 5.2 review when `ZAI_API_KEY` is configured. |
 
@@ -42,7 +42,7 @@ project and the package disagree.
 
 ## Continuous integration (`ci.yml`)
 
-Four independent jobs, listed here the way a failure should be read rather than the way they
+Five independent jobs, listed here the way a failure should be read rather than the way they
 are scheduled.
 
 ### `protocol` — the shared artifacts (ubuntu, ~1 min)
@@ -73,6 +73,24 @@ describes them:
 **Why this job matters first:** the Kotlin and Swift suites both read these files. A
 malformed schema surfaces as two unrelated-looking platform failures — or, worse, as a
 vector one side silently skips.
+
+
+### `server` — the relay (ubuntu, ~3 min)
+
+`cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and
+`cargo test --locked`, all in `server/`, on a pinned 1.90 toolchain with the registry
+cached between runs. The three commands are exactly the ones `server/README.md` gives a
+developer, so a green local run means a green job.
+
+`--locked` on both clippy and test is deliberate: the relay is the only component that
+faces the internet, and a job that silently accepted an updated transitive dependency
+would defeat the point of committing `Cargo.lock`.
+
+The suite is 3 unit tests and 13 integration tests, the latter driving the real axum
+router rather than a mock, so the authorization rules — cross-account isolation, immediate
+revocation, single-use nonces, device-scoped queues — are exercised over real HTTP.
+The container image is *not* built in CI; it is a thin wrapper over the same binary and
+building it would add several minutes for little signal.
 
 ### `tools` — reference model and chaos (ubuntu, ~1 min)
 

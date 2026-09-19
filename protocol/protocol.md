@@ -110,10 +110,18 @@ The following are fatal protocol errors:
 * a byte order mark;
 * invalid JSON or trailing non-whitespace data;
 * a top-level value other than an object;
+* any value nested deeper than 64 levels, where a value's level is the number
+  of arrays or objects enclosing it (a member of the top-level object is at
+  level 1);
 * any duplicate object member name at any nesting level;
 * a known field with the wrong JSON type;
 * a known integer outside its defined range;
 * failure of the applicable schema or a semantic rule in this document.
+
+The depth limit is a hard resource bound, not an interoperability suggestion:
+unknown members MUST be ignored, but ignoring a member still requires parsing
+it, so deeply nested unknown members are covered by the same limit. Senders
+MUST NOT produce nesting deeper than 32 levels.
 
 All protocol integers are JSON numbers in the inclusive range
 `0..9007199254740991` (`2^53-1`) unless a smaller range is stated. On the wire,

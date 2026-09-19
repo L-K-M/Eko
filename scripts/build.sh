@@ -88,6 +88,10 @@ esac
 # The committed version, read from the same file release.yml's gate reads.
 VERSION="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]*)".*$/\1/p' android/app/build.gradle.kts | head -n 1)"
 [[ -n "$VERSION" ]] || VERSION="unknown"
+# VERSION becomes part of staged artifact names (eko-v$VERSION-*.apk), which
+# stage() passes to rm -rf — refuse anything that could escape dist/.
+[[ "$VERSION" =~ ^[0-9A-Za-z.-]+$ || "$VERSION" == "unknown" ]] \
+  || { echo "error: versionName '$VERSION' is not safe for artifact names" >&2; exit 1; }
 
 echo "Eko build"
 echo "  host:    $HOST ($(uname -s))"

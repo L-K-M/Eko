@@ -55,6 +55,20 @@ class FramingTests(unittest.TestCase):
         with self.assertRaises(ProtocolError):
             decode_json_payload(1, b'{"type":"ping","bad":"\xff"}')
 
+    def test_rejects_json_nesting_beyond_depth_limit(self):
+        # Members of the top-level object are at level 1; a value at level 64
+        # is legal, level 65 is fatal.
+        legal = b'{"type":"ping","x":' + b"[" * 63 + b"1" + b"]" * 63 + b"}"
+        self.assertEqual(decode_json_payload(1, legal)["type"], "ping")
+        too_deep = b'{"type":"ping","x":' + b"[" * 64 + b"1" + b"]" * 64 + b"}"
+        with self.assertRaises(ProtocolError):
+            decode_json_payload(1, too_deep)
+        # Far beyond the interpreter's own recursion limit: a clean protocol
+        # error, never an uncaught RecursionError.
+        absurd = b'{"type":"ping","x":' + b"[" * 50_000 + b"1" + b"]" * 50_000 + b"}"
+        with self.assertRaises(ProtocolError):
+            decode_json_payload(1, absurd)
+
     def test_truncated_prefix_and_body(self):
         encoded = encode_json_frame({"type": "hello", "value": "abc"})
         for cut in (1, 3, 4, len(encoded) - 1):

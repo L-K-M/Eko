@@ -15,6 +15,21 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    # These plugin and library families only work when their versions move in
+    # lockstep; separate PRs each fail the build on version skew.
+    groups:
+      android-gradle-plugin:
+        patterns:
+          - "com.android.*"
+      kotlin-plugins:
+        patterns:
+          - "org.jetbrains.kotlin.*"
+      androidx-core:
+        patterns:
+          - "androidx.core:*"
+      androidx-lifecycle:
+        patterns:
+          - "androidx.lifecycle:*"
 
   # Swift Package Manager resolves EkoCore's dependencies from macos/Package.swift.
   # macos/project.yml pins GRDB and Yams a second time for the XcodeGen spec, and

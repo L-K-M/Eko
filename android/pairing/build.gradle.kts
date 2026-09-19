@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "dev.eko.pairing"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26
@@ -21,7 +21,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     testOptions.unitTests.isIncludeAndroidResources = true
-    sourceSets["test"].resources.srcDir(rootProject.projectDir.resolve("../protocol/test-vectors"))
 }
 
 kotlin {
@@ -33,14 +32,14 @@ kotlin {
 dependencies {
     api(project(":core"))
     implementation(project(":outbox"))
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("androidx.test:core:1.7.0")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.robolectric:robolectric:4.17")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

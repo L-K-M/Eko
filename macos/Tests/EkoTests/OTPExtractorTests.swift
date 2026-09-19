@@ -71,7 +71,6 @@ final class OTPExtractorTests: XCTestCase {
         XCTAssertNil(extractor.extract(from: NotificationContent(text: "Shipping ETA 4829")))
     }
 
-<<<<<<< HEAD
     func testMaskedCardTailDoesNotOutrankThePaymentCode() {
         assertCode("682415", in: """
         CHF 118.01

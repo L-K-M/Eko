@@ -69,8 +69,8 @@ class EventRepositoryTest {
 
         assertEquals(8, a.replayFromSeq)
         assertEquals(1L..7L, a.gaps.single().fromSeq..a.gaps.single().toSeq)
-        assertEquals((8L..10L).toList(), a.events.map { it.seq })
-        assertEquals((6L..10L).toList(), b.events.map { it.seq })
+        assertEquals((8L..10L).toList(), a.eventSeqs)
+        assertEquals((6L..10L).toList(), b.eventSeqs)
 
         repository.acknowledge("mac-b", seq = 7, highestAuthorized = 10)
         assertEquals((8L..10L).toList(), repository.eventsAfter(0).map { it.seq })
@@ -85,7 +85,7 @@ class EventRepositoryTest {
 
         assertEquals(4, cursor.ackedSeq)
         assertEquals(5, cursor.serveFromSeq)
-        assertEquals(listOf(5L), repository.backlog("new-mac", 4).events.map { it.seq })
+        assertEquals(listOf(5L), repository.backlog("new-mac", 4).eventSeqs)
     }
 
     @Test
@@ -142,15 +142,31 @@ class EventRepositoryTest {
         assertEquals(1, regressed.gaps.size)
         assertEquals(5L, regressed.gaps.single().fromSeq)
         assertEquals(7L, regressed.gaps.single().toSeq)
-        assertEquals((8L..10L).toList(), regressed.events.map { it.seq })
+        assertEquals((8L..10L).toList(), regressed.eventSeqs)
 
         repository.setRetention("mac", ageMs = 3_600_000, count = 1)
         repository.applyRetention("mac")
         val wide = repository.backlog("mac", peerCursor = 8)
         assertEquals(listOf(9L..9L), wide.gaps.map { it.fromSeq..it.toSeq })
-        assertEquals(listOf(10L), wide.events.map { it.seq })
+        assertEquals(listOf(10L), wide.eventSeqs)
         assertTrue(wide.gaps.zipWithNext().all { (a, b) -> a.toSeq < b.fromSeq })
         assertTrue(wide.gaps.all { it.fromSeq >= 9 })
+    }
+
+    @Test
+    fun `replayPage returns pinned rows and refuses a hole left by retention`() = runTest {
+        repository.initialize("generation")
+        repository.ensurePairing("mac")
+        repeat(4) { repository.commitNotification(snapshot("key-$it", "$it")) }
+        val snapshot = repository.backlog("mac", peerCursor = 0)
+
+        assertEquals(listOf(1L, 2L, 3L, 4L), snapshot.eventSeqs)
+        assertEquals(listOf(3L, 4L), repository.replayPage(listOf(3L, 4L)).map { it.seq })
+
+        repository.acknowledge("mac", seq = 4, highestAuthorized = 4)
+        assertThrows(IllegalStateException::class.java) {
+            kotlinx.coroutines.runBlocking { repository.replayPage(listOf(1L, 2L)) }
+        }
     }
 
     private fun snapshot(key: String, text: String) = NotificationSnapshot(

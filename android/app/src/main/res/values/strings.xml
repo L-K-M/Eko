@@ -133,4 +133,5 @@
     <string name="pair_error_tls_handshake">The secure handshake with the Mac failed (%1$s). Make sure \u201cAdd phone\u201d is open on the Mac, then try again.</string>
     <string name="pair_error_unknown_host">Could not find the Mac by that name. Use its IP address, or make sure both devices are on the same network.</string>
     <string name="pair_error_unreachable">Could not reach the Mac. Check that both devices are on the same network and that pairing is open on the Mac.</string>
+    <string name="pair_error_token_requires_fingerprint">A one-time token also needs the certificate fingerprint shown with it on the Mac.</string>
 </resources>

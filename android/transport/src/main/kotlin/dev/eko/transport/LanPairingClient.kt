@@ -181,6 +181,13 @@ class LanPairingClient(context: Context) {
         request.oneTimeToken?.let {
             require(QR_TOKEN.matches(it)) { "QR token must be 32-byte unpadded base64url" }
         }
+        // A QR one-time token is a bearer credential whose only backup check is the
+        // pinned fingerprint from the same QR payload. Sending it while
+        // allow-unknown pairing TLS is active (no expected fingerprint) would
+        // disclose the token to whoever terminates the connection.
+        require(request.oneTimeToken == null || request.expectedFingerprint != null) {
+            "A one-time token requires the pinned fingerprint from the same QR payload"
+        }
         val method = existing?.method ?: if (request.oneTimeToken == null) "compare" else "qr"
         val attemptBytes = existing?.attemptId?.hexBytes() ?: Sas.newAttemptId()
         val attemptId = attemptBytes.hexLower()

@@ -41,9 +41,13 @@ data class BacklogSnapshot(
     val generation: String,
     val highWater: Long,
     val replayFromSeq: Long,
-    val events: List<OutboxEventEntity>,
+    // Sequence positions only: the snapshot pins *which* rows must be replayed
+    // without materializing their payloads (up to retentionCount rows of up to
+    // the protocol's per-event byte cap — far too much to hold at once). Rows
+    // are loaded page-by-page via replayPage when the frames are actually sent.
+    val eventSeqs: List<Long>,
     val gaps: List<GapSpanEntity>,
-    val active: List<ActiveNotificationEntity>,
+    val active: List<ActiveNotificationHeader>,
 )
 
 data class FetchRecord(
@@ -212,13 +216,13 @@ class EventRepository(
             emptyList()
         }
         val replayFrom = maxOf(peerCursor + 1, effectiveFloor)
-        val replayEvents = if (replayFrom <= metadata.lastAssignedSeq) {
-            database.outbox().between(replayFrom, metadata.lastAssignedSeq)
+        val replaySeqs = if (replayFrom <= metadata.lastAssignedSeq) {
+            database.outbox().seqsBetween(replayFrom, metadata.lastAssignedSeq)
         } else {
             emptyList()
         }
-        if (replayEvents.withIndex().any { (index, event) -> event.seq != replayFrom + index } ||
-            replayEvents.size.toLong() != (metadata.lastAssignedSeq - replayFrom + 1).coerceAtLeast(0)
+        if (replaySeqs.withIndex().any { (index, seq) -> seq != replayFrom + index } ||
+            replaySeqs.size.toLong() != (metadata.lastAssignedSeq - replayFrom + 1).coerceAtLeast(0)
         ) {
             throw IllegalStateException("Event-store snapshot contains an unauthorized sequence hole")
         }
@@ -226,10 +230,25 @@ class EventRepository(
             generation = metadata.outboxGeneration,
             highWater = metadata.lastAssignedSeq,
             replayFromSeq = replayFrom,
-            events = replayEvents,
+            eventSeqs = replaySeqs,
             gaps = gaps,
-            active = database.active().all(),
+            active = database.active().headers(),
         )
+    }
+
+    /**
+     * Loads one page of snapshot-pinned replay rows. Rows are immutable once
+     * committed, but retention can delete them after the snapshot was taken; a
+     * missing row makes this sync undeliverable, so the caller must drop the
+     * session and resync against the peer's next cursor instead of skipping it.
+     */
+    suspend fun replayPage(seqs: List<Long>): List<OutboxEventEntity> {
+        if (seqs.isEmpty()) return emptyList()
+        val rows = database.outbox().bySeqs(seqs)
+        if (rows.size != seqs.size || rows.withIndex().any { (index, row) -> row.seq != seqs[index] }) {
+            throw IllegalStateException("Retention removed rows pinned by a backlog snapshot; resync required")
+        }
+        return rows
     }
 
     suspend fun fetch(keys: List<String>): List<FetchRecord> = database.withTransaction {

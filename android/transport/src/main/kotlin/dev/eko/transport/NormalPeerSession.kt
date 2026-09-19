@@ -95,14 +95,22 @@ internal class NormalPeerSession(context: Context) {
                 }
                 throw rollback
             }
-            TransportRuntime.peer(peer.deviceId, PeerTransportState.Syncing(snapshot.events.size))
+            TransportRuntime.peer(peer.deviceId, PeerTransportState.Syncing(snapshot.eventSeqs.size))
             val inbound = SessionInboundValidator(accepted.capabilities.toSet(), peer.deviceId, identity.deviceId)
             coroutineScope {
                 val outbound = OutboundActor(this, socket.outputStream, accepted.cursor)
                 try {
                     val syncId = UUID.randomUUID().toString()
-                    outbound.sendFrames(WireJson.backlog(snapshot, syncId))
-                    if (snapshot.events.isNotEmpty()) TransportRuntime.forwarded(peer.deviceId)
+                    outbound.sendFrames(WireJson.backlogStart(snapshot, syncId))
+                    // Replay page-by-page: the snapshot pins positions, payloads are
+                    // loaded only when sent, so a full retention window of large
+                    // events cannot exhaust the heap mid-sync.
+                    snapshot.eventSeqs.chunked(BACKLOG_PAGE_SIZE).forEach { pageSeqs ->
+                        val page = repository.replayPage(pageSeqs)
+                        outbound.sendFrames(page.map { WireJson.backlogEvent(it, syncId) })
+                    }
+                    outbound.sendFrames(WireJson.backlogEnd(snapshot, syncId))
+                    if (snapshot.eventSeqs.isNotEmpty()) TransportRuntime.forwarded(peer.deviceId)
                     val connectedAtWall = System.currentTimeMillis()
                     TransportRuntime.peer(peer.deviceId, PeerTransportState.Connected(connectedAtWall, accepted.cursor))
                     val lastPong = AtomicLong(SystemClock.elapsedRealtime())
@@ -277,6 +285,7 @@ internal class NormalPeerSession(context: Context) {
         const val PING_INTERVAL_MS = 25_000L
         const val PONG_DEADLINE_MS = 10_000L
         const val RECONCILIATION_TIMEOUT_MS = 15_000L
+        const val BACKLOG_PAGE_SIZE = 100
         val CAP_NAME = Regex("^[a-z][a-z0-9_]{0,63}$")
     }
 }

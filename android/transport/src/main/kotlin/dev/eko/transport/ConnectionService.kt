@@ -8,15 +8,19 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.Base64
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import dev.eko.core.FullJitterBackoff
 import dev.eko.outbox.CursorAheadOfHighWaterException
 import dev.eko.outbox.EventStoreResetter
+import dev.eko.pairing.AndroidIdentity
+import dev.eko.pairing.ConfirmedPeer
 import dev.eko.pairing.IdentityStore
 import dev.eko.pairing.MacDiscovery
 import dev.eko.pairing.PeerEndpoint
@@ -36,6 +40,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 class ConnectionService : Service() {
@@ -162,7 +167,7 @@ class ConnectionService : Service() {
                 TransportRuntime.peer(deviceId, PeerTransportState.Failed(error.message ?: error.javaClass.simpleName))
             }
             backoff.recordStableConnection(SystemClock.elapsedRealtime() - started)
-            if (refreshEndpointFromDiscovery(deviceId, peer.endpoint)) {
+            if (refreshEndpointFromDiscovery(peer, network)) {
                 backoff.reset()
                 continue
             }
@@ -197,8 +202,17 @@ class ConnectionService : Service() {
      * started and stopped (it caps concurrent requests per app), and a DataStore write
      * that re-emits identity state and re-runs reconcileJobs. That is a
      * continuous-radio, continuous-disk loop with no delay in it.
+     *
+     * The mDNS fingerprint match is cleartext and the genuine fingerprint is public,
+     * so an on-LAN attacker can advertise it with their own address. Persisting that
+     * hint would poison every future reconnect with an endpoint that always fails
+     * the pinned handshake — a durable denial of service. Probe the candidate with
+     * the pinned certificate first and only commit an endpoint that proved the
+     * identity it advertised.
      */
-    private suspend fun refreshEndpointFromDiscovery(deviceId: String, current: PeerEndpoint): Boolean {
+    private suspend fun refreshEndpointFromDiscovery(peer: ConfirmedPeer, network: Network): Boolean {
+        val deviceId = peer.deviceId
+        val current = peer.endpoint
         val discovery = MacDiscovery(this)
         return try {
             discovery.start()
@@ -209,8 +223,20 @@ class ConnectionService : Service() {
             } ?: return false
             val discovered = PeerEndpoint(match.host, match.port)
             if (discovered == current) return false
+            val pinned = Base64.decode(peer.certificateDerBase64, Base64.NO_WRAP)
+            val probed = withContext(Dispatchers.IO) {
+                runCatching {
+                    TlsConnector(AndroidIdentity.getOrCreate(identityStore))
+                        .connectPinned(network, discovered, pinned)
+                        .socket.close()
+                }.isSuccess
+            }
+            if (!probed) {
+                TransportRuntime.log("$deviceId mDNS hint $discovered failed the pinned probe; endpoint unchanged")
+                return false
+            }
             identityStore.updateEndpoint(deviceId, discovered)
-            TransportRuntime.log("$deviceId endpoint refreshed from a matching-fingerprint mDNS hint; TLS still decides trust")
+            TransportRuntime.log("$deviceId endpoint refreshed from an identity-proven mDNS hint")
             true
         } finally {
             discovery.close()

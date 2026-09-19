@@ -65,6 +65,12 @@ data class ActiveNotificationEntity(
     val ongoing: Boolean,
 )
 
+data class ActiveNotificationHeader(
+    val key: String,
+    @ColumnInfo(name = "content_hash") val contentHash: String,
+    @ColumnInfo(name = "last_seq") val lastSeq: Long,
+)
+
 @Entity(tableName = "app_rule", primaryKeys = ["package_name", "user_id"])
 data class AppRuleEntity(
     @ColumnInfo(name = "package_name") val packageName: String,

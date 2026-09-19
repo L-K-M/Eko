@@ -206,3 +206,24 @@ cases:
         notification_key: conversation-key
         text: "You requested another code: 771905"
         expected: {code: "771905", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}
+
+  - id: en-026-masked-card-then-code
+    locale: en-CH
+    source: banking
+    events:
+      - text: "CHF 118.01\n01.08.2026 / 17:57\nMastercard XXXX 5782\nYour code for confirming the payment transaction: 682415"
+        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: en-027-amount-line-above-code
+    locale: en-CH
+    source: banking
+    events:
+      - text: "Coop\nCHF 45.00\n682415 is your confirmation code"
+        expected: {code: "682415", tier: heuristic, banner: true, panel: true, auto_copy_allowed: false}
+
+  - id: en-028-code-wrapped-in-emphasis
+    locale: en
+    source: sms
+    events:
+      - text: "**482913** is your verification code"
+        expected: {code: "482913", tier: heuristic, banner: true, panel: true, auto_copy_allowed: true}

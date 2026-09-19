@@ -1098,7 +1098,16 @@ problem domain, not copied.)
    `title`** (sender names/numbers cause false positives; otphelper removed it after field
    reports). Cap input at 1'000 chars; timeout-guard the regex engine (NSRegularExpression has
    no timeout — bound input instead, and prefer linear patterns).
-2. Cleanup pass: strip domains, quoted strings, `Ending 1234`/`Endziffer-1234`, phone numbers.
+2. Cleanup pass: strip domains, quoted strings, `Ending 1234`/`Endziffer-1234`, masked card
+   tails (`**** 5782`, `Mastercard XXXX 5782` — the compound-noun form needs its own rule
+   because `\bcard` never matches inside *Mastercard*/*Kreditkarte*), phone numbers. Every
+   one of these strips is a knife that cuts both ways: whatever it removes is gone before
+   ranking, so when it guesses wrong the user loses the code outright rather than getting a
+   competing candidate. Bound each one at the tightest shape that still covers the real
+   format — four-digit tails, three-glyph masks, a required `Nr.`-style reference — and let
+   doubtful cases leak instead. Amounts and phone numbers must not run past a line break:
+   a payment notification puts the amount, the card and the code on their own lines, and a
+   `\s`-spanning amount or phone pattern splices two of them together and deletes both.
 3. Ignore pass: `barcode|unicode|encode|decode|versionCode|discount code|promo code|…`.
 4. Keyword gate, multilingual: `code` as unbounded case-insensitive substring (catches German
    compounds: Bestätigungscode, Sicherheitscode, Einmalkennwort, mTAN-Code), plus
@@ -1107,10 +1116,16 @@ problem domain, not copied.)
 5. Two directional passes: keyword→code and code→keyword. Token charset `[0-9A-Za-z-]`,
    length 4–8 digits / 4–10 alphanumeric (TeamViewer `QGFDAE` and `ABC4` are real; bare
    3-digit tokens are junk). Join separator-grouped digits (`123 456`, `123-456`). Normalize
-   Arabic-Indic (U+0660–0669) and Persian (U+06F0–06F9) digits.
+   Arabic-Indic (U+0660–0669) and Persian (U+06F0–06F9) digits. Rank by character distance,
+   direction, then position, and treat a line break as ordinary distance: ranking that
+   preferred the keyword's own line was tried and reverted, because a payment body routinely
+   puts an uppercase merchant name (DIGITEC, ZALANDO, MIGROS) or an amount in a currency the
+   cleanup pass does not know (PLN, HUF, ₩, ฿) on the keyword's line and the code on the next
+   one, and any line-first rule promotes those over the code.
 6. False-positive guards: refuse to cross currency amounts (`CHF|EUR|USD|[$€£]` + digit runs —
    including Swiss `1'234.50` apostrophe grouping), 4-digit years, order/tracking numbers,
-   card-last-4 forms.
+   card-last-4 forms in all their shapes (`Ending 1234`, `Mastercard 5782`, `**** 5782`), and
+   mask runs themselves (`XXXX` is uppercase and token-shaped, so it is otherwise a candidate).
 7. Dedupe **on `(deviceId, code, 10-min window)`, not on `key`** — a group-summary
    notification carries a *different* key than its child but often repeats the child's text
    (InboxStyle/`text_lines`), so keying dedupe on `key` would fire the same code twice; and

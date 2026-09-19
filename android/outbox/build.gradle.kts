@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "dev.eko.outbox"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 26
@@ -38,7 +38,7 @@ kapt {
 
 dependencies {
     api(project(":core"))
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     kapt("androidx.room:room-compiler:2.8.4")

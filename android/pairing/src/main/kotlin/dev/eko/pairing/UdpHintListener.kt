@@ -77,7 +77,7 @@ class UdpHintListener : Closeable {
                         mutable.value = (mutable.value.filterNot { it.fingerprint == hint.fingerprint } + hint)
                             .filter { now - it.seenAtWall <= HINT_TTL_MS }
                             .sortedBy(UdpMacHint::name)
-                            .let { hints -> if (hints.size <= MAX_PEERS) hints else hints.sortedBy(UdpMacHint::seenAtWall).takeLast(MAX_PEERS) }
+                            .let { hints -> if (hints.size <= MAX_PEERS) hints else hints.sortedBy(UdpMacHint::seenAtWall).takeLast(MAX_PEERS).sortedBy(UdpMacHint::name) }
                     }
                 } catch (_: SocketTimeoutException) {
                     Unit

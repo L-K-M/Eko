@@ -1,5 +1,8 @@
 # Eko
 
+> [!IMPORTANT]
+> LLM disclosure: This codebase was written with substantial help from large language models: AI coding agents working from the [`AGENTS.md`](AGENTS.md) brief in this repo.
+
 **Android notifications on your Mac.** A macOS menubar app plus an Android companion:
 your phones forward their notifications over the local Wi-Fi network, the Mac shows them
 live, and 2FA/OTP messages get a one-click **Copy code** action.

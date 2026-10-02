@@ -792,9 +792,8 @@ async fn device_auth(
 
 // --------------------------------------------------------------- queues ---
 
-/// Look the queue up without creating it. `drain` is a GET, and a GET that
-/// writes is a GET that a retry, a prefetch or a cache can turn into a row.
-/// There is nothing to return for a queue nobody has deposited into anyway.
+/// Read without creating: a GET retry or prefetch must not create a queue,
+/// and the create-or-get fast path must not take the write lock.
 fn existing_queue_id(
     c: &rusqlite::Connection,
     account_id: i64,
@@ -816,22 +815,11 @@ fn queue_id(
     sender: &str,
     recipient: &str,
 ) -> ApiResult<i64> {
-    // Read-only fast path. Every drain and every cursor update runs through
-    // here, and after the first envelope the row always exists, so the common
-    // case must not take the write lock.
-    if let Some(id) = c
-        .query_row(
-            "SELECT id FROM queue WHERE account_id = ?1 AND sender = ?2 AND recipient = ?3",
-            params![account_id, sender, recipient],
-            |r| r.get::<_, i64>(0),
-        )
-        .optional()
-        .map_err(|_| internal())?
-    {
+    if let Some(id) = existing_queue_id(c, account_id, sender, recipient)? {
         return Ok(id);
     }
-    // The miss is racy: `drain` and `set_cursor` hold no transaction, so two
-    // first readers of the same queue both miss the SELECT and both insert.
+    // The miss is racy: `set_cursor` holds no transaction, so two first
+    // readers of the same queue can both miss the SELECT and both insert.
     // Plain INSERT gave the loser a UNIQUE violation, which `internal()` turned
     // into a 500. Upserting makes create-or-get one statement; DO UPDATE rather
     // than DO NOTHING because DO NOTHING returns no row for RETURNING to hand
@@ -1211,8 +1199,8 @@ mod tests {
         (dir, pool)
     }
 
-    /// `drain` and `set_cursor` call `queue_id` with no transaction held, so
-    /// the first readers of a queue all miss the SELECT together. Check-then-
+    /// `set_cursor` calls `queue_id` with no transaction held, so concurrent
+    /// first readers of a queue can miss the SELECT together. Check-then-
     /// insert gave every loser a UNIQUE violation, which `internal()` reported
     /// as a 500. Exercised here rather than over HTTP because the auth work a
     /// request does first spreads the racers out far enough to hide it.
@@ -1352,6 +1340,47 @@ mod tests {
         let second = queue_id(&c, 1, "mac-1", "phone-1").unwrap();
         assert_ne!(first, second);
         assert_eq!(queue_id(&c, 1, "phone-1", "mac-1").unwrap(), first);
+    }
+
+    #[test]
+    fn existing_queue_lookups_do_not_take_the_write_lock() {
+        let (_dir, pool) = pool_with_account();
+        let c = pool.get().unwrap();
+        let id = queue_id(&c, 1, "phone-1", "mac-1").unwrap();
+
+        // A writer on another connection must not block an existing lookup.
+        let mut writer = pool.get().unwrap();
+        let held = writer
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        assert_eq!(queue_id(&c, 1, "phone-1", "mac-1").unwrap(), id);
+        assert_eq!(
+            existing_queue_id(&c, 1, "phone-1", "mac-1").unwrap(),
+            Some(id)
+        );
+        assert_eq!(existing_queue_id(&c, 2, "phone-1", "mac-1").unwrap(), None);
+        assert_eq!(existing_queue_id(&c, 1, "mac-1", "phone-1").unwrap(), None);
+        held.rollback().unwrap();
+
+        let rows: i64 = c
+            .query_row("SELECT COUNT(*) FROM queue", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "read-only misses must not create queues");
+    }
+
+    #[test]
+    fn queue_lookup_database_errors_are_internal() {
+        let (_dir, pool) = pool_with_account();
+        let c = pool.get().unwrap();
+        c.execute_batch("DROP TABLE queue").unwrap();
+
+        for error in [
+            existing_queue_id(&c, 1, "phone-1", "mac-1").unwrap_err(),
+            queue_id(&c, 1, "phone-1", "mac-1").unwrap_err(),
+        ] {
+            assert_eq!(error.0, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(error.1, "internal");
+        }
     }
 
     /// A panicking handler must fail one request, not the process. Note this

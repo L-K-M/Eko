@@ -45,8 +45,6 @@ public actor SessionManager {
 
     private struct ActiveSession {
         let transport: any SessionTransport
-        let epoch: Int64
-        let generation: String
         let capabilities: Set<String>
         var isLive: Bool
     }
@@ -164,25 +162,9 @@ public actor SessionManager {
                     requiresExplicitUserConfirmation: true
                 )
 
-            case (.paired(let admittedID), .unpair) where admittedID == hello.deviceID:
-                try store.reserveRestrictedEpoch(
-                    deviceID: admittedID,
-                    certificateDER: peerCertificateDER,
-                    epoch: hello.connectionEpoch
-                )
-                await displaceAuthoritativeSession(deviceID: admittedID, incomingTransportID: transport.id)
-                try await runRestrictedUnpair(hello: hello, transport: transport)
-
-            case (.revoked(let admittedID), .unpair) where admittedID == hello.deviceID:
-                try store.reserveRestrictedEpoch(
-                    deviceID: admittedID,
-                    certificateDER: peerCertificateDER,
-                    epoch: hello.connectionEpoch
-                )
-                await displaceAuthoritativeSession(deviceID: admittedID, incomingTransportID: transport.id)
-                try await runRestrictedUnpair(hello: hello, transport: transport)
-
-            case (.revoked(let admittedID), .normal) where admittedID == hello.deviceID:
+            case (.paired(let admittedID), .unpair) where admittedID == hello.deviceID,
+                 (.revoked(let admittedID), .unpair) where admittedID == hello.deviceID,
+                 (.revoked(let admittedID), .normal) where admittedID == hello.deviceID:
                 try store.reserveRestrictedEpoch(
                     deviceID: admittedID,
                     certificateDER: peerCertificateDER,
@@ -279,8 +261,6 @@ public actor SessionManager {
         let capabilities = localCapabilities.intersection(Set(hello.capabilities))
         activeSessions[hello.deviceID] = ActiveSession(
             transport: transport,
-            epoch: hello.connectionEpoch,
-            generation: generation,
             capabilities: capabilities,
             isLive: false
         )
@@ -825,8 +805,6 @@ public actor SessionManager {
         let capabilities = localCapabilities.intersection(Set(hello.capabilities))
         activeSessions[hello.deviceID] = ActiveSession(
             transport: transport,
-            epoch: hello.connectionEpoch,
-            generation: generation,
             capabilities: capabilities,
             isLive: false
         )

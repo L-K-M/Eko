@@ -45,8 +45,6 @@ public actor SessionManager {
 
     private struct ActiveSession {
         let transport: any SessionTransport
-        let epoch: Int64
-        let generation: String
         let capabilities: Set<String>
         var isLive: Bool
     }
@@ -263,8 +261,6 @@ public actor SessionManager {
         let capabilities = localCapabilities.intersection(Set(hello.capabilities))
         activeSessions[hello.deviceID] = ActiveSession(
             transport: transport,
-            epoch: hello.connectionEpoch,
-            generation: generation,
             capabilities: capabilities,
             isLive: false
         )
@@ -809,8 +805,6 @@ public actor SessionManager {
         let capabilities = localCapabilities.intersection(Set(hello.capabilities))
         activeSessions[hello.deviceID] = ActiveSession(
             transport: transport,
-            epoch: hello.connectionEpoch,
-            generation: generation,
             capabilities: capabilities,
             isLive: false
         )

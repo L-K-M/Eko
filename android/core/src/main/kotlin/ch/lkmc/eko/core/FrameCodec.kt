@@ -229,20 +229,3 @@ private class JsonSyntaxScanner(private val source: String) {
     private fun fail(message: String): Nothing =
         throw ProtocolException("$message at character $index")
 }
-
-class ChunkedInputStream(
-    private val bytes: ByteArray,
-    private val maxChunk: Int,
-) : InputStream() {
-    private var offset = 0
-
-    override fun read(): Int = if (offset >= bytes.size) -1 else bytes[offset++].toInt() and 0xff
-
-    override fun read(target: ByteArray, targetOffset: Int, length: Int): Int {
-        if (offset >= bytes.size) return -1
-        val count = minOf(length, maxChunk, bytes.size - offset)
-        bytes.copyInto(target, targetOffset, offset, offset + count)
-        offset += count
-        return count
-    }
-}

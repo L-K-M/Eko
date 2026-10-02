@@ -1354,6 +1354,47 @@ mod tests {
         assert_eq!(queue_id(&c, 1, "phone-1", "mac-1").unwrap(), first);
     }
 
+    #[test]
+    fn existing_queue_lookups_do_not_take_the_write_lock() {
+        let (_dir, pool) = pool_with_account();
+        let c = pool.get().unwrap();
+        let id = queue_id(&c, 1, "phone-1", "mac-1").unwrap();
+
+        // A writer on another connection must not block an existing lookup.
+        let mut writer = pool.get().unwrap();
+        let held = writer
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        assert_eq!(queue_id(&c, 1, "phone-1", "mac-1").unwrap(), id);
+        assert_eq!(
+            existing_queue_id(&c, 1, "phone-1", "mac-1").unwrap(),
+            Some(id)
+        );
+        assert_eq!(existing_queue_id(&c, 2, "phone-1", "mac-1").unwrap(), None);
+        assert_eq!(existing_queue_id(&c, 1, "mac-1", "phone-1").unwrap(), None);
+        held.rollback().unwrap();
+
+        let rows: i64 = c
+            .query_row("SELECT COUNT(*) FROM queue", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "read-only misses must not create queues");
+    }
+
+    #[test]
+    fn queue_lookup_database_errors_are_internal() {
+        let (_dir, pool) = pool_with_account();
+        let c = pool.get().unwrap();
+        c.execute_batch("DROP TABLE queue").unwrap();
+
+        for error in [
+            existing_queue_id(&c, 1, "phone-1", "mac-1").unwrap_err(),
+            queue_id(&c, 1, "phone-1", "mac-1").unwrap_err(),
+        ] {
+            assert_eq!(error.0, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(error.1, "internal");
+        }
+    }
+
     /// A panicking handler must fail one request, not the process. Note this
     /// asserts the layer is wired; unwinding itself is what `panic = "abort"`
     /// would defeat, which is why the release profile no longer sets it.

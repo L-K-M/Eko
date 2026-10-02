@@ -97,6 +97,116 @@ final class SessionManagerTests: XCTestCase {
 
     // MARK: - Vector-driven restricted unpair
 
+    func testPairedPhoneInitiatedUnpairDisplacesLiveSessionAndKeepsReceipt() async throws {
+        let vector = try loadUnpairVector()
+        let store = try EkoStore(path: temporaryDatabasePath())
+        let mac = StubIdentity(certificateDER: macCertificate)
+        let sink = RecordingSink()
+        let manager = makeManager(store: store, identity: mac, sink: sink)
+
+        guard case .hello(let bootstrap) = vector.normalHello(epoch: 69) else {
+            return XCTFail("normalHello must be a hello")
+        }
+        _ = try store.confirmPairing(
+            hello: bootstrap,
+            certificateDER: vector.phoneCertificate,
+            initialCursor: 0,
+            negotiatedProtocol: 1,
+            endpoint: nil
+        )
+        let live = ScriptedTransport()
+        let liveTask = Task { await manager.run(admission: .paired(deviceID: vector.phoneID), peerCertificateDER: vector.phoneCertificate, transport: live) }
+        live.enqueue(vector.normalHello(epoch: 70))
+        enqueueEmptyBacklog(on: live)
+        let online = await waitUntil { sink.hasState(.online, for: vector.phoneID) }
+        XCTAssertTrue(online)
+
+        let request = UnpairMessage(
+            unpairID: vector.lostAckUnpairID,
+            initiatorID: vector.phoneID,
+            peerID: mac.fingerprint,
+            reason: .userRequest
+        )
+        let restricted = ScriptedTransport()
+        restricted.enqueue(.hello(HelloMessage(
+            mode: .unpair,
+            protoMin: 1,
+            protoMax: 1,
+            deviceID: vector.phoneID,
+            deviceName: "Vector Phone",
+            os: "android",
+            osVersion: 36,
+            capabilities: [],
+            connectionEpoch: 71,
+            phoneTime: bootstrap.phoneTime,
+            unpairID: request.unpairID
+        )))
+        restricted.enqueue(.unpair(request))
+        await manager.run(admission: .paired(deviceID: vector.phoneID), peerCertificateDER: vector.phoneCertificate, transport: restricted)
+        await liveTask.value
+
+        XCTAssertTrue(live.isClosed)
+        XCTAssertEqual(live.sentErrorCodes(), ["superseded"])
+        XCTAssertTrue(restricted.isClosed)
+        XCTAssertEqual(restricted.sentMessages(), [.unpairAck(UnpairAckMessage(
+            unpairID: request.unpairID,
+            initiatorID: vector.phoneID,
+            peerID: mac.fingerprint,
+            status: .applied
+        ))])
+        XCTAssertNil(try store.pendingUnpair(deviceID: vector.phoneID))
+        XCTAssertEqual(try store.peerAuthorization(for: vector.phoneCertificate), .revoked(deviceID: vector.phoneID))
+        XCTAssertEqual(try store.applyUnpair(deviceID: vector.phoneID, message: request), .alreadyApplied)
+    }
+
+    func testRestrictedAdmissionRejectsMismatchedDeviceIDs() async throws {
+        let vector = try loadUnpairVector()
+        let mac = StubIdentity(certificateDER: macCertificate)
+        let cases: [(TLSAdmission, ProtocolMode)] = [
+            (.paired(deviceID: mac.fingerprint), .unpair),
+            (.revoked(deviceID: mac.fingerprint), .unpair),
+            (.revoked(deviceID: mac.fingerprint), .normal),
+        ]
+
+        for (admission, mode) in cases {
+            let store = try EkoStore(path: temporaryDatabasePath())
+            let manager = makeManager(store: store, identity: mac, sink: RecordingSink())
+            guard case .hello(let bootstrap) = vector.normalHello(epoch: 69) else {
+                return XCTFail("normalHello must be a hello")
+            }
+            _ = try store.confirmPairing(
+                hello: bootstrap,
+                certificateDER: vector.phoneCertificate,
+                initialCursor: 0,
+                negotiatedProtocol: 1,
+                endpoint: nil
+            )
+            let transport = ScriptedTransport()
+            transport.enqueue(.hello(HelloMessage(
+                mode: mode,
+                protoMin: 1,
+                protoMax: 1,
+                deviceID: vector.phoneID,
+                deviceName: "Vector Phone",
+                os: "android",
+                osVersion: 36,
+                capabilities: [],
+                outboxGeneration: vector.generation,
+                connectionEpoch: 70,
+                phoneTime: bootstrap.phoneTime,
+                unpairID: mode == .unpair ? vector.lostAckUnpairID : nil
+            )))
+
+            await manager.run(admission: admission, peerCertificateDER: vector.phoneCertificate, transport: transport)
+
+            XCTAssertTrue(transport.isClosed)
+            XCTAssertEqual(transport.sentErrorCodes(), ["unauthorized"])
+            XCTAssertEqual(transport.sentMessages().map(\.type), ["error"])
+            XCTAssertEqual(try store.device(id: vector.phoneID)?.highestConnectionEpoch, 69)
+            XCTAssertEqual(try store.peerAuthorization(for: vector.phoneCertificate), .paired(deviceID: vector.phoneID))
+        }
+    }
+
     func testVectorOfflineMacTombstoneRestrictsAndDisplacesNormalSession() async throws {
         let vector = try loadUnpairVector()
         let store = try EkoStore(path: temporaryDatabasePath())

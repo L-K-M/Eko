@@ -164,25 +164,9 @@ public actor SessionManager {
                     requiresExplicitUserConfirmation: true
                 )
 
-            case (.paired(let admittedID), .unpair) where admittedID == hello.deviceID:
-                try store.reserveRestrictedEpoch(
-                    deviceID: admittedID,
-                    certificateDER: peerCertificateDER,
-                    epoch: hello.connectionEpoch
-                )
-                await displaceAuthoritativeSession(deviceID: admittedID, incomingTransportID: transport.id)
-                try await runRestrictedUnpair(hello: hello, transport: transport)
-
-            case (.revoked(let admittedID), .unpair) where admittedID == hello.deviceID:
-                try store.reserveRestrictedEpoch(
-                    deviceID: admittedID,
-                    certificateDER: peerCertificateDER,
-                    epoch: hello.connectionEpoch
-                )
-                await displaceAuthoritativeSession(deviceID: admittedID, incomingTransportID: transport.id)
-                try await runRestrictedUnpair(hello: hello, transport: transport)
-
-            case (.revoked(let admittedID), .normal) where admittedID == hello.deviceID:
+            case (.paired(let admittedID), .unpair) where admittedID == hello.deviceID,
+                 (.revoked(let admittedID), .unpair) where admittedID == hello.deviceID,
+                 (.revoked(let admittedID), .normal) where admittedID == hello.deviceID:
                 try store.reserveRestrictedEpoch(
                     deviceID: admittedID,
                     certificateDER: peerCertificateDER,

@@ -91,18 +91,18 @@ class SerializedNotificationWriter internal constructor(
         offer { CaptureCommand.Gap(it, evidence, startWall, endWall) }
 
     private fun offer(factory: (Long) -> CaptureCommand): Boolean {
-        while (true) {
-            val current = acceptedOrdinal.get()
-            val command = factory(current + 1)
-            val result = channel.trySend(command)
-            if (result.isSuccess) {
-                acceptedOrdinal.compareAndSet(current, current + 1)
-                diagnostics.queueDepth(queueDepth.incrementAndGet())
-                return true
-            }
-            recordOverflow(current)
-            return false
+        val current = acceptedOrdinal.get()
+        val command = factory(current + 1)
+        val result = channel.trySend(command)
+
+        if (result.isSuccess) {
+            acceptedOrdinal.compareAndSet(current, current + 1)
+            diagnostics.queueDepth(queueDepth.incrementAndGet())
+            return true
         }
+
+        recordOverflow(current)
+        return false
     }
 
     private fun recordOverflow(barrierOrdinal: Long) {
@@ -121,11 +121,10 @@ class SerializedNotificationWriter internal constructor(
             val command = channel.receiveCatching().getOrNull() ?: break
             queueDepth.decrementAndGet().also(diagnostics::queueDepth)
             val committed = runSinkCommand(command)
+            processedOrdinal = command.ordinal
             if (committed) {
-                processedOrdinal = command.ordinal
                 diagnostics.committed()
             } else {
-                processedOrdinal = command.ordinal
                 recordOverflow(command.ordinal)
             }
             flushOverflowIfReady(processedOrdinal)

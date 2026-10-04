@@ -1,9 +1,9 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.companion.CompanionDeviceManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import dev.eko.core.EkoJson
+import ch.lkmc.eko.core.EkoJson
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive

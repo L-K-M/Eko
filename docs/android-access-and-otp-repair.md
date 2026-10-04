@@ -92,13 +92,13 @@ the app-op remains an OS-level exception until reset, app data is cleared, or fi
 2. Enable Developer options and USB debugging on the phone.
 3. Connect the phone, run `adb devices`, approve the host key on the phone, and confirm the device is
    listed as `device`, not `unauthorized`.
-4. Confirm Eko's diagnostics reports the Android package ID `dev.eko.android`. Stop if the installed
+4. Confirm Eko's diagnostics reports the Android package ID `ch.lkmc.eko.android`. Stop if the installed
    package reports a different ID; these commands must not be applied to another app.
 
 On macOS or Linux:
 
 ```sh
-EKO_PACKAGE='dev.eko.android'
+EKO_PACKAGE='ch.lkmc.eko.android'
 adb shell appops set "$EKO_PACKAGE" RECEIVE_SENSITIVE_NOTIFICATIONS allow
 adb shell appops get "$EKO_PACKAGE" RECEIVE_SENSITIVE_NOTIFICATIONS
 ```
@@ -106,7 +106,7 @@ adb shell appops get "$EKO_PACKAGE" RECEIVE_SENSITIVE_NOTIFICATIONS
 On Windows PowerShell:
 
 ```powershell
-$EkoPackage = 'dev.eko.android'
+$EkoPackage = 'ch.lkmc.eko.android'
 adb shell appops set $EkoPackage RECEIVE_SENSITIVE_NOTIFICATIONS allow
 adb shell appops get $EkoPackage RECEIVE_SENSITIVE_NOTIFICATIONS
 ```

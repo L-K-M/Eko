@@ -1,11 +1,11 @@
-package dev.eko.outbox
+package ch.lkmc.eko.outbox
 
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
-import dev.eko.core.DndDescriptor
-import dev.eko.core.EventKind
-import dev.eko.core.NotificationContent
+import ch.lkmc.eko.core.DndDescriptor
+import ch.lkmc.eko.core.EventKind
+import ch.lkmc.eko.core.NotificationContent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals

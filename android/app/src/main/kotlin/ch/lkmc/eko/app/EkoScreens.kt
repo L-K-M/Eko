@@ -1,4 +1,4 @@
-package dev.eko.app
+package ch.lkmc.eko.app
 
 import android.os.Build
 import android.content.Intent
@@ -83,17 +83,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
-import dev.eko.capture.CaptureHealth
-import dev.eko.outbox.AppWithRule
-import dev.eko.outbox.StoreDurability
-import dev.eko.pairing.CompanionPresence
-import dev.eko.pairing.CompanionPresenceState
-import dev.eko.pairing.DiscoveredMac
-import dev.eko.pairing.IdentityState
-import dev.eko.pairing.MacDiscovery
-import dev.eko.pairing.UdpHintListener
-import dev.eko.transport.PeerTransportState
-import dev.eko.transport.TransportSnapshot
+import ch.lkmc.eko.capture.CaptureHealth
+import ch.lkmc.eko.outbox.AppWithRule
+import ch.lkmc.eko.outbox.StoreDurability
+import ch.lkmc.eko.pairing.CompanionPresence
+import ch.lkmc.eko.pairing.CompanionPresenceState
+import ch.lkmc.eko.pairing.DiscoveredMac
+import ch.lkmc.eko.pairing.IdentityState
+import ch.lkmc.eko.pairing.MacDiscovery
+import ch.lkmc.eko.pairing.UdpHintListener
+import ch.lkmc.eko.transport.PeerTransportState
+import ch.lkmc.eko.transport.TransportSnapshot
 
 private enum class AppPage(val label: Int, val icon: ImageVector) {
     HOME(R.string.nav_home, Icons.Outlined.Home),

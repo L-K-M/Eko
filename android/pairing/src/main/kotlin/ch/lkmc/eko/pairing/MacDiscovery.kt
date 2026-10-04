@@ -1,4 +1,4 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.content.Context
 import android.net.nsd.NsdManager

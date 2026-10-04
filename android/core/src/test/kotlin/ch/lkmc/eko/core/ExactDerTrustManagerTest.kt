@@ -1,4 +1,4 @@
-package dev.eko.core
+package ch.lkmc.eko.core
 
 import java.math.BigInteger
 import java.security.Principal

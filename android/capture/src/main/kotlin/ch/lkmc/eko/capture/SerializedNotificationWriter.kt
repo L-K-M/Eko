@@ -1,9 +1,9 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
-import dev.eko.outbox.CaptureCommit
-import dev.eko.outbox.EventStoreProvider
-import dev.eko.outbox.EventStoreResetLock
-import dev.eko.outbox.NotificationSnapshot
+import ch.lkmc.eko.outbox.CaptureCommit
+import ch.lkmc.eko.outbox.EventStoreProvider
+import ch.lkmc.eko.outbox.EventStoreResetLock
+import ch.lkmc.eko.outbox.NotificationSnapshot
 import java.io.Closeable
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong

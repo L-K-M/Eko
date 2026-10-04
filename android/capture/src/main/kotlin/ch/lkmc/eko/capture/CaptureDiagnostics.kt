@@ -1,4 +1,4 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.content.Context
 import java.util.concurrent.atomic.AtomicReference

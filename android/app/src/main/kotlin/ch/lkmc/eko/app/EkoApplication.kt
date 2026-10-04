@@ -1,4 +1,4 @@
-package dev.eko.app
+package ch.lkmc.eko.app
 
 import android.app.ActivityManager
 import android.app.Application
@@ -6,13 +6,13 @@ import android.app.ApplicationExitInfo
 import android.database.sqlite.SQLiteException
 import android.os.Build
 import android.os.SystemClock
-import dev.eko.outbox.EventStoreFailurePolicy
-import dev.eko.outbox.EventStoreProvider
-import dev.eko.outbox.EventStoreResetter
-import dev.eko.pairing.IdentityStore
-import dev.eko.pairing.PairingCoordinator
-import dev.eko.transport.ConnectionService
-import dev.eko.transport.TransportRuntime
+import ch.lkmc.eko.outbox.EventStoreFailurePolicy
+import ch.lkmc.eko.outbox.EventStoreProvider
+import ch.lkmc.eko.outbox.EventStoreResetter
+import ch.lkmc.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.PairingCoordinator
+import ch.lkmc.eko.transport.ConnectionService
+import ch.lkmc.eko.transport.TransportRuntime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

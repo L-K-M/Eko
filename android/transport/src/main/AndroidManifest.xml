@@ -6,13 +6,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <application>
         <service
-            android:name="dev.eko.transport.ConnectionService"
+            android:name="ch.lkmc.eko.transport.ConnectionService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice"
             android:stopWithTask="false" />
 
         <receiver
-            android:name="dev.eko.transport.BootAndUpdateReceiver"
+            android:name="ch.lkmc.eko.transport.BootAndUpdateReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>
@@ -22,7 +22,7 @@
         </receiver>
 
         <receiver
-            android:name="dev.eko.transport.TransportActionReceiver"
+            android:name="ch.lkmc.eko.transport.TransportActionReceiver"
             android:exported="false" />
     </application>
 </manifest>

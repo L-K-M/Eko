@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.eko.app"
+    namespace = "ch.lkmc.eko.app"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.eko.android"
+        applicationId = "ch.lkmc.eko.android"
         minSdk = 26
         targetSdk = 36
         versionCode = 1

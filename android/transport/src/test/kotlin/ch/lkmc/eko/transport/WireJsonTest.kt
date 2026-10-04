@@ -1,15 +1,15 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.core.AppDescriptor
-import dev.eko.core.DndDescriptor
-import dev.eko.core.DurableEventBody
-import dev.eko.core.EkoJson
-import dev.eko.core.EventKind
-import dev.eko.core.NotificationContent
-import dev.eko.core.ProtocolException
-import dev.eko.outbox.BacklogSnapshot
-import dev.eko.outbox.GapSpanEntity
-import dev.eko.outbox.OutboxEventEntity
+import ch.lkmc.eko.core.AppDescriptor
+import ch.lkmc.eko.core.DndDescriptor
+import ch.lkmc.eko.core.DurableEventBody
+import ch.lkmc.eko.core.EkoJson
+import ch.lkmc.eko.core.EventKind
+import ch.lkmc.eko.core.NotificationContent
+import ch.lkmc.eko.core.ProtocolException
+import ch.lkmc.eko.outbox.BacklogSnapshot
+import ch.lkmc.eko.outbox.GapSpanEntity
+import ch.lkmc.eko.outbox.OutboxEventEntity
 import kotlinx.serialization.encodeToString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

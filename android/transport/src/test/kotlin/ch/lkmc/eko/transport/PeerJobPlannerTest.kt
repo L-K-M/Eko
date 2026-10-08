@@ -1,9 +1,9 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.pairing.AppliedUnpairReceipt
-import dev.eko.pairing.ConfirmedPeer
-import dev.eko.pairing.IdentityState
-import dev.eko.pairing.PeerEndpoint
+import ch.lkmc.eko.pairing.AppliedUnpairReceipt
+import ch.lkmc.eko.pairing.ConfirmedPeer
+import ch.lkmc.eko.pairing.IdentityState
+import ch.lkmc.eko.pairing.PeerEndpoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -1,19 +1,19 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.content.Context
 import android.net.Network
 import android.os.SystemClock
 import android.util.Base64
-import dev.eko.capture.NotificationListenerController
-import dev.eko.core.FrameCodec
-import dev.eko.core.ProtocolException
-import dev.eko.outbox.CursorAheadOfHighWaterException
-import dev.eko.outbox.EventStoreProvider
-import dev.eko.pairing.AndroidIdentity
-import dev.eko.pairing.ConfirmedPeer
-import dev.eko.pairing.IdentityStore
-import dev.eko.pairing.CdmAssociationController
-import dev.eko.pairing.PairingCoordinator
+import ch.lkmc.eko.capture.NotificationListenerController
+import ch.lkmc.eko.core.FrameCodec
+import ch.lkmc.eko.core.ProtocolException
+import ch.lkmc.eko.outbox.CursorAheadOfHighWaterException
+import ch.lkmc.eko.outbox.EventStoreProvider
+import ch.lkmc.eko.pairing.AndroidIdentity
+import ch.lkmc.eko.pairing.ConfirmedPeer
+import ch.lkmc.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.CdmAssociationController
+import ch.lkmc.eko.pairing.PairingCoordinator
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -50,10 +50,10 @@ internal class NormalPeerSession(context: Context) {
         try {
             socket.soTimeout = HELLO_TIMEOUT_MS
             withContext(Dispatchers.IO) {
-                dev.eko.core.FrameCodec.write(
+                ch.lkmc.eko.core.FrameCodec.write(
                     socket.outputStream,
-                    dev.eko.core.Frame(
-                        dev.eko.core.JSON_FRAME_TYPE,
+                    ch.lkmc.eko.core.Frame(
+                        ch.lkmc.eko.core.JSON_FRAME_TYPE,
                         WireJson.helloNormal(identity, metadata.outboxGeneration, epoch).toString().encodeToByteArray(),
                     ),
                 )
@@ -86,8 +86,8 @@ internal class NormalPeerSession(context: Context) {
                     runCatching {
                         FrameCodec.write(
                             socket.outputStream,
-                            dev.eko.core.Frame(
-                                dev.eko.core.JSON_FRAME_TYPE,
+                            ch.lkmc.eko.core.Frame(
+                                ch.lkmc.eko.core.JSON_FRAME_TYPE,
                                 WireJson.error("store_reset").toString().encodeToByteArray(),
                             ),
                         )
@@ -178,7 +178,7 @@ internal class NormalPeerSession(context: Context) {
                 is InboundControl.Ack -> {
                     try {
                         repository.acknowledge(peer.deviceId, control.seq, outbound.authorizedThrough())
-                    } catch (invalid: dev.eko.outbox.InvalidAcknowledgementException) {
+                    } catch (invalid: ch.lkmc.eko.outbox.InvalidAcknowledgementException) {
                         outbound.send(WireJson.error("invalid_ack"))
                         throw invalid
                     }
@@ -270,9 +270,9 @@ internal class NormalPeerSession(context: Context) {
         cdm.inventory().forEach { cdm.removeIfUnused(it.id) }
         withContext(Dispatchers.IO) {
             val ack = WireJson.unpairAck(unpairId, initiatorId, localDeviceId, "applied")
-            dev.eko.core.FrameCodec.write(
+            ch.lkmc.eko.core.FrameCodec.write(
                 output,
-                dev.eko.core.Frame(dev.eko.core.JSON_FRAME_TYPE, ack.toString().encodeToByteArray()),
+                ch.lkmc.eko.core.Frame(ch.lkmc.eko.core.JSON_FRAME_TYPE, ack.toString().encodeToByteArray()),
             )
         }
     }

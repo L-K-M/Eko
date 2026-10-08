@@ -1,4 +1,4 @@
-package dev.eko.outbox
+package ch.lkmc.eko.outbox
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

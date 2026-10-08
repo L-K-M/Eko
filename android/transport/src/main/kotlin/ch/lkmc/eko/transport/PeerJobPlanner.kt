@@ -1,7 +1,7 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.pairing.ConfirmedPeer
-import dev.eko.pairing.IdentityState
+import ch.lkmc.eko.pairing.ConfirmedPeer
+import ch.lkmc.eko.pairing.IdentityState
 
 internal data class PeerJobPlan(
     val startPeers: List<ConfirmedPeer>,

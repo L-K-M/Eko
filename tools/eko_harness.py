@@ -1240,7 +1240,7 @@ class FakePhone:
             "app": {
                 "category": "msg",
                 "label": "Eko Simulator",
-                "pkg": "dev.eko.simulator",
+                "pkg": "ch.lkmc.eko.simulator",
             },
             "dnd": {"filter": "all", "suppressed": False},
             "ev": "posted",

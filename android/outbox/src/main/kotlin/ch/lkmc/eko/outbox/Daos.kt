@@ -1,4 +1,4 @@
-package dev.eko.outbox
+package ch.lkmc.eko.outbox
 
 import androidx.room.Dao
 import androidx.room.Insert

@@ -1,4 +1,4 @@
-package dev.eko.app
+package ch.lkmc.eko.app
 
 import android.Manifest
 import android.app.Activity
@@ -23,13 +23,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.eko.app.ui.EkoTheme
-import dev.eko.app.ui.QrScanner
-import dev.eko.capture.NotificationListenerController
-import dev.eko.pairing.AssociationEvent
-import dev.eko.pairing.CdmAssociationController
-import dev.eko.pairing.EKO_BLE_SERVICE_UUID
-import dev.eko.pairing.PairingQr
+import ch.lkmc.eko.app.ui.EkoTheme
+import ch.lkmc.eko.app.ui.QrScanner
+import ch.lkmc.eko.capture.NotificationListenerController
+import ch.lkmc.eko.pairing.AssociationEvent
+import ch.lkmc.eko.pairing.CdmAssociationController
+import ch.lkmc.eko.pairing.EKO_BLE_SERVICE_UUID
+import ch.lkmc.eko.pairing.PairingQr
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 

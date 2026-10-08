@@ -1,4 +1,4 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.app.Notification
 import android.content.Context

@@ -1,7 +1,7 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
-import dev.eko.core.EkoJson
-import dev.eko.core.ProtocolException
+import ch.lkmc.eko.core.EkoJson
+import ch.lkmc.eko.core.ProtocolException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull

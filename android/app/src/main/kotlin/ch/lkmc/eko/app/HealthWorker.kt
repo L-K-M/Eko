@@ -1,4 +1,4 @@
-package dev.eko.app
+package ch.lkmc.eko.app
 
 import android.content.Context
 import android.os.SystemClock
@@ -9,14 +9,14 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import dev.eko.capture.NotificationListenerController
-import dev.eko.outbox.EventStoreProvider
-import dev.eko.outbox.StoreDurability
-import dev.eko.outbox.StoreHealth
-import dev.eko.pairing.CdmAssociationController
-import dev.eko.pairing.IdentityStore
-import dev.eko.pairing.PairingCoordinator
-import dev.eko.transport.ConnectionService
+import ch.lkmc.eko.capture.NotificationListenerController
+import ch.lkmc.eko.outbox.EventStoreProvider
+import ch.lkmc.eko.outbox.StoreDurability
+import ch.lkmc.eko.outbox.StoreHealth
+import ch.lkmc.eko.pairing.CdmAssociationController
+import ch.lkmc.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.PairingCoordinator
+import ch.lkmc.eko.transport.ConnectionService
 import java.util.concurrent.TimeUnit
 
 class HealthWorker(

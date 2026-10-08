@@ -1,4 +1,4 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.companion.AssociationInfo
 import android.companion.CompanionDeviceService

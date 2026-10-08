@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.eko.pairing"
+    namespace = "ch.lkmc.eko.pairing"
     compileSdk = 37
 
     defaultConfig {

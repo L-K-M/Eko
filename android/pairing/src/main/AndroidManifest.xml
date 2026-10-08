@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE" />
     <application>
         <service
-            android:name="dev.eko.pairing.EkoCompanionDeviceService"
+            android:name="ch.lkmc.eko.pairing.EkoCompanionDeviceService"
             android:enabled="@bool/eko_cds_legacy_enabled"
             android:exported="true"
             android:label="@string/eko_companion_service_label"
@@ -15,7 +15,7 @@
             </intent-filter>
         </service>
         <service
-            android:name="dev.eko.pairing.EkoCompanionDeviceServiceApi33"
+            android:name="ch.lkmc.eko.pairing.EkoCompanionDeviceServiceApi33"
             android:enabled="@bool/eko_cds_api33_enabled"
             android:exported="true"
             android:label="@string/eko_companion_service_label"
@@ -26,7 +26,7 @@
             </intent-filter>
         </service>
         <service
-            android:name="dev.eko.pairing.EkoCompanionDeviceServiceApi36"
+            android:name="ch.lkmc.eko.pairing.EkoCompanionDeviceServiceApi36"
             android:enabled="@bool/eko_cds_api36_enabled"
             android:exported="true"
             android:label="@string/eko_companion_service_label"

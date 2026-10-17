@@ -449,7 +449,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           DIST="$RUNNER_TEMP/dist"
           mkdir -p "$DIST"
-          DMG="$DIST/$APP_NAME-$VERSION.dmg"
+          DMG="$DIST/$APP_NAME-$VERSION-macos-universal.dmg"
           STAGE="$(mktemp -d "$RUNNER_TEMP/dmg-source.XXXXXX")"
           # create-dmg copies the contents of its source directory. Passing the
           # bundle itself would put Contents/ at the image root instead of Eko.app.
@@ -537,12 +537,12 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          ZIP="$DIST/$APP_NAME-$VERSION.zip"
+          ZIP="$DIST/$APP_NAME-$VERSION-macos-universal.zip"
           # ditto, not zip: the only archiver that preserves the bundle's
           # symlinks, resource forks and extended attributes, and therefore its
           # signature and stapled ticket.
           ditto -c -k --keepParent "$APP_PATH" "$ZIP"
-          ( cd "$DIST" && shasum -a 256 ./*.dmg ./*.zip > "$APP_NAME-$VERSION.sha256" )
+          ( cd "$DIST" && shasum -a 256 ./*.dmg ./*.zip > "$APP_NAME-$VERSION-macos-universal.sha256" )
           echo "dist=$DIST" >> "$GITHUB_OUTPUT"
 
       - name: Write the macOS release notes

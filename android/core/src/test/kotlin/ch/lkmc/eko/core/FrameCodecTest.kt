@@ -2,6 +2,7 @@ package dev.eko.core
 
 import java.io.ByteArrayInputStream
 import java.io.EOFException
+import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.test.Test
@@ -105,5 +106,22 @@ class FrameCodecTest {
         append("null")
         repeat(levels - 1) { append(']') }
         append('}')
+    }
+
+    private class ChunkedInputStream(
+        private val bytes: ByteArray,
+        private val maxChunk: Int,
+    ) : InputStream() {
+        private var offset = 0
+
+        override fun read(): Int = if (offset >= bytes.size) -1 else bytes[offset++].toInt() and 0xff
+
+        override fun read(target: ByteArray, targetOffset: Int, length: Int): Int {
+            if (offset >= bytes.size) return -1
+            val count = minOf(length, maxChunk, bytes.size - offset)
+            bytes.copyInto(target, targetOffset, offset, offset + count)
+            offset += count
+            return count
+        }
     }
 }

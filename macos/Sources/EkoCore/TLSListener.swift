@@ -24,7 +24,6 @@ public final class TLSListener: @unchecked Sendable {
     private let stateHandler: StateHandler
     private let events: EventHandler
     private var listener: NWListener?
-    private var preferredPort: UInt16 = 48_808
     private var fallbackAttempted = false
 
     public init(
@@ -42,7 +41,6 @@ public final class TLSListener: @unchecked Sendable {
     }
 
     public func start(preferredPort: UInt16 = 48_808) async throws -> UInt16 {
-        self.preferredPort = preferredPort
         self.fallbackAttempted = false
         stateHandler(.starting)
         return try await startListener(port: preferredPort)

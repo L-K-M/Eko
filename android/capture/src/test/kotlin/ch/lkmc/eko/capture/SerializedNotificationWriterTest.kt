@@ -118,6 +118,24 @@ class SerializedNotificationWriterTest {
         assertEquals(0, writer.pending)
     }
 
+    @Test
+    fun `closed writer rejects commands and drains rejection evidence`() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sink = RecordingSink(null)
+        val writer = SerializedNotificationWriter(
+            scope = this,
+            sink = sink,
+            diagnostics = CaptureDiagnostics.get(context),
+        )
+
+        writer.close()
+        assertFalse(writer.post(snapshot("closed")))
+        writer.closeAndDrain()
+
+        assertEquals(listOf("gap:writer_overflow"), sink.calls)
+        assertEquals(0, writer.pending)
+    }
+
     private fun snapshot(key: String) = NotificationSnapshot(
         key = key,
         postedAt = 1,

@@ -1,4 +1,4 @@
-package dev.eko.core
+package ch.lkmc.eko.core
 
 import kotlin.math.min
 import kotlin.random.Random

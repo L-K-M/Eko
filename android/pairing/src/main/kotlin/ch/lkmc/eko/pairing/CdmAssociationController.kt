@@ -1,4 +1,4 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.bluetooth.le.ScanFilter
 import android.companion.AssociationRequest

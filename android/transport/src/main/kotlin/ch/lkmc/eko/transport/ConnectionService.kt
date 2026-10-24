@@ -1,4 +1,4 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -16,15 +16,15 @@ import android.util.Base64
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import dev.eko.core.FullJitterBackoff
-import dev.eko.outbox.CursorAheadOfHighWaterException
-import dev.eko.outbox.EventStoreResetter
-import dev.eko.pairing.AndroidIdentity
-import dev.eko.pairing.ConfirmedPeer
-import dev.eko.pairing.IdentityStore
-import dev.eko.pairing.MacDiscovery
-import dev.eko.pairing.PeerEndpoint
-import dev.eko.pairing.RevokedPeerTombstone
+import ch.lkmc.eko.core.FullJitterBackoff
+import ch.lkmc.eko.outbox.CursorAheadOfHighWaterException
+import ch.lkmc.eko.outbox.EventStoreResetter
+import ch.lkmc.eko.pairing.AndroidIdentity
+import ch.lkmc.eko.pairing.ConfirmedPeer
+import ch.lkmc.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.MacDiscovery
+import ch.lkmc.eko.pairing.PeerEndpoint
+import ch.lkmc.eko.pairing.RevokedPeerTombstone
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
@@ -101,7 +101,7 @@ class ConnectionService : Service() {
         super.onDestroy()
     }
 
-    private fun reconcileJobs(state: dev.eko.pairing.IdentityState) {
+    private fun reconcileJobs(state: ch.lkmc.eko.pairing.IdentityState) {
         val plan = planPeerJobs(state, peerJobs.keys.toSet(), resetInProgress.value)
         plan.stopPeerIds.forEach { id ->
             peerJobs.remove(id)?.cancel()
@@ -331,8 +331,8 @@ class ConnectionService : Service() {
     }
 
     companion object {
-        const val ACTION_PAUSE = "dev.eko.transport.action.PAUSE"
-        const val ACTION_RESUME = "dev.eko.transport.action.RESUME"
+        const val ACTION_PAUSE = "ch.lkmc.eko.transport.action.PAUSE"
+        const val ACTION_RESUME = "ch.lkmc.eko.transport.action.RESUME"
         private const val CHANNEL_ID = "eko_connection"
         private const val NOTIFICATION_ID = 1_700
         private const val MAX_TOMBSTONE_DIALS_PER_PROCESS = 8

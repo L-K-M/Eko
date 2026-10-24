@@ -1,4 +1,4 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.app.Notification
 import android.service.notification.StatusBarNotification
@@ -31,7 +31,7 @@ class ReconciliationSnapshotTest {
             onWriterOverflow = { },
         )
 
-        assertEquals(emptyList<dev.eko.outbox.NotificationSnapshot>(), result)
+        assertEquals(emptyList<ch.lkmc.eko.outbox.NotificationSnapshot>(), result)
     }
 
     @Test
@@ -57,6 +57,6 @@ class ReconciliationSnapshotTest {
         )
 
         assertEquals(1, overflows)
-        assertEquals(emptyList<dev.eko.outbox.NotificationSnapshot>(), result)
+        assertEquals(emptyList<ch.lkmc.eko.outbox.NotificationSnapshot>(), result)
     }
 }

@@ -1,4 +1,4 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.content.Context
 import android.net.ConnectivityManager

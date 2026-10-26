@@ -32,3 +32,18 @@ xcodebuild \
   -destination "platform=macOS" \
   CODE_SIGNING_ALLOWED=NO \
   build
+
+# The app must carry the third-party notices its build phase generates
+# (scripts/bundle-notices.sh); check the file and packages certain to be linked.
+# awk reads to the end so xcodebuild never dies of SIGPIPE under pipefail.
+PRODUCTS_DIR="$(xcodebuild \
+  -project "$PROJECT_DIR/Eko.xcodeproj" \
+  -scheme Eko \
+  -configuration Debug \
+  -destination "platform=macOS" \
+  -showBuildSettings 2>/dev/null | awk -F' = ' '$1 ~ /^ *BUILT_PRODUCTS_DIR$/ && !found { print $2; found = 1 }')"
+NOTICES="$PRODUCTS_DIR/Eko.app/Contents/Resources/Third-Party-Notices.txt"
+if [[ ! -s "$NOTICES" ]] || ! grep -q '^swift-crypto ' "$NOTICES" || ! grep -q '^GRDB.swift ' "$NOTICES"; then
+  printf '%s\n' "Third-party notices missing or incomplete: $NOTICES" >&2
+  exit 1
+fi

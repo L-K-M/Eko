@@ -1,0 +1,36 @@
+{
+  "comment": "Overrides for scripts/swiftpm-notices.py, run by scripts/bundle-notices.sh from the Eko target's build phase (macos/project.yml). Keys under packages are SwiftPM identities from Package.resolved; every entry needs a reason.",
+  "preamble": [
+    "Eko's own code is released under the Unlicense (see LICENSE in the source",
+    "repository). The Swift packages below are resolved for Eko.app; those it",
+    "links keep their own licenses. The Swift runtime and system frameworks ship",
+    "with macOS."
+  ],
+  "packages": {
+    "grdb.swift": {
+      "skip_files": [
+        "SQLiteCustom/src/LICENSE",
+        "SQLiteCustom/src/sqlite/LICENSE.md",
+        "SQLiteCustom/src/sqlite/autoconf/tea/license.terms"
+      ],
+      "reason": "SQLiteCustom/src is the SQLite source submodule for GRDB's custom-SQLite builds. The GRDB product Eko links uses the system SQLite (GRDBSQLite system library), so none of it ships."
+    }
+  },
+  "components": [
+    {
+      "name": "BoringSSL (vendored in swift-crypto)",
+      "version": "0226f30467f540a3f62ef48d453f93927da199b6",
+      "license": "Apache-2.0",
+      "source": "https://boringssl.googlesource.com/boringssl/+/0226f30467f540a3f62ef48d453f93927da199b6",
+      "files": [
+        "licenses/boringssl-0226f30-LICENSE",
+        "licenses/boringssl-0226f30-third_party-fiat-LICENSE"
+      ],
+      "verify_version": {
+        "file": "checkout:swift-crypto/Sources/CCryptoBoringSSL/hash.txt",
+        "regex": "at revision ([0-9a-f]{40})"
+      },
+      "reason": "swift-crypto compiles its vendored BoringSSL (Sources/CCryptoBoringSSL, with fiat-crypto) into CryptoExtras, which swift-certificates' X509 links; the checkout carries no BoringSSL license files. Texts from google/boringssl at that revision: LICENSE and third_party/fiat/LICENSE."
+    }
+  ]
+}

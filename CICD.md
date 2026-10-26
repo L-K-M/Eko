@@ -15,7 +15,7 @@ and Shortking the closest macOS one.
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| [`ci.yml`](.github/workflows/ci.yml) | PRs, pushes to `main`, manual dispatch, and `workflow_call` | Protocol artifacts, reference model, relay server, Android, macOS. |
+| [`ci.yml`](.github/workflows/ci.yml) | PRs, pushes to `main`, manual dispatch, and `workflow_call` | Protocol artifacts, reference model, relay server and image, Android, macOS. |
 | [`release.yml`](.github/workflows/release.yml) | Pushing a `v*` tag (e.g. `v1.2.0`) | Re-prove, version-gate, build, sign, publish. |
 | [`zai-code-review.yml`](.github/workflows/zai-code-review.yml) | Non-draft PRs from this repository | GLM 5.2 review when `ZAI_API_KEY` is configured. |
 
@@ -42,7 +42,7 @@ project and the package disagree.
 
 ## Continuous integration (`ci.yml`)
 
-Five independent jobs, listed here the way a failure should be read rather than the way they
+Six independent jobs, listed here the way a failure should be read rather than the way they
 are scheduled.
 
 ### `protocol` — the shared artifacts (ubuntu, ~1 min)
@@ -89,8 +89,19 @@ would defeat the point of committing `Cargo.lock`.
 The suite is 3 unit tests and 13 integration tests, the latter driving the real axum
 router rather than a mock, so the authorization rules — cross-account isolation, immediate
 revocation, single-use nonces, device-scoped queues — are exercised over real HTTP.
-The container image is *not* built in CI; it is a thin wrapper over the same binary and
-building it would add several minutes for little signal.
+
+A last step runs `scripts/rust-notices.py --check`, the generator `server/Dockerfile` uses
+for the image's third-party notices: it fails when a linked crate publishes no license
+text, when `Cargo.toml` stops declaring the root LICENSE (the Unlicense), or when the
+toolchain lacks the standard library's notices.
+
+### `server-image` — the relay container image (ubuntu, ~8 min)
+
+`docker build --tag eko-relay:ci server`, then `test -s` on
+`/usr/share/doc/eko-relay/Third-Party-Notices.txt` and `Rust-Licenses.html` inside the
+image. The image used to be left out as a thin wrapper over the same binary; it now
+generates the notices for the crates and the Rust standard library it links, which only
+an image build proves.
 
 ### `tools` — reference model and chaos (ubuntu, ~1 min)
 
@@ -106,6 +117,9 @@ Widening it is a deliberate commit.
 `gradle-wrapper.jar`, before anything executes the wrapper. Then Temurin JDK 17,
 `gradle/actions/setup-gradle` rooted at `android/`, and `./gradlew :core:test
 testDebugUnitTest lintDebug assembleDebug`. The debug APK is uploaded as a 14-day artifact.
+Before that, `scripts/android_notices.py` checks both APKs for their third-party notices
+(the AboutLibraries definitions, an entry for every native library and model, and the
+merged notices of the code ML Kit embeds); `release.yml` repeats the check before signing.
 
 The instrumented tests under `androidTest/` are **not** here. `DurabilityInstrumentedTest`
 is about Room surviving process death and power loss, which an emulator models only
@@ -118,7 +132,8 @@ hardware spikes until there is a reason to trust an emulator run of it. Blipbird
 Xcode pinned to **16.3** via `maxim-lobanov/setup-xcode`, `brew install xcodegen`, then
 `macos/Scripts/verify-macos.sh` — unmodified. That script regenerates the project from
 `project.yml`, lints `Info.plist` and the entitlements with `plutil`, runs the package tests
-with `swift test`, then the app-hosted project tests with `xcodebuild test`. Running the
+with `swift test`, then the app-hosted project tests with `xcodebuild test`, and checks that
+the built app carries `Contents/Resources/Third-Party-Notices.txt`. Running the
 documented local command rather than a CI-only reimplementation is the point: the two can't
 drift.
 
@@ -132,6 +147,7 @@ python3 scripts/check-protocol.py                     # needs jsonschema + PyYAM
 python3 -m unittest discover -s tools/tests -v
 (cd android && ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug)
 (cd macos && ./Scripts/verify-macos.sh)               # macOS only
+docker build --tag eko-relay:ci server                # then the notices checks in ci.yml
 ```
 
 `scripts/build.sh` is the friendlier local wrapper around the two build steps: it builds

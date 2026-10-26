@@ -93,6 +93,37 @@ jobs:
         working-directory: server
         run: cargo test --locked
 
+      # Every crate linked into the relay must publish license text, the
+      # manifest must declare the root LICENSE, and the toolchain must ship the
+      # standard library's notices: the same generator server/Dockerfile runs.
+      - name: Check Rust license notices
+        working-directory: server
+        run: |
+          python3 -I scripts/rust-notices.py --target x86_64-unknown-linux-gnu \
+            --own-license Unlicense --check --rust-std Rust-Licenses.html
+
+  server-image:
+    name: Relay container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The image self-hosters build must carry the notices of the crates and
+      # the Rust standard library compiled into the relay (server/Dockerfile).
+      - name: Build the image
+        run: docker build --tag eko-relay:ci server
+
+      - name: Check third-party notices in the image
+        run: |
+          set -euo pipefail
+          for notice in Third-Party-Notices.txt Rust-Licenses.html; do
+            docker run --rm --entrypoint test eko-relay:ci -s "/usr/share/doc/eko-relay/$notice" \
+              || { echo "::error::/usr/share/doc/eko-relay/$notice is missing or empty in the image"; exit 1; }
+          done
+          docker run --rm --entrypoint grep eko-relay:ci -q '^axum ' /usr/share/doc/eko-relay/Third-Party-Notices.txt \
+            || { echo "::error::Third-Party-Notices.txt does not list axum"; exit 1; }
+
   tools:
     name: Reference model & chaos
     runs-on: ubuntu-latest

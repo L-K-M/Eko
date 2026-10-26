@@ -48,6 +48,19 @@ jobs:
       - name: Validate schemas, vectors and the OTP corpus
         run: python3 scripts/check-protocol.py
 
+      # License statements must agree with the root LICENSE (the Unlicense):
+      # one check per statement that has been wrong before.
+      - name: Check license statements
+        run: |
+          status=0
+          grep -q '^license = "Unlicense"' server/Cargo.toml \
+            || { echo "::error file=server/Cargo.toml::license must be \"Unlicense\", as in LICENSE"; status=1; }
+          grep -q '<string>Public domain (Unlicense)\. Bundled components keep their own licenses\.</string>' macos/Config/Info.plist \
+            || { echo "::error file=macos/Config/Info.plist::the copyright string must state the Unlicense and the bundled components"; status=1; }
+          grep -q 'Third-Party-Notices.txt' README.md \
+            || { echo "::error file=README.md::the License section must say where the third-party notices ship"; status=1; }
+          exit "$status"
+
   server:
     name: Relay server
     runs-on: ubuntu-latest

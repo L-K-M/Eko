@@ -42,7 +42,7 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Eko</string>
+    <string>Public domain (Unlicense). Bundled components keep their own licenses.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Eko discovers and receives notifications from your paired Android phones on your local network.</string>
     <key>NSPrincipalClass</key>

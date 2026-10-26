@@ -125,6 +125,19 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease
 
+      # The APK we publish must carry its third-party notices (see ci.yml).
+      # Checked before signing, on the file every artifact below is made from.
+      - name: Check third-party notices in the APK
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          python3 -I scripts/android_notices.py check "$APK" --config android/android-notices.toml
+          unzip -p "$APK" assets/licenses/Google-SDK-Third-Party-Notices.txt > "$RUNNER_TEMP/google-sdk-notices.txt"
+          python3 -I scripts/android_notices.py scan "$APK" --config android/android-notices.toml \
+            --text "$RUNNER_TEMP/google-sdk-notices.txt" \
+            --fetch-from https://dl.google.com/dl/android/maven2 \
+            --fetch-from https://repo.maven.apache.org/maven2
+
       - name: Sign, verify and checksum
         id: package
         env:
@@ -378,6 +391,18 @@ jobs:
             -archivePath "$RUNNER_TEMP/Eko.xcarchive" \
             CODE_SIGNING_ALLOWED=NO
 
+      # Eko.app must carry the third-party notices its build phase generates
+      # (macos/project.yml) before it is signed and packaged, on both paths.
+      - name: Check third-party notices in the archived app
+        run: |
+          set -euo pipefail
+          NOTICES="$RUNNER_TEMP/Eko.xcarchive/Products/Applications/$APP_NAME.app/Contents/Resources/Third-Party-Notices.txt"
+          test -s "$NOTICES" || { echo "::error::$APP_NAME.app lacks Contents/Resources/Third-Party-Notices.txt"; exit 1; }
+          if ! grep -q '^swift-crypto ' "$NOTICES" || ! grep -q '^GRDB.swift ' "$NOTICES"; then
+            echo "::error::Third-Party-Notices.txt does not list swift-crypto and GRDB.swift"
+            exit 1
+          fi
+
       # exportArchive does the inside-out signing the release checklist requires
       # (every nested framework signed by the expected Team ID before the outer
       # bundle) — which is exactly what `codesign --deep` does not do.
@@ -481,6 +506,10 @@ jobs:
             echo "::error::DMG does not contain the expected /Applications link"
             exit 1
           }
+          [ -s "$MOUNT/$APP_NAME.app/Contents/Resources/Third-Party-Notices.txt" ] || {
+            echo "::error::DMG app lacks Contents/Resources/Third-Party-Notices.txt"
+            exit 1
+          }
           detach_mount
           trap - EXIT
 
@@ -542,6 +571,9 @@ jobs:
           # symlinks, resource forks and extended attributes, and therefore its
           # signature and stapled ticket.
           ditto -c -k --keepParent "$APP_PATH" "$ZIP"
+          LISTING="$(unzip -Z1 "$ZIP")"
+          grep -qx "$APP_NAME.app/Contents/Resources/Third-Party-Notices.txt" <<<"$LISTING" \
+            || { echo "::error::zip lacks $APP_NAME.app/Contents/Resources/Third-Party-Notices.txt"; exit 1; }
           ( cd "$DIST" && shasum -a 256 ./*.dmg ./*.zip > "$APP_NAME-$VERSION-macos-universal.sha256" )
           echo "dist=$DIST" >> "$GITHUB_OUTPUT"
 

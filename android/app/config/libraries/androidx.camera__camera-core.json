@@ -1,0 +1,8 @@
+{
+  "_comment": "camera-core declares BSD-3-Clause for libyuv in its JNI code and embeds no BSD text; upstream libyuv LICENSE",
+  "uniqueId": "androidx.camera:camera-core",
+  "licenses": [
+    "BSD-3-Clause-camera-core"
+  ],
+  "description": "Its native libraries (lib/*/libimage_processing_util_jni.so) statically link libyuv, the BSD-3-Clause part of camera-core's POM licenses."
+}

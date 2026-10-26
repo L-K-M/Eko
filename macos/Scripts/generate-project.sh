@@ -16,3 +16,7 @@ fi
 
 node "$SCRIPT_DIR/generate_app_icons.js"
 xcodegen generate --spec "$PROJECT_DIR/project.yml" --project "$PROJECT_DIR"
+
+# The app's third-party notices phase (scripts/bundle-notices.sh) reads the
+# package lockfile, which nothing else writes before an Xcode-only build.
+swift package resolve --package-path "$PROJECT_DIR"

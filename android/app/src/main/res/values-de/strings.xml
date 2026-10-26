@@ -60,6 +60,8 @@
     <string name="oem_oneplus">Deaktiviere die Akkuoptimierung für Eko, wenn Hintergrundverbindungen wiederholt beendet werden.</string>
     <string name="oem_generic">Der Telefonhersteller bietet möglicherweise weitere Einstellungen für Hintergrund-Apps.</string>
     <string name="oem_guide">Zuverlässigkeitsleitfaden des Herstellers öffnen</string>
+    <string name="open_source_licenses">Open-Source-Lizenzen</string>
+    <string name="licenses_body">Ekos eigener Code ist gemeinfrei (Unlicense). Eko enthält Komponenten Dritter, für die ihre eigenen Lizenzen gelten, darunter Google ML Kit unter den ML Kit Terms of Service.</string>
     <string name="home_title">Deine Macs</string>
     <string name="forwarding">Weiterleitung</string>
     <string name="forwarding_on">Ein</string>

@@ -60,6 +60,8 @@
     <string name="oem_oneplus">Disable battery optimization for Eko if background connections are repeatedly stopped.</string>
     <string name="oem_generic">Your phone vendor may offer additional background-app controls.</string>
     <string name="oem_guide">Open vendor reliability guide</string>
+    <string name="open_source_licenses">Open-source licenses</string>
+    <string name="licenses_body">Eko\u2019s own code is public domain (Unlicense). Eko includes third-party components that keep their own licenses, among them Google ML Kit under the ML Kit Terms of Service.</string>
     <string name="home_title">Your Macs</string>
     <string name="forwarding">Forwarding</string>
     <string name="forwarding_on">On</string>

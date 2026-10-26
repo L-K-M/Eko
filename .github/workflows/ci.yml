@@ -48,6 +48,19 @@ jobs:
       - name: Validate schemas, vectors and the OTP corpus
         run: python3 scripts/check-protocol.py
 
+      # License statements must agree with the root LICENSE (the Unlicense):
+      # one check per statement that has been wrong before.
+      - name: Check license statements
+        run: |
+          status=0
+          grep -q '^license = "Unlicense"' server/Cargo.toml \
+            || { echo "::error file=server/Cargo.toml::license must be \"Unlicense\", as in LICENSE"; status=1; }
+          grep -q '<string>Public domain (Unlicense)\. Bundled components keep their own licenses\.</string>' macos/Config/Info.plist \
+            || { echo "::error file=macos/Config/Info.plist::the copyright string must state the Unlicense and the bundled components"; status=1; }
+          grep -q 'Third-Party-Notices.txt' README.md \
+            || { echo "::error file=README.md::the License section must say where the third-party notices ship"; status=1; }
+          exit "$status"
+
   server:
     name: Relay server
     runs-on: ubuntu-latest
@@ -79,6 +92,37 @@ jobs:
       - name: Test
         working-directory: server
         run: cargo test --locked
+
+      # Every crate linked into the relay must publish license text, the
+      # manifest must declare the root LICENSE, and the toolchain must ship the
+      # standard library's notices: the same generator server/Dockerfile runs.
+      - name: Check Rust license notices
+        working-directory: server
+        run: |
+          python3 -I scripts/rust-notices.py --target x86_64-unknown-linux-gnu \
+            --own-license Unlicense --check --rust-std Rust-Licenses.html
+
+  server-image:
+    name: Relay container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The image self-hosters build must carry the notices of the crates and
+      # the Rust standard library compiled into the relay (server/Dockerfile).
+      - name: Build the image
+        run: docker build --tag eko-relay:ci server
+
+      - name: Check third-party notices in the image
+        run: |
+          set -euo pipefail
+          for notice in Third-Party-Notices.txt Rust-Licenses.html; do
+            docker run --rm --entrypoint test eko-relay:ci -s "/usr/share/doc/eko-relay/$notice" \
+              || { echo "::error::/usr/share/doc/eko-relay/$notice is missing or empty in the image"; exit 1; }
+          done
+          docker run --rm --entrypoint grep eko-relay:ci -q '^axum ' /usr/share/doc/eko-relay/Third-Party-Notices.txt \
+            || { echo "::error::Third-Party-Notices.txt does not list axum"; exit 1; }
 
   tools:
     name: Reference model & chaos
@@ -140,6 +184,25 @@ jobs:
       # time on a tagged release.
       - name: Test, lint, and assemble
         run: ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug assembleRelease
+
+      # Both APKs must carry their third-party notices: the generated library
+      # definitions with license texts, an entry for every native library and
+      # model (android/android-notices.toml), and the notices of the open-source
+      # code ML Kit embeds. `scan` reads the resolved AARs from the Gradle cache,
+      # so it runs in the job that built them.
+      - name: Check third-party notices in the APKs
+        working-directory: .
+        run: |
+          set -euo pipefail
+          for apk in android/app/build/outputs/apk/debug/app-debug.apk \
+                     android/app/build/outputs/apk/release/app-release-unsigned.apk; do
+            python3 -I scripts/android_notices.py check "$apk" --config android/android-notices.toml
+            unzip -p "$apk" assets/licenses/Google-SDK-Third-Party-Notices.txt > "$RUNNER_TEMP/google-sdk-notices.txt"
+            python3 -I scripts/android_notices.py scan "$apk" --config android/android-notices.toml \
+              --text "$RUNNER_TEMP/google-sdk-notices.txt" \
+              --fetch-from https://dl.google.com/dl/android/maven2 \
+              --fetch-from https://repo.maven.apache.org/maven2
+          done
 
       - name: Upload debug APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7

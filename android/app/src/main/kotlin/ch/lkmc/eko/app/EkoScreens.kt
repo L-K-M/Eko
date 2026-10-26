@@ -446,6 +446,18 @@ private fun OnboardingScreen(
                 }) { Text(stringResource(R.string.oem_guide)) }
             }
         }
+        item {
+            // Third-party notices the APK must carry (AboutLibraries definitions and assets/licenses).
+            ChecklistCard(
+                title = stringResource(R.string.open_source_licenses),
+                body = stringResource(R.string.licenses_body),
+                healthy = null,
+            ) {
+                OutlinedButton(onClick = {
+                    context.startActivity(Intent(context, LicensesActivity::class.java))
+                }) { Text(stringResource(R.string.open_source_licenses)) }
+            }
+        }
     }
 }
 

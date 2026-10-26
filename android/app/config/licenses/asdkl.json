@@ -1,0 +1,8 @@
+{
+  "_comment": "Proprietary terms, not an open-source license. Google Play services and ODML image libraries declare this license in their POMs.",
+  "hash": "ASDKL",
+  "spdxId": "ASDKL",
+  "name": "Android Software Development Kit License",
+  "url": "https://developer.android.com/studio/terms.html",
+  "content": "These Google libraries are proprietary software from Google LLC. They are provided under the Android Software Development Kit License Agreement:\n\nhttps://developer.android.com/studio/terms.html\n\nThey are not open source and are not covered by Eko's own license. The open-source code they embed keeps its own licenses, listed in Google-SDK-Third-Party-Notices.txt.\n"
+}

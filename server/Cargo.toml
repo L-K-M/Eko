@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.90"
 description = "Self-hosted store-and-forward relay for Eko. Carries opaque end-to-end encrypted envelopes; never sees notification content."
-license = "MIT"
+# The whole repository, relay included, is released under the Unlicense (LICENSE).
+license = "Unlicense"
+# Distributed as source and a container image, never as a crates.io crate.
+publish = false
 
 [dependencies]
 axum = { version = "0.8", features = ["json"] }

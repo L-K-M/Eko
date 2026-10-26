@@ -34,7 +34,8 @@ python3 -m unittest discover -s tools/tests -v        # reference model
 ```
 
 Those five verification commands are exactly what `.github/workflows/ci.yml`
-runs, so a green local run means a green CI run. Run the ones your change
+runs, together with the license and notice checks under Licensing below, so a
+green local run means a green CI run. Run the ones your change
 touches; run the protocol checker whenever anything under `protocol/` moves,
 because both apps consume those files.
 
@@ -43,6 +44,27 @@ in lockstep across `android/app/build.gradle.kts` and `macos/project.yml`, bumps
 both build numbers, updates the README marker, commits and tags. Never bump
 either version file by hand and never create a `v*` tag by hand: `release.yml`
 refuses a tag that disagrees with either file.
+
+## Licensing
+
+- Eko's own code is the Unlicense (`LICENSE`). Keep the license statements in
+  `server/Cargo.toml`, `macos/Config/Info.plist`, the README and the Android
+  licenses card consistent with it; the protocol job's "Check license
+  statements" step checks the first three.
+- Before adding a dependency, vendored file or bundled asset, confirm its license
+  allows redistribution in the APK, the app and the image. Never vendor
+  third-party code without its license file.
+- Every artifact generates its notices from the real dependency graph and fails
+  on a component without license text: AboutLibraries with `android/app/config/`
+  and `android/android-notices.toml` (checked on the built APKs by
+  `scripts/android_notices.py`), `scripts/bundle-notices.sh` with
+  `macos/third-party-notices.json`, and `server/scripts/rust-notices.py` in
+  `server/Dockerfile`. Record gaps as explicit overrides with a reason there; a
+  new native library, model or vendored component needs an entry before CI
+  passes. Local checks: `python3 -I scripts/android_notices.py check <apk>
+  --config android/android-notices.toml`, `(cd server && python3 -I
+  scripts/rust-notices.py --target x86_64-unknown-linux-gnu --own-license
+  Unlicense --check)` and `docker build --tag eko-relay server`.
 
 ## Architecture invariants
 

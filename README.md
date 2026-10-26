@@ -125,4 +125,25 @@ identity.
 
 ## License
 
-Public domain (Unlicense) — see [`LICENSE`](LICENSE).
+Eko's own code is released under the [Unlicense](LICENSE). The builds bundle third-party
+code that keeps its own licenses: the Android app bundles AndroidX, Jetpack Compose and
+Kotlin libraries, Conscrypt with BoringSSL, and Google ML Kit barcode scanning with the
+Google Play services libraries it needs. ML Kit and Play services are proprietary, provided
+by Google under the [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms)
+and the [Android Software Development Kit License](https://developer.android.com/studio/terms).
+The macOS app bundles GRDB.swift, swift-crypto (with BoringSSL), swift-certificates and
+swift-asn1. The relay's container image, which you build yourself, adds the relay's Rust
+crates and the Rust standard library. Their notices ship inside each artifact:
+
+- Android: Setup > Open-source licenses, which also lists
+  `Google-SDK-Third-Party-Notices.txt` for the open-source code ML Kit embeds
+- macOS: `Eko.app/Contents/Resources/Third-Party-Notices.txt`
+- Relay image: `/usr/share/doc/eko-relay/Third-Party-Notices.txt` and `Rust-Licenses.html`;
+  system packages from the base image keep their notices in `/usr/share/doc/*/copyright`
+
+The Unlicense covers Eko's own code only. The Gradle wrapper files (`android/gradlew`,
+`android/gradlew.bat`, `android/gradle/wrapper/gradle-wrapper.jar`) are Gradle's and keep
+the Apache License 2.0. The OTP corpus in `protocol/otp-corpus/` is dedicated separately
+under CC0-1.0, as its headers and [`protocol/README.md`](protocol/README.md) state.
+`macos/licenses/` holds BoringSSL's license texts for the macOS notices, not this project's
+license.

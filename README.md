@@ -145,5 +145,5 @@ The Unlicense covers Eko's own code only. The Gradle wrapper files (`android/gra
 `android/gradlew.bat`, `android/gradle/wrapper/gradle-wrapper.jar`) are Gradle's and keep
 the Apache License 2.0. The OTP corpus in `protocol/otp-corpus/` is dedicated separately
 under CC0-1.0, as its headers and [`protocol/README.md`](protocol/README.md) state.
-`macos/licenses/` holds BoringSSL's license texts for the macOS notices, not this project's
-license.
+`macos/licenses/` and `android/app/config/licenses/` hold third-party license texts for the
+apps' notices, not this project's license.

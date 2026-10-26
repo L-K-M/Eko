@@ -134,7 +134,9 @@ jobs:
           python3 -I scripts/android_notices.py check "$APK" --config android/android-notices.toml
           unzip -p "$APK" assets/licenses/Google-SDK-Third-Party-Notices.txt > "$RUNNER_TEMP/google-sdk-notices.txt"
           python3 -I scripts/android_notices.py scan "$APK" --config android/android-notices.toml \
-            --text "$RUNNER_TEMP/google-sdk-notices.txt"
+            --text "$RUNNER_TEMP/google-sdk-notices.txt" \
+            --fetch-from https://dl.google.com/dl/android/maven2 \
+            --fetch-from https://repo.maven.apache.org/maven2
 
       - name: Sign, verify and checksum
         id: package

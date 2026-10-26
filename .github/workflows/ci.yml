@@ -199,7 +199,9 @@ jobs:
             python3 -I scripts/android_notices.py check "$apk" --config android/android-notices.toml
             unzip -p "$apk" assets/licenses/Google-SDK-Third-Party-Notices.txt > "$RUNNER_TEMP/google-sdk-notices.txt"
             python3 -I scripts/android_notices.py scan "$apk" --config android/android-notices.toml \
-              --text "$RUNNER_TEMP/google-sdk-notices.txt"
+              --text "$RUNNER_TEMP/google-sdk-notices.txt" \
+              --fetch-from https://dl.google.com/dl/android/maven2 \
+              --fetch-from https://repo.maven.apache.org/maven2
           done
 
       - name: Upload debug APK

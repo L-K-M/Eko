@@ -36,6 +36,9 @@ import json
 import os
 import re
 import sys
+import tempfile
+import urllib.error
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -44,7 +47,7 @@ try:
 except ModuleNotFoundError:  # Python < 3.11
     tomllib = None
 
-TOOL_VERSION = "1"
+TOOL_VERSION = "2"
 DEFINITIONS_ENTRY = "res/raw/aboutlibraries.json"
 LICENSEE_ENTRY = "assets/app/cash/licensee/artifacts.json"
 
@@ -616,6 +619,47 @@ def google_license_chunks(files: dict[str, str]) -> list[tuple[str, str]]:
     return chunks
 
 
+def fetch_coordinate(group: str, artifact: str, version: str, sources: list[str], dest: Path) -> None:
+    """Download a coordinate's metadata and runtime files into dest, laid out as a Maven repository.
+
+    CI Gradle caches (e.g. setup-gradle) may restore the dependency metadata
+    without the jars and aars the build no longer needed to download."""
+    rel = "/".join([*group.split("."), artifact, version])
+    for base in sources:
+        found = False
+        for name in (f"{artifact}-{version}.module", f"{artifact}-{version}.pom",
+                     f"{artifact}-{version}.aar", f"{artifact}-{version}.jar"):
+            target = dest.joinpath(rel, name)
+            if target.is_file():
+                found = True
+                continue
+            try:
+                with urllib.request.urlopen(f"{base.rstrip('/')}/{rel}/{name}", timeout=60) as response:
+                    data = response.read()
+            except urllib.error.HTTPError as error:
+                if error.code == 404:
+                    continue
+                raise InputError(f"{base}: {rel}/{name}: HTTP {error.code}") from error
+            except urllib.error.URLError as error:
+                raise InputError(f"{base}: {rel}/{name}: {error.reason}") from error
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            found = True
+        if found:
+            return
+
+
+def resolve_files(group: str, artifact: str, version: str, cache: Path, repos: list[Path]) -> tuple[list[Path], bool]:
+    """Runtime files of a coordinate, following Kotlin Multiplatform redirects."""
+    files, known = artifact_files(group, artifact, version, cache, repos)
+    if not files:
+        for g, a, v in platform_redirects(group, artifact, version, cache, repos):
+            files += artifact_files(g, a, v, cache, repos)[0]
+            if files:
+                break
+    return files, known
+
+
 def cmd_scan(args) -> int:
     cfg = load_config(args.config)
     defs, _ = load_source(args.input, args.definitions_entry)
@@ -623,6 +667,11 @@ def cmd_scan(args) -> int:
         raise InputError(f"{args.input}: no definitions to take coordinates from")
     cache = gradle_cache(args.gradle_home)
     repos = [Path(r) for r in args.maven_repo]
+    # Files missing from the local caches are downloaded here when --fetch-from is given.
+    fetched_dir = tempfile.TemporaryDirectory(prefix="android-notices-")
+    fetched = Path(fetched_dir.name)
+    if args.fetch_from:
+        repos.append(fetched)
     extra = norm("\n".join(read_text(t) for t in args.text))
     errors, notes = [], [f"coordinates: {defs['origin']} ({len(defs['libraries'])} libraries)"]
     scanned = 0
@@ -631,12 +680,12 @@ def cmd_scan(args) -> int:
         if lib.get("tag") == "bundled" or ident.count(":") != 1 or not version:
             continue  # hand-maintained entry, nothing to resolve
         group, artifact = ident.split(":")
-        files, known = artifact_files(group, artifact, version, cache, repos)
-        if not files:
+        files, known = resolve_files(group, artifact, version, cache, repos)
+        if not files and args.fetch_from:
+            fetch_coordinate(group, artifact, version, args.fetch_from, fetched)
             for g, a, v in platform_redirects(group, artifact, version, cache, repos):
-                files += artifact_files(g, a, v, cache, repos)[0]
-                if files:
-                    break
+                fetch_coordinate(g, a, v, args.fetch_from, fetched)
+            files, known = resolve_files(group, artifact, version, cache, repos)
         if not files:
             if known and metadata_only(group, artifact, version, cache, repos):
                 continue  # BOM, platform or other module without code
@@ -839,6 +888,9 @@ def main(argv: list[str] | None = None) -> int:
     common(p)
     p.add_argument("--gradle-home", help="default: $GRADLE_USER_HOME or ~/.gradle")
     p.add_argument("--maven-repo", action="append", default=[], help="extra local Maven repository")
+    p.add_argument("--fetch-from", action="append", default=[], metavar="URL",
+                   help="remote Maven repository to download artifacts missing locally from, repeatable "
+                        "(e.g. https://dl.google.com/dl/android/maven2, https://repo.maven.apache.org/maven2)")
     p.add_argument("--text", action="append", default=[], help="extra notices file that counts as shipped")
     p.add_argument("-v", "--verbose", action="store_true", help="list every embedded license file")
     p.add_argument("--extract", metavar="DIR", help="write every embedded LICENSE/NOTICE file below DIR")

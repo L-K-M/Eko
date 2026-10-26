@@ -1,0 +1,14 @@
+{
+  "_comment": "google/boringssl tag 0.20260813.0, LICENSE; google/boringssl tag 0.20260813.0, third_party/fiat/LICENSE (fiat-crypto code compiled into libcrypto)",
+  "uniqueId": "eko:boringssl",
+  "licenses": [
+    "Apache-2.0-boringssl",
+    "Apache-2.0-boringssl-fiat"
+  ],
+  "name": "BoringSSL (in libconscrypt_jni.so)",
+  "artifactVersion": "0.20260813.0",
+  "website": "https://github.com/google/boringssl/tree/0.20260813.0",
+  "description": "Statically linked into lib/*/libconscrypt_jni.so by Conscrypt 2.7.0, whose 2.7.0 build pins BoringSSL 0.20260813.0 (.github/workflows/ci.yml BORINGSSL_VERSION).",
+  "developers": [],
+  "tag": "bundled"
+}

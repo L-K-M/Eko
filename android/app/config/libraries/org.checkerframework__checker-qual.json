@@ -1,0 +1,7 @@
+{
+  "_comment": "checker-qual 3.43.0 jar, META-INF/LICENSE.txt",
+  "uniqueId": "org.checkerframework:checker-qual",
+  "licenses": [
+    "MIT-checker-qual"
+  ]
+}

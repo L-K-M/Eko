@@ -1,0 +1,7 @@
+{
+  "_comment": "The shaded protobuf-lite's LICENSE.txt in the jar has no copyright line; upstream protocolbuffers/protobuf LICENSE (v28.3; the text is unchanged across releases, and the POM does not name the shaded version)",
+  "uniqueId": "androidx.datastore:datastore-preferences-external-protobuf",
+  "licenses": [
+    "BSD-3-Clause-datastore-preferences-external-protobuf"
+  ]
+}

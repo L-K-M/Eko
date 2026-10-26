@@ -1,0 +1,7 @@
+{
+  "_comment": "Proprietary terms, not an open-source license. The plugin reports this POM license as 'ML Kit Terms of Service' with this hash. The open-source code ML Kit embeds ships in assets/licenses/Google-SDK-Third-Party-Notices.txt (app/build.gradle.kts).",
+  "hash": "9962f44671a86e167c028415c7e21548",
+  "name": "ML Kit Terms of Service",
+  "url": "https://developers.google.com/ml-kit/terms",
+  "content": "Google ML Kit (barcode scanning, its vision libraries, native code and models) is proprietary software from Google LLC. It is provided under the ML Kit Terms of Service:\n\nhttps://developers.google.com/ml-kit/terms\n\nIt is not open source and is not covered by Eko's own license. The open-source code it embeds keeps its own licenses, listed in Google-SDK-Third-Party-Notices.txt.\n"
+}

@@ -1,0 +1,33 @@
+# Overrides for scripts/android_notices.py, which checks the third-party notices
+# inside Eko's APKs (CI and release). Every claim ties APK content that dependency
+# metadata cannot describe to the notice entries that cover it.
+
+# Entries that must always be listed.
+require = ["org.jetbrains.kotlin:kotlin-stdlib", "org.conscrypt:conscrypt-android"]
+
+[[claim]]
+paths = ["lib/*/libconscrypt_jni.so"]
+requires = ["org.conscrypt:conscrypt-android", "eko:boringssl"]
+reason = "Conscrypt's JNI library statically links BoringSSL (app/config/libraries/eko__boringssl.json)"
+
+[[claim]]
+paths = ["lib/*/libbarhopper_v3.so", "assets/mlkit_barcode_models/*.tflite"]
+requires = ["com.google.mlkit:barcode-scanning"]
+requires_entries = ["assets/licenses/Google-SDK-Third-Party-Notices.txt"]
+reason = "ML Kit barcode scanner's native library and models (ML Kit Terms of Service); the open-source code they embed is listed in the merged Google SDK notices (app/build.gradle.kts)"
+
+[[claim]]
+paths = ["lib/*/libimage_processing_util_jni.so", "lib/*/libsurface_util_jni.so"]
+requires = ["androidx.camera:camera-core"]
+requires_text = ["Copyright 2011 The LibYuv Project Authors"]
+reason = "Native part of the CameraX camera-core AAR, which statically links libyuv"
+
+[[claim]]
+paths = ["lib/*/libdatastore_shared_counter.so"]
+requires = ["androidx.datastore:datastore-core"]
+reason = "Native part of the AndroidX datastore-core-android AAR"
+
+[[claim]]
+paths = ["lib/*/libandroidx.graphics.path.so"]
+requires = ["androidx.graphics:graphics-path"]
+reason = "Native part of the AndroidX graphics-path AAR"

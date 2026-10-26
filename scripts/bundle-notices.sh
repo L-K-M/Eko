@@ -15,8 +15,12 @@ TITLE="Eko"
 NOTICES_NAME="Third-Party-Notices.txt"
 # Package.resolved files whose pins are linked into the app. Leave the array
 # empty when the app has no Swift package dependencies.
+# Eko.app gets its packages through the local EkoCore package
+# (macos/project.yml), so that package's lockfile governs it; Xcode leaves
+# the workspace lockfile unwritten. macos/Scripts/generate-project.sh writes
+# this one, and the generator checks Xcode's checkouts against its pins.
 RESOLVED=(
-  "$ROOT/macos/Eko.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+  "$ROOT/macos/Package.resolved"
 )
 # Explicit overrides for swiftpm-notices.py; empty when none are needed.
 OVERRIDES="$ROOT/macos/third-party-notices.json"

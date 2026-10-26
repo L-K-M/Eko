@@ -70,7 +70,7 @@ targets:
           - $(SRCROOT)/../scripts/bundle-notices.sh
           - $(SRCROOT)/../scripts/swiftpm-notices.py
           - $(SRCROOT)/third-party-notices.json
-          - $(SRCROOT)/Eko.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+          - $(SRCROOT)/Package.resolved
         outputFiles:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Third-Party-Notices.txt
   EkoTests:

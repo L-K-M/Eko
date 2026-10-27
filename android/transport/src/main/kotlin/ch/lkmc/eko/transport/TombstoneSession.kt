@@ -1,16 +1,16 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.content.Context
 import android.net.Network
 import android.util.Base64
-import dev.eko.core.Frame
-import dev.eko.core.FrameCodec
-import dev.eko.core.JSON_FRAME_TYPE
-import dev.eko.core.ProtocolException
-import dev.eko.pairing.AndroidIdentity
-import dev.eko.pairing.IdentityStore
-import dev.eko.pairing.PairingCoordinator
-import dev.eko.pairing.RevokedPeerTombstone
+import ch.lkmc.eko.core.Frame
+import ch.lkmc.eko.core.FrameCodec
+import ch.lkmc.eko.core.JSON_FRAME_TYPE
+import ch.lkmc.eko.core.ProtocolException
+import ch.lkmc.eko.pairing.AndroidIdentity
+import ch.lkmc.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.PairingCoordinator
+import ch.lkmc.eko.pairing.RevokedPeerTombstone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject

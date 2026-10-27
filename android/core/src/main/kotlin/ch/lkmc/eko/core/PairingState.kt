@@ -1,4 +1,4 @@
-package dev.eko.core
+package ch.lkmc.eko.core
 
 sealed interface PairingPhase {
     data object Connecting : PairingPhase

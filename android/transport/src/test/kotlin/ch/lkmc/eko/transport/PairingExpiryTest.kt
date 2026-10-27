@@ -1,13 +1,13 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.content.Context
 import android.os.SystemClock
 import androidx.test.core.app.ApplicationProvider
-import dev.eko.core.FrameCodec
-import dev.eko.pairing.IdentityStore
-import dev.eko.pairing.PairingCoordinator
-import dev.eko.pairing.PeerEndpoint
-import dev.eko.pairing.PendingPairing
+import ch.lkmc.eko.core.FrameCodec
+import ch.lkmc.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.PairingCoordinator
+import ch.lkmc.eko.pairing.PeerEndpoint
+import ch.lkmc.eko.pairing.PendingPairing
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.UUID

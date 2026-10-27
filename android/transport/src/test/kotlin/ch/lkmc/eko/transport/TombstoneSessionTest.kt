@@ -1,8 +1,8 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.core.ProtocolException
-import dev.eko.pairing.PeerEndpoint
-import dev.eko.pairing.RevokedPeerTombstone
+import ch.lkmc.eko.core.ProtocolException
+import ch.lkmc.eko.pairing.PeerEndpoint
+import ch.lkmc.eko.pairing.RevokedPeerTombstone
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals

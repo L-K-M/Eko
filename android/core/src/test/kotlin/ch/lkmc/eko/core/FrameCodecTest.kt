@@ -1,4 +1,4 @@
-package dev.eko.core
+package ch.lkmc.eko.core
 
 import java.io.ByteArrayInputStream
 import java.io.EOFException

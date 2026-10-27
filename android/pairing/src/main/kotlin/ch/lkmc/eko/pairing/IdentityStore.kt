@@ -1,13 +1,13 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import dev.eko.core.EkoJson
-import dev.eko.outbox.EventStoreResetJournal
-import dev.eko.outbox.PendingGenerationReset
+import ch.lkmc.eko.core.EkoJson
+import ch.lkmc.eko.outbox.EventStoreResetJournal
+import ch.lkmc.eko.outbox.PendingGenerationReset
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first

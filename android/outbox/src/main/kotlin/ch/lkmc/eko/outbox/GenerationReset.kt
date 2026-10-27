@@ -1,4 +1,4 @@
-package dev.eko.outbox
+package ch.lkmc.eko.outbox
 
 import android.content.Context
 import java.util.UUID

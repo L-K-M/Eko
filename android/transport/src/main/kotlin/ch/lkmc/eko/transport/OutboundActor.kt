@@ -1,9 +1,9 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.core.Frame
-import dev.eko.core.FrameCodec
-import dev.eko.core.JSON_FRAME_TYPE
-import dev.eko.core.ProtocolException
+import ch.lkmc.eko.core.Frame
+import ch.lkmc.eko.core.FrameCodec
+import ch.lkmc.eko.core.JSON_FRAME_TYPE
+import ch.lkmc.eko.core.ProtocolException
 import java.io.Closeable
 import java.io.OutputStream
 import kotlinx.coroutines.CompletableDeferred

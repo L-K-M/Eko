@@ -33,7 +33,7 @@ dependencies {
     api(project(":core"))
     implementation(project(":outbox"))
     implementation("androidx.core:core-ktx:1.19.0")
-    implementation("androidx.datastore:datastore-preferences:1.2.1")
+    implementation("androidx.datastore:datastore-preferences:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 

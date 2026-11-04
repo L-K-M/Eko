@@ -1,12 +1,12 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import dev.eko.core.DndDescriptor
-import dev.eko.core.EventKind
-import dev.eko.core.NotificationContent
-import dev.eko.outbox.CaptureCommit
-import dev.eko.outbox.NotificationSnapshot
+import ch.lkmc.eko.core.DndDescriptor
+import ch.lkmc.eko.core.EventKind
+import ch.lkmc.eko.core.NotificationContent
+import ch.lkmc.eko.outbox.CaptureCommit
+import ch.lkmc.eko.outbox.NotificationSnapshot
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle

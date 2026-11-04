@@ -1,11 +1,11 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.os.Handler
 import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import dev.eko.core.NotificationSanitizer
-import dev.eko.outbox.NotificationSnapshot
+import ch.lkmc.eko.core.NotificationSanitizer
+import ch.lkmc.eko.outbox.NotificationSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable

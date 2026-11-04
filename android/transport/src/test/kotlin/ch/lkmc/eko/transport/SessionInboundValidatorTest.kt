@@ -1,6 +1,6 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.core.ProtocolException
+import ch.lkmc.eko.core.ProtocolException
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray

@@ -1,4 +1,4 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.app.Notification
 import android.content.Context
@@ -6,11 +6,11 @@ import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
-import dev.eko.core.DndDescriptor
-import dev.eko.core.MessageContent
-import dev.eko.core.NotificationSanitizer
-import dev.eko.core.RawNotification
-import dev.eko.outbox.NotificationSnapshot
+import ch.lkmc.eko.core.DndDescriptor
+import ch.lkmc.eko.core.MessageContent
+import ch.lkmc.eko.core.NotificationSanitizer
+import ch.lkmc.eko.core.RawNotification
+import ch.lkmc.eko.outbox.NotificationSnapshot
 
 data class ExtractedNotification(
     val snapshot: NotificationSnapshot?,
@@ -65,7 +65,7 @@ class NotificationExtractor(private val context: Context) {
         notification: Notification,
         isClearable: Boolean,
         groupKey: String?,
-    ): dev.eko.core.NotificationContent {
+    ): ch.lkmc.eko.core.NotificationContent {
         val isGroupSummary = notification.flags and Notification.FLAG_GROUP_SUMMARY != 0
         // The first extras read unparcels the whole Bundle inside this process.
         // A hostile notification can carry a Parcelable our classloader cannot

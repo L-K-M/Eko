@@ -1,10 +1,10 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.net.Network
 import android.os.Build
-import dev.eko.core.ExactDerTrustManager
-import dev.eko.pairing.DeviceIdentity
-import dev.eko.pairing.PeerEndpoint
+import ch.lkmc.eko.core.ExactDerTrustManager
+import ch.lkmc.eko.pairing.DeviceIdentity
+import ch.lkmc.eko.pairing.PeerEndpoint
 import java.net.InetSocketAddress
 import java.security.Provider
 import javax.net.ssl.KeyManager

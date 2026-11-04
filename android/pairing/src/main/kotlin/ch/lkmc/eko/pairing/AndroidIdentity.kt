@@ -1,10 +1,10 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import dev.eko.core.certificateFingerprint
+import ch.lkmc.eko.core.certificateFingerprint
 import java.math.BigInteger
 import java.net.Socket
 import java.security.KeyPairGenerator

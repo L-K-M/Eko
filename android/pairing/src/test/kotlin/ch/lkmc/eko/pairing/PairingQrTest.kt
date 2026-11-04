@@ -1,6 +1,6 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
-import dev.eko.core.ProtocolException
+import ch.lkmc.eko.core.ProtocolException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test

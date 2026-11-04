@@ -1,7 +1,7 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.core.NotificationSanitizer
-import dev.eko.core.ProtocolException
+import ch.lkmc.eko.core.NotificationSanitizer
+import ch.lkmc.eko.core.ProtocolException
 import kotlinx.serialization.json.JsonObject
 
 internal sealed interface InboundControl {

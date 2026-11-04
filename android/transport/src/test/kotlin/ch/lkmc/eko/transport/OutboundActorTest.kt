@@ -1,6 +1,6 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
-import dev.eko.core.ProtocolException
+import ch.lkmc.eko.core.ProtocolException
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream

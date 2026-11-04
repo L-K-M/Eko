@@ -1,4 +1,4 @@
-package dev.eko.capture
+package ch.lkmc.eko.capture
 
 import android.app.NotificationManager
 import android.content.ComponentName

@@ -1,3 +1,3 @@
 -keepattributes Signature,*Annotation*
--keep class dev.eko.**$$serializer { *; }
--keepclassmembers class dev.eko.** { *** Companion; }
+-keep class ch.lkmc.eko.**$$serializer { *; }
+-keepclassmembers class ch.lkmc.eko.** { *** Companion; }

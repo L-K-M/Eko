@@ -1,4 +1,4 @@
-package dev.eko.app
+package ch.lkmc.eko.app
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule

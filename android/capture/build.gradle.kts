@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.eko.capture"
+    namespace = "ch.lkmc.eko.capture"
     compileSdk = 37
 
     defaultConfig {

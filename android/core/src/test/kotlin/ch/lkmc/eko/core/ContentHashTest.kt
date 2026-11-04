@@ -1,4 +1,4 @@
-package dev.eko.core
+package ch.lkmc.eko.core
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject

@@ -1,16 +1,16 @@
-package dev.eko.outbox
+package ch.lkmc.eko.outbox
 
 import androidx.room.withTransaction
-import dev.eko.core.AppDescriptor
-import dev.eko.core.CanonicalJson
-import dev.eko.core.CaptureGap
-import dev.eko.core.DndDescriptor
-import dev.eko.core.DurableEventBody
-import dev.eko.core.EkoJson
-import dev.eko.core.EventKind
-import dev.eko.core.NotificationContent
-import dev.eko.core.RemoveReason
-import dev.eko.core.MAX_FRAME_LENGTH
+import ch.lkmc.eko.core.AppDescriptor
+import ch.lkmc.eko.core.CanonicalJson
+import ch.lkmc.eko.core.CaptureGap
+import ch.lkmc.eko.core.DndDescriptor
+import ch.lkmc.eko.core.DurableEventBody
+import ch.lkmc.eko.core.EkoJson
+import ch.lkmc.eko.core.EventKind
+import ch.lkmc.eko.core.NotificationContent
+import ch.lkmc.eko.core.RemoveReason
+import ch.lkmc.eko.core.MAX_FRAME_LENGTH
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull

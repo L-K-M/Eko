@@ -1,9 +1,9 @@
-package dev.eko.transport
+package ch.lkmc.eko.transport
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import dev.eko.pairing.IdentityStore
+import ch.lkmc.eko.pairing.IdentityStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -1,4 +1,4 @@
-package dev.eko.app.ui
+package ch.lkmc.eko.app.ui
 
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
@@ -53,7 +53,7 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import dev.eko.app.R
+import ch.lkmc.eko.app.R
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 

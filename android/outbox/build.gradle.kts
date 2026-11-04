@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.eko.outbox"
+    namespace = "ch.lkmc.eko.outbox"
     compileSdk = 37
 
     defaultConfig {

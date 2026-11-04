@@ -1,6 +1,6 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
-import dev.eko.core.StrictJson
+import ch.lkmc.eko.core.StrictJson
 import java.io.Closeable
 import java.net.DatagramPacket
 import java.net.DatagramSocket

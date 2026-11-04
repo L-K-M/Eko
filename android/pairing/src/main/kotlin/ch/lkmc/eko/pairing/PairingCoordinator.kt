@@ -1,7 +1,7 @@
-package dev.eko.pairing
+package ch.lkmc.eko.pairing
 
 import android.content.Context
-import dev.eko.outbox.EventStoreProvider
+import ch.lkmc.eko.outbox.EventStoreProvider
 
 class PairingCoordinator(context: Context) {
     private val appContext = context.applicationContext

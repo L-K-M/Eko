@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "dev.eko.transport"
+    namespace = "ch.lkmc.eko.transport"
     compileSdk = 37
 
     defaultConfig {

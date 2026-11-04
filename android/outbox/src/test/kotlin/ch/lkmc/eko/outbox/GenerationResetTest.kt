@@ -1,9 +1,9 @@
-package dev.eko.outbox
+package ch.lkmc.eko.outbox
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import dev.eko.core.DndDescriptor
-import dev.eko.core.NotificationContent
+import ch.lkmc.eko.core.DndDescriptor
+import ch.lkmc.eko.core.NotificationContent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async

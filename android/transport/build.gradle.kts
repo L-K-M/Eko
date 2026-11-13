@@ -40,7 +40,7 @@ dependencies {
     implementation(project(":outbox"))
     implementation(project(":capture"))
     implementation(project(":pairing"))
-    implementation("androidx.core:core-ktx:1.19.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.conscrypt:conscrypt-android:2.7.0")

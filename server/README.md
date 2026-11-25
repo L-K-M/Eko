@@ -147,6 +147,29 @@ Back up the `relay-data` volume if you care about undelivered envelopes; nothing
 in it is required for correctness, because the phone's outbox remains the source
 of truth and the resume protocol heals a lost relay database.
 
+### Updating the Compose deployment
+
+From the repository root, run `./update.sh` (or `./update.sh main` to
+assert that `main` is checked out). The script needs Git, Docker Compose,
+Python 3, the existing `server/.env`, and a running relay container in the resolved
+Compose project. It refuses tracked local edits; a
+branch argument must match the checked-out branch. It then fast-forwards from
+`origin`.
+It builds the new relay image while the old container is still running,
+preserves the Compose project name and any running TLS/Caddy profile, and waits
+for the relay healthcheck before reporting success. It never runs `down` or
+removes the named volumes.
+
+Take a separate backup of `relay-data` before an update that changes stored
+data. The updater preserves that volume but does not create a backup or roll
+back database changes if a new image fails after recreation.
+
+If the fetch, build, or configuration check fails, the running containers are
+left alone. If the health wait fails after recreation, inspect the relay logs
+from `server/` with `docker compose logs relay` and fix the cause before
+retrying. Restore the data backup before rolling back an incompatible database
+change; the script does not automate that recovery.
+
 ## Development
 
 ```sh

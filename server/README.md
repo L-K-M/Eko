@@ -151,7 +151,7 @@ of truth and the resume protocol heals a lost relay database.
 
 From the repository root, run `./update.sh` (or `./update.sh main` to
 assert that `main` is checked out). The script needs Git, Docker Compose,
-Python 3, the existing `server/.env`, and a relay container in the resolved
+Python 3, the existing `server/.env`, and a running relay container in the resolved
 Compose project. It refuses tracked local edits; a
 branch argument must match the checked-out branch. It then fast-forwards from
 `origin`.

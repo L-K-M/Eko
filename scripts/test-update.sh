@@ -33,7 +33,7 @@ case " $* " in
             printf 'caddy-container\n'
         fi
         ;;
-    *' ps --all --quiet relay '*)
+    *' ps --status running --quiet relay '*)
         if [[ ${TEST_RELAY_PRESENT:-1} == 1 ]]; then
             printf 'relay-container\n'
         fi
@@ -71,7 +71,7 @@ if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fix
     printf '%s\n' 'update.sh accepted a missing relay deployment' >&2
     exit 1
 fi
-grep -q 'no existing relay container' "$fixture/output"
+grep -q 'no running relay container' "$fixture/output"
 if grep -Eq ' (build|pull|up) ' "$TEST_DOCKER_LOG"; then
     printf '%s\n' 'update.sh changed containers without an existing relay' >&2
     exit 1

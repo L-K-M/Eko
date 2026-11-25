@@ -72,7 +72,7 @@ if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fix
     exit 1
 fi
 grep -q 'no running relay container' "$fixture/output"
-if grep -Eq ' (build|pull|up) ' "$TEST_DOCKER_LOG"; then
+if grep -Eq ' (build|pull|up|create|start|restart|stop|rm|kill|run|down)( |$)' "$TEST_DOCKER_LOG"; then
     printf '%s\n' 'update.sh changed containers without an existing relay' >&2
     exit 1
 fi
@@ -137,7 +137,7 @@ if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fix
     exit 1
 fi
 grep -q 'changes the Compose project name' "$fixture/output"
-if grep -Eq ' (build|pull|up) ' "$TEST_DOCKER_LOG"; then
+if grep -Eq ' (build|pull|up|create|start|restart|stop|rm|kill|run|down)( |$)' "$TEST_DOCKER_LOG"; then
     printf '%s\n' 'update.sh touched containers after the project-name change' >&2
     exit 1
 fi

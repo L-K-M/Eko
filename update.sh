@@ -8,6 +8,13 @@ cd "$root"
 
 fail() { printf 'update: %s\n' "$*" >&2; exit 1; }
 compose() { (cd "$root/server" && docker compose "$@"); }
+compose_running_profile() {
+    if [[ -n $caddy_running ]]; then
+        compose -p "$project" --profile tls "$@"
+    else
+        compose -p "$project" "$@"
+    fi
+}
 compose_project() {
     compose config --format json 2>/dev/null |
         python3 -c 'import json, sys; print(json.load(sys.stdin)["name"])' 2>/dev/null
@@ -53,13 +60,11 @@ updated_project=$(compose_project) || fail 'cannot resolve the updated Compose p
 printf 'Building the relay image...\n'
 compose -p "$project" build --pull relay
 
-profile=()
 if [[ -n $caddy_running ]]; then
-    profile=(--profile tls)
     printf 'Refreshing the running Caddy service...\n'
     compose -p "$project" --profile tls pull caddy
 fi
 
 printf 'Starting the relay and waiting for health...\n'
-compose -p "$project" "${profile[@]}" up -d --no-build --wait --wait-timeout 120
-compose -p "$project" "${profile[@]}" ps
+compose_running_profile up -d --no-build --wait --wait-timeout 120
+compose_running_profile ps

@@ -41,8 +41,9 @@ EOF
 chmod +x "$fixture/bin/docker"
 export TEST_DOCKER_LOG="$fixture/docker.log"
 
+# Use the system Bash so a Mac run also covers Bash 3.2 compatibility.
 # A branch argument must not merge another branch into the checked-out one.
-if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" bash ./update.sh other >"$fixture/output" 2>&1); then
+if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh other >"$fixture/output" 2>&1); then
     printf '%s\n' 'update.sh accepted another branch' >&2
     exit 1
 fi
@@ -51,7 +52,7 @@ grep -q 'is not checked out' "$fixture/output"
 
 # Local edits must not be mixed with remote source during deployment.
 printf '# local edit\n' >> "$fixture/work/server/docker-compose.yml"
-if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" bash ./update.sh >"$fixture/output" 2>&1); then
+if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fixture/output" 2>&1); then
     printf '%s\n' 'update.sh accepted a dirty checkout' >&2
     exit 1
 fi
@@ -66,7 +67,7 @@ git -C "$fixture/pusher" push --quiet origin main
 # A running Caddy must be pulled and kept active. The relay is built first.
 export TEST_CADDY_RUNNING=1
 : > "$TEST_DOCKER_LOG"
-if ! (cd "$fixture/work" && PATH="$fixture/bin:$PATH" bash ./update.sh >"$fixture/output" 2>&1); then
+if ! (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fixture/output" 2>&1); then
     cat "$fixture/output" >&2
     exit 1
 fi
@@ -82,7 +83,7 @@ fi
 # A failed build leaves the running stack alone.
 export TEST_BUILD_FAIL=1
 : > "$TEST_DOCKER_LOG"
-if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" bash ./update.sh >"$fixture/output" 2>&1); then
+if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fixture/output" 2>&1); then
     printf '%s\n' 'update.sh ignored a failed build' >&2
     exit 1
 fi
@@ -95,7 +96,7 @@ unset TEST_BUILD_FAIL
 # A relay without Caddy must stay on the relay-only profile.
 export TEST_CADDY_RUNNING=0
 : > "$TEST_DOCKER_LOG"
-if ! (cd "$fixture/work" && PATH="$fixture/bin:$PATH" bash ./update.sh >"$fixture/output" 2>&1); then
+if ! (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fixture/output" 2>&1); then
     cat "$fixture/output" >&2
     exit 1
 fi
@@ -112,7 +113,7 @@ git -C "$fixture/pusher" -c user.name='Update test' -c user.email='update@exampl
     commit --quiet -m 'Rename Compose project'
 git -C "$fixture/pusher" push --quiet origin main
 : > "$TEST_DOCKER_LOG"
-if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" bash ./update.sh >"$fixture/output" 2>&1); then
+if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fixture/output" 2>&1); then
     printf '%s\n' 'update.sh accepted a new Compose project name' >&2
     exit 1
 fi

@@ -77,6 +77,9 @@ vector one side silently skips.
 
 ### `server` — the relay (ubuntu, ~3 min)
 
+The job runs `bash scripts/test-update.sh` from the repository root to check
+the Compose updater's branch, project-name, and running-profile safeguards.
+
 `cargo fmt --check`, `cargo clippy --all-targets --locked -- -D warnings`, and
 `cargo test --locked`, all in `server/`, on a pinned 1.90 toolchain with the registry
 cached between runs. The three commands are exactly the ones `server/README.md` gives a

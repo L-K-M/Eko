@@ -68,6 +68,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      - name: Check the Compose updater
+        run: |
+          bash -n update.sh scripts/test-update.sh
+          bash scripts/test-update.sh
+
       - name: Install the pinned toolchain
         run: |
           rustup toolchain install 1.90 --profile minimal --component clippy,rustfmt

@@ -31,10 +31,11 @@ python3 -m unittest discover -s tools/tests -v        # reference model
 (cd android && ./gradlew :core:test testDebugUnitTest lintDebug assembleDebug)
 (cd macos && ./Scripts/verify-macos.sh)               # macOS only; generate, lint, swift test, xcodebuild test
 (cd server && cargo fmt --check && cargo clippy --all-targets --locked -- -D warnings && cargo test --locked)
+bash scripts/test-update.sh                             # Compose updater fixture
 ```
 
-Those five verification commands are exactly what `.github/workflows/ci.yml`
-runs, together with the license and notice checks under Licensing below, so a
+Those verification commands are what `.github/workflows/ci.yml` runs,
+together with the license and notice checks under Licensing below, so a
 green local run means a green CI run. Run the ones your change
 touches; run the protocol checker whenever anything under `protocol/` moves,
 because both apps consume those files.

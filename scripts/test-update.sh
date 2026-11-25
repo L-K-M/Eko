@@ -33,6 +33,11 @@ case " $* " in
             printf 'caddy-container\n'
         fi
         ;;
+    *' ps --all --quiet relay '*)
+        if [[ ${TEST_RELAY_PRESENT:-1} == 1 ]]; then
+            printf 'relay-container\n'
+        fi
+        ;;
     *' build --pull relay '*)
         if [[ ${TEST_BUILD_FAIL:-0} == 1 ]]; then exit 1; fi
         ;;
@@ -58,6 +63,20 @@ if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fix
 fi
 grep -q 'tracked files have local changes' "$fixture/output"
 git -C "$fixture/work" restore server/docker-compose.yml
+
+# An updater must not create a parallel Compose project on an unrecognized host.
+export TEST_RELAY_PRESENT=0
+: > "$TEST_DOCKER_LOG"
+if (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$fixture/output" 2>&1); then
+    printf '%s\n' 'update.sh accepted a missing relay deployment' >&2
+    exit 1
+fi
+grep -q 'no existing relay container' "$fixture/output"
+if grep -Eq ' (build|pull|up) ' "$TEST_DOCKER_LOG"; then
+    printf '%s\n' 'update.sh changed containers without an existing relay' >&2
+    exit 1
+fi
+export TEST_RELAY_PRESENT=1
 
 git clone --quiet "$fixture/origin.git" "$fixture/pusher"
 git -C "$fixture/pusher" -c user.name='Update test' -c user.email='update@example.invalid' \
@@ -101,7 +120,7 @@ if ! (cd "$fixture/work" && PATH="$fixture/bin:$PATH" /bin/bash ./update.sh >"$f
     exit 1
 fi
 grep -Fq '|compose -p eko up -d --no-build --wait --wait-timeout 120' "$TEST_DOCKER_LOG"
-if grep -q ' pull caddy\| --profile tls up ' "$TEST_DOCKER_LOG"; then
+if grep -Eq ' pull caddy| --profile tls up ' "$TEST_DOCKER_LOG"; then
     printf '%s\n' 'update.sh activated an inactive Caddy service' >&2
     exit 1
 fi

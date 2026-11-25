@@ -43,6 +43,10 @@ compose version >/dev/null 2>&1 || fail 'Docker Compose is unavailable'
 compose config --quiet >/dev/null 2>&1 || fail 'the current relay Compose configuration is invalid'
 project=$(compose_project) || fail 'cannot resolve the current Compose project name'
 [[ -n $project ]] || fail 'the current Compose project name is empty'
+relay_container=$(compose -p "$project" ps --all --quiet relay) ||
+    fail 'cannot inspect the existing relay container'
+[[ -n $relay_container ]] ||
+    fail "no existing relay container in Compose project $project; deploy it manually first"
 caddy_running=$(compose -p "$project" --profile tls ps --status running --quiet caddy) ||
     fail 'cannot inspect the running Caddy service'
 
